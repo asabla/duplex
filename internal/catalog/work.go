@@ -45,9 +45,10 @@ func (s *Store) CachedMetadata(ctx context.Context, id string) (source.Metadata,
 	m.Title = v.Title
 	m.Description = v.Description
 	m.Timestamp = float64(v.Published)
-	if v.State == "replay-ready" {
+	switch v.State {
+	case "replay-ready":
 		m.LiveStatus = "was_live"
-	} else if v.State == "recorded" {
+	case "recorded":
 		m.LiveStatus = "not_live"
 	}
 	return m, nil

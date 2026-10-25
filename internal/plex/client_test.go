@@ -20,12 +20,12 @@ func TestVersionDoesNotImplyNFO(t *testing.T) {
 				}
 				switch r.URL.Path {
 				case "/identity":
-					w.Write([]byte(`<MediaContainer version="1.43.5.11029-test"/>`))
+					writeTestResponse(t, w, []byte(`<MediaContainer version="1.43.5.11029-test"/>`))
 				case "/media/providers/metadata":
 					if hasNFO {
-						w.Write([]byte(`<MediaContainer><MetadataAgentProvider identifier="tv.plex.agents.nfo.series" title="Plex NFO Series"><MetadataType type="2"/></MetadataAgentProvider></MediaContainer>`))
+						writeTestResponse(t, w, []byte(`<MediaContainer><MetadataAgentProvider identifier="tv.plex.agents.nfo.series" title="Plex NFO Series"><MetadataType type="2"/></MetadataAgentProvider></MediaContainer>`))
 					} else {
-						w.Write([]byte(`<MediaContainer/>`))
+						writeTestResponse(t, w, []byte(`<MediaContainer/>`))
 					}
 				default:
 					http.NotFound(w, r)
@@ -55,5 +55,12 @@ func TestOriginValidation(t *testing.T) {
 		if _, err := New(u, ""); err == nil {
 			t.Fatal("accepted invalid origin")
 		}
+	}
+}
+
+func writeTestResponse(t *testing.T, w http.ResponseWriter, data []byte) {
+	t.Helper()
+	if _, err := w.Write(data); err != nil {
+		t.Error(err)
 	}
 }

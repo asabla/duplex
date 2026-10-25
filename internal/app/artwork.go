@@ -325,9 +325,7 @@ func (a *App) artworkWorker(ctx context.Context) {
 	defer a.wg.Done()
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
-	brandingAt := map[string]time.Time{}
-	rendered := map[string]time.Time{}
-	versions := map[string]string{}
+	state := artworkSchedule{brandingAt: map[string]time.Time{}, rendered: map[string]time.Time{}, versions: map[string]string{}}
 	for {
 		select {
 		case <-ctx.Done():
@@ -341,31 +339,42 @@ func (a *App) artworkWorker(ctx context.Context) {
 			continue
 		}
 		for _, ch := range a.Config.Snapshot().Config.Channels {
-			if !ch.Enabled {
-				continue
+			if ch.Enabled {
+				a.updateChannelArtwork(ctx, ch, &state)
 			}
-			ctx, stop := context.WithTimeout(ctx, 90*time.Second)
-			if time.Since(brandingAt[ch.ID]) >= 6*time.Hour {
-				brandingAt[ch.ID] = time.Now()
-				channel, err := a.Source.ResolveChannel(ctx, ch.URL)
-				if err == nil && channel.ID == ch.ID {
-					err = a.Catalog.ChannelArtwork(ctx, ch.ID, channel.Avatar, channel.Banner)
-					if err == nil {
-						brandingAt[ch.ID] = time.Now()
-					}
-				}
-				a.operationFailure("channel artwork source", err)
-			}
-			version, err := a.artworkVersion(ctx, ch.ID)
-			if err == nil && (versions[ch.ID] != version || time.Since(rendered[ch.ID]) >= 30*time.Minute) {
-				err = a.renderArtwork(ctx, ch)
-				rendered[ch.ID] = time.Now()
-				versions[ch.ID] = version
-			}
-			a.operationFailure("automatic posters", err)
-			stop()
 		}
 	}
+}
+
+type artworkSchedule struct {
+	brandingAt, rendered map[string]time.Time
+	versions             map[string]string
+}
+
+func (a *App) updateChannelArtwork(ctx context.Context, ch config.Channel, state *artworkSchedule) {
+	ctx, stop := context.WithTimeout(ctx, 90*time.Second)
+	defer stop()
+	if time.Since(state.brandingAt[ch.ID]) >= 6*time.Hour {
+		state.brandingAt[ch.ID] = time.Now()
+		channel, err := a.Source.ResolveChannel(ctx, ch.URL)
+		if err == nil {
+			if channel.ID != ch.ID {
+				err = errors.New("channel artwork identity changed")
+			} else {
+				err = a.Catalog.ChannelArtwork(ctx, ch.ID, channel.Avatar, channel.Banner)
+			}
+		}
+		a.operationFailure("channel artwork source", err)
+	}
+	version, err := a.artworkVersion(ctx, ch.ID)
+	if err == nil && (state.versions[ch.ID] != version || time.Since(state.rendered[ch.ID]) >= 30*time.Minute) {
+		err = a.renderArtwork(ctx, ch)
+		// Bound retry frequency after a source failure. A changed input can still
+		// trigger rendering on the next worker pass.
+		state.rendered[ch.ID] = time.Now()
+		state.versions[ch.ID] = version
+	}
+	a.operationFailure("automatic posters", err)
 }
 
 func (a *App) artworkVersion(ctx context.Context, channel string) (string, error) {

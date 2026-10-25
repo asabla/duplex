@@ -404,7 +404,7 @@ func (a *App) Publish() error {
 func (a *App) plexClient() (*plex.Client, error) {
 	p := a.Config.Snapshot().Config.Plex
 	if p.URL == "" {
-		return nil, errors.New("Plex connection is not configured")
+		return nil, errors.New("plex connection is not configured")
 	}
 	token := ""
 	if p.TokenFile != "" {
@@ -455,21 +455,24 @@ func (a *App) integration(ctx context.Context, scan bool) (err error) {
 }
 
 func (a *App) bindPlex(ctx context.Context, client *plex.Client, connection config.Plex) error {
-	bindings, err := client.Bindings(ctx, connection.Section)
-	if err != nil {
-		return err
+	return client.WalkBindings(ctx, connection.Section, func(bindings []plex.Binding) error {
+		for _, binding := range bindings {
+			if err := a.bindPlexItem(ctx, binding, connection); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (a *App) bindPlexItem(ctx context.Context, binding plex.Binding, connection config.Plex) error {
+	if occurrence := plex.OccurrenceID(binding.GUID); occurrence != "" {
+		if err := a.Catalog.BindOccurrence(ctx, occurrence, connection.URL, binding.Key, binding.GUID); err != nil {
+			return err
+		}
 	}
-	for _, binding := range bindings {
-		if occurrence := plex.OccurrenceID(binding.GUID); occurrence != "" {
-			if err = a.Catalog.BindOccurrence(ctx, occurrence, connection.URL, binding.Key, binding.GUID); err != nil {
-				return err
-			}
-		}
-		if id := plex.SourceID(binding.GUID); id != "" {
-			if err = a.Catalog.Bind(ctx, id, connection.URL, binding.Key, binding.GUID); err != nil {
-				return err
-			}
-		}
+	if id := plex.SourceID(binding.GUID); id != "" {
+		return a.Catalog.Bind(ctx, id, connection.URL, binding.Key, binding.GUID)
 	}
 	return nil
 }
@@ -500,19 +503,7 @@ func (a *App) Status(ctx context.Context) (Status, error) {
 	s.SourceError, s.MountError, s.PlexError, s.RestartRequired, s.PendingJobs = a.toolError, a.mountError, a.plexError, a.restart, len(a.queued)
 	cacheError := a.cacheError
 	s.MountReady = a.mount != nil && a.mount.Ready()
-	enabled := map[string]bool{}
-	for _, ch := range s.Config.Config.Channels {
-		enabled[ch.ID] = ch.Enabled
-	}
-	for i := range s.Videos {
-		v := &s.Videos[i]
-		if !enabled[v.ChannelID] {
-			v.Exposed = false
-		}
-		if v.Exposed && a.reps[v.Revision] == nil {
-			v.Fallback = "Restoring verified representation after restart"
-		}
-	}
+	a.statusVideos(&s)
 	a.mu.RUnlock()
 	s.ConfigError = s.Config.Error
 	if cacheError != "" {
@@ -527,6 +518,23 @@ func (a *App) Status(ctx context.Context) (Status, error) {
 	return s, nil
 }
 
+// statusVideos requires a.mu to be held by the caller.
+func (a *App) statusVideos(s *Status) {
+	enabled := map[string]bool{}
+	for _, ch := range s.Config.Config.Channels {
+		enabled[ch.ID] = ch.Enabled
+	}
+	for i := range s.Videos {
+		v := &s.Videos[i]
+		if !enabled[v.ChannelID] {
+			v.Exposed = false
+		}
+		if v.Exposed && a.reps[v.Revision] == nil {
+			v.Fallback = "Restoring verified representation after restart"
+		}
+	}
+}
+
 // localAsset is bounded metadata, not an evictable media or transcode file.
 type localAsset struct {
 	file string
@@ -535,7 +543,7 @@ type localAsset struct {
 
 func (r localAsset) ID() string  { return filepath.Base(r.file) }
 func (r localAsset) Size() int64 { return r.size }
-func (r localAsset) ReadAt(ctx context.Context, p []byte, o int64) (int, error) {
+func (r localAsset) ReadAt(ctx context.Context, p []byte, o int64) (n int, result error) {
 	if e := ctx.Err(); e != nil {
 		return 0, e
 	}
@@ -543,7 +551,7 @@ func (r localAsset) ReadAt(ctx context.Context, p []byte, o int64) (int, error) 
 	if e != nil {
 		return 0, e
 	}
-	defer f.Close()
+	defer func() { result = errors.Join(result, f.Close()) }()
 	return f.ReadAt(p, o)
 }
 
@@ -563,7 +571,7 @@ func (a *App) saveAsset(id, suffix string, b []byte) (library.Entry, error) {
 	return library.Entry{Path: suffix, Media: localAsset{file: file, size: int64(len(b))}}, nil
 }
 
-func fetchAsset(ctx context.Context, raw string) ([]byte, error) {
+func fetchAsset(ctx context.Context, raw string) (data []byte, result error) {
 	if !source.AllowedURL(raw) {
 		return nil, errors.New("unsupported asset host")
 	}
@@ -575,7 +583,7 @@ func fetchAsset(ctx context.Context, raw string) ([]byte, error) {
 	if e != nil {
 		return nil, errors.New("asset unavailable")
 	}
-	defer r.Body.Close()
+	defer func() { result = errors.Join(result, r.Body.Close()) }()
 	if r.StatusCode != 200 {
 		return nil, errors.New("asset unavailable")
 	}

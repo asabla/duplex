@@ -36,7 +36,7 @@ input, select, textarea {
 input[type="number"] { width: 95px; }
 input[type="checkbox"] { width: 16px; height: 16px; margin: 0 6px 0 0; vertical-align: middle; }
 input[type="file"] { max-width: 100%; }
-:focus-visible { outline: 3px solid #f0b331; outline-offset: 2px; }
+:focus-visible { outline: 3px solid #1757a6; outline-offset: 2px; }
 [hidden] { display: none !important; }
 .app-header {
   display: flex;
@@ -117,3 +117,5 @@ textarea { width: 100%; font: 13px/1.5 ui-monospace, SFMono-Regular, monospace; 
   .artwork-editor { grid-template-columns: 1fr; }
   .details { grid-template-columns: 1fr; }
 }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }

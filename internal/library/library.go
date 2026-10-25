@@ -45,18 +45,11 @@ func (b blob) ReadAt(_ context.Context, p []byte, o int64) (int, error) {
 	return bytes.NewReader(b.data).ReadAt(p, o)
 }
 
+// Entries builds a complete static projection for fixtures and small snapshots.
 func Entries(episodes []Episode) ([]Entry, error) {
 	var entries []Entry
 	shows := map[string]bool{}
-	names := map[string]map[int]string{}
-	for _, e := range episodes {
-		if e.SeasonTitle != "" {
-			if names[e.ChannelID] == nil {
-				names[e.ChannelID] = map[int]string{}
-			}
-			names[e.ChannelID][e.Season] = e.SeasonTitle
-		}
-	}
+	names := episodeSeasonNames(episodes)
 	seen := map[string]bool{}
 	for _, e := range episodes {
 		if !safeID.MatchString(e.ChannelID) || !safeID.MatchString(e.VideoID) || e.Season < 1 || e.Number < 1 || e.Media == nil {
@@ -105,6 +98,20 @@ func Entries(episodes []Episode) ([]Entry, error) {
 		entries = append(entries, Entry{Path: base + ".nfo", Media: blob{id: base + ".nfo", data: append([]byte(xml.Header), b...)}, Modified: e.Modified}, Entry{Path: base + ".mp4", Media: e.Media, Modified: e.Modified})
 	}
 	return entries, nil
+}
+
+func episodeSeasonNames(episodes []Episode) map[string]map[int]string {
+	names := map[string]map[int]string{}
+	for _, e := range episodes {
+		if e.SeasonTitle != "" {
+			if names[e.ChannelID] == nil {
+				names[e.ChannelID] = map[int]string{}
+			}
+			names[e.ChannelID][e.Season] = e.SeasonTitle
+		}
+	}
+
+	return names
 }
 
 // Inode derives a stable inode number from an independent path or occurrence identity.

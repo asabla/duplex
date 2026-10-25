@@ -27,6 +27,7 @@
 {{template "pagination" .Pagination}}
 <div class="table-wrap">
 <table>
+  <caption class="sr-only">Videos matching the current filters</caption>
   <thead><tr>
     <th scope="col"><a href="{{sortlink .Filters "/catalogue" "title"}}">Video</a></th>
     <th scope="col"><a href="{{sortlink .Filters "/catalogue" "newest"}}">Published</a></th>

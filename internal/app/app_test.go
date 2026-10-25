@@ -36,7 +36,10 @@ func TestFailedRefreshRetainsCompleteCatalogue(t *testing.T) {
 	if e := config.Create(file, filepath.Join(dir, "state")); e != nil {
 		t.Fatal(e)
 	}
-	manager, _ := config.Open(file)
+	manager, err := config.Open(file)
+	if err != nil {
+		t.Fatal(err)
+	}
 	snap := manager.Snapshot()
 	id := "UCSMOQeBJ2RAnuFungnQOxLg"
 	snap.Config.Channels = []config.Channel{{ID: id, URL: "https://www.youtube.com/channel/" + id, Limit: 50, Enabled: true}}
@@ -55,17 +58,26 @@ func TestFailedRefreshRetainsCompleteCatalogue(t *testing.T) {
 	if e = db.Discover(ctx, ch.ID, ch.Entries); e != nil {
 		t.Fatal(e)
 	}
-	before, _ := db.Videos(ctx)
+	before, err := db.Videos(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, metadataFailure := range []bool{false, true} {
 		a := &App{Config: manager, Catalog: db, Source: failingSource{metadata: metadataFailure}}
 		if a.Sync(ctx, id) == nil {
 			t.Fatal("partial refresh succeeded")
 		}
-		after, _ := db.Videos(ctx)
+		after, err := db.Videos(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(after) != len(before) {
 			t.Fatal("partial refresh removed entries")
 		}
-		channels, _ := db.Channels(ctx)
+		channels, err := db.Channels(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if channels[0].Title != "Original" {
 			t.Fatal("partial refresh updated staged channel")
 		}

@@ -16,7 +16,7 @@ type Binding struct {
 }
 
 // PlexAdapter defines the library integration contract used by duplex.
-type PlexAdapter interface {
+type PlexAdapter interface { //nolint:revive // Keep the architecture interface name explicit at the Plex boundary.
 	Check(context.Context) (Capabilities, error)
 	Scan(context.Context, string) error
 	Bindings(context.Context, string) ([]Binding, error)
@@ -35,14 +35,41 @@ func (c *Client) Scan(ctx context.Context, section string) error {
 
 // Bindings reads the episode identifiers exposed by one library section.
 func (c *Client) Bindings(ctx context.Context, section string) ([]Binding, error) {
+	items := []Binding{}
+	err := c.WalkBindings(ctx, section, func(batch []Binding) error { items = append(items, batch...); return nil })
+	return items, err
+}
+
+// WalkBindings reads bounded Plex pages and does not retain the complete library.
+func (c *Client) WalkBindings(ctx context.Context, section string, consume func([]Binding) error) error {
 	if !validSection(section) {
-		return nil, errors.New("invalid Plex library section")
+		return errors.New("invalid Plex library section")
 	}
-	var out struct {
-		Items []Binding `xml:"Video"`
+	const pageSize = 100
+	for start := 0; ; {
+		var out struct {
+			Offset int       `xml:"offset,attr"`
+			Total  int       `xml:"totalSize,attr"`
+			Items  []Binding `xml:"Video"`
+		}
+		path := "/library/sections/" + section + "/allLeaves?X-Plex-Container-Start=" + strconv.Itoa(start) + "&X-Plex-Container-Size=" + strconv.Itoa(pageSize)
+		if err := c.get(ctx, path, &out); err != nil {
+			return err
+		}
+		if len(out.Items) > pageSize || out.Offset != start {
+			return errors.New("plex did not honor bounded library pagination")
+		}
+		if err := consume(out.Items); err != nil {
+			return err
+		}
+		if len(out.Items) < pageSize || (out.Total > 0 && start >= out.Total-len(out.Items)) {
+			return nil
+		}
+		if start > int(^uint(0)>>1)-len(out.Items) {
+			return errors.New("plex library page offset overflow")
+		}
+		start += len(out.Items)
 	}
-	e := c.get(ctx, "/library/sections/"+section+"/allLeaves", &out)
-	return out.Items, e
 }
 
 // LibraryHealth verifies the NFO agent, history retention, local assets, and season titles.

@@ -206,7 +206,7 @@ func (a *App) loadAssets(id string) []library.Entry {
 		return nil
 	}
 	dir := filepath.Join(a.original.DataDir, "assets")
-	b, e := os.ReadFile(filepath.Join(dir, id+".json"))
+	b, e := os.ReadFile(filepath.Join(dir, id+".json")) //nolint:gosec // G304: The manifest name uses an asset ID checked against the fixed ASCII allowlist.
 	if e != nil || len(b) > 64<<10 {
 		return nil
 	}

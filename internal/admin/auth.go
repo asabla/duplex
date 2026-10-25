@@ -23,7 +23,9 @@ type credential struct {
 	Hash       []byte `json:"hash"`
 	Iterations int    `json:"iterations"`
 }
-type session struct {
+
+// SessionInfo contains the CSRF token and expiry of an authenticated session.
+type SessionInfo struct {
 	CSRF    string
 	Expires time.Time
 }
@@ -36,7 +38,7 @@ type attempt struct {
 type Auth struct {
 	mu         sync.Mutex
 	credential credential
-	sessions   map[[32]byte]session
+	sessions   map[[32]byte]SessionInfo
 	attempts   map[string]attempt
 }
 
@@ -89,7 +91,7 @@ func OpenAuth(path string) (*Auth, error) {
 	if info.Mode().Perm()&0o077 != 0 {
 		return nil, errors.New("administrator credential file must have mode 0600")
 	}
-	b, e := os.ReadFile(path)
+	b, e := os.ReadFile(path) //nolint:gosec // G304: The startup configuration selects the credential file; permissions are checked before reading.
 	if e != nil {
 		return nil, e
 	}
@@ -97,7 +99,7 @@ func OpenAuth(path string) (*Auth, error) {
 	if json.Unmarshal(b, &c) != nil || len(c.Salt) != 32 || len(c.Hash) != 32 || c.Iterations < 600000 || c.Iterations > 2000000 {
 		return nil, errors.New("invalid administrator credentials")
 	}
-	return &Auth{credential: c, sessions: map[[32]byte]session{}, attempts: map[string]attempt{}}, nil
+	return &Auth{credential: c, sessions: map[[32]byte]SessionInfo{}, attempts: map[string]attempt{}}, nil
 }
 func secureCookie(r *http.Request) bool { return r.TLS != nil }
 
@@ -138,26 +140,10 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request, username, password,
 	if err != nil {
 		return errors.New("invalid sign-in address")
 	}
-	a.mu.Lock()
 	now := time.Now()
-	v := a.attempts[host]
-	if now.After(v.Reset) {
-		v = attempt{Reset: now.Add(time.Minute)}
+	if err = a.loginAttempt(host, now); err != nil {
+		return err
 	}
-	if v.Count >= 5 {
-		a.mu.Unlock()
-		return errors.New("too many sign-in attempts; wait before trying again")
-	}
-	v.Count++
-	if len(a.attempts) > 1024 {
-		for k, v := range a.attempts {
-			if now.After(v.Reset) {
-				delete(a.attempts, k)
-			}
-		}
-	}
-	a.attempts[host] = v
-	a.mu.Unlock()
 	hash, e := pbkdf2.Key(sha256.New, password, a.credential.Salt, a.credential.Iterations, 32)
 	if e != nil || !equal(username, "admin") || subtle.ConstantTimeCompare(hash, a.credential.Hash) != 1 {
 		return errors.New("incorrect administrator name or password")
@@ -173,18 +159,41 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request, username, password,
 		a.mu.Unlock()
 		return errors.New("too many active sessions")
 	}
-	a.sessions[sha256.Sum256([]byte(token))] = session{CSRF: randomToken(), Expires: now.Add(12 * time.Hour)}
+	a.sessions[sha256.Sum256([]byte(token))] = SessionInfo{CSRF: randomToken(), Expires: now.Add(12 * time.Hour)}
 	a.mu.Unlock()
 	//nolint:gosec // G124: Local HTTP installs need non-Secure cookies; TLS requests always set Secure. HttpOnly and SameSite remain mandatory.
 	http.SetCookie(w, &http.Cookie{Name: "duplex_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: secureCookie(r), MaxAge: 43200})
 	return nil
 }
 
+func (a *Auth) loginAttempt(host string, now time.Time) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for key, v := range a.attempts {
+		if now.After(v.Reset) {
+			delete(a.attempts, key)
+		}
+	}
+	v, exists := a.attempts[host]
+	if !exists && len(a.attempts) >= 1024 {
+		return errors.New("sign-in request limit reached; wait before trying again")
+	}
+	if !exists {
+		v.Reset = now.Add(time.Minute)
+	}
+	if v.Count >= 5 {
+		return errors.New("too many sign-in attempts; wait before trying again")
+	}
+	v.Count++
+	a.attempts[host] = v
+	return nil
+}
+
 // Session returns an unexpired session associated with the request cookie.
-func (a *Auth) Session(r *http.Request) (session, bool) {
+func (a *Auth) Session(r *http.Request) (SessionInfo, bool) {
 	c, e := r.Cookie("duplex_session")
 	if e != nil {
-		return session{}, false
+		return SessionInfo{}, false
 	}
 	key := sha256.Sum256([]byte(c.Value))
 	a.mu.Lock()
@@ -192,13 +201,13 @@ func (a *Auth) Session(r *http.Request) (session, bool) {
 	s, ok := a.sessions[key]
 	if !ok || time.Now().After(s.Expires) {
 		delete(a.sessions, key)
-		return session{}, false
+		return SessionInfo{}, false
 	}
 	return s, true
 }
 
 // Authorize checks the session and requires CSRF protection for mutations.
-func (a *Auth) Authorize(r *http.Request) (session, error) {
+func (a *Auth) Authorize(r *http.Request) (SessionInfo, error) {
 	s, ok := a.Session(r)
 	if !ok {
 		return s, errors.New("sign in is required")

@@ -98,14 +98,14 @@ func (s *Server) Handler() http.Handler {
 		panic("embedded static assets are missing")
 	}
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets)))
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
 		writeText(w, "ok\n")
 	})
 	mux.HandleFunc("GET /mountz", func(w http.ResponseWriter, r *http.Request) {
 		v, _, e := s.App.Summary(r.Context())
 		if e != nil || !v.MountReady {
-			http.Error(w, "mount not ready", 503)
+			http.Error(w, "mount not ready", http.StatusServiceUnavailable)
 			return
 		}
 		writeText(w, "mount ready\n")
@@ -113,7 +113,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		v, _, e := s.App.Summary(r.Context())
 		if e != nil || !v.Ready {
-			http.Error(w, "not ready", 503)
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
 		writeText(w, "ready\n")
@@ -183,7 +183,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		v.Username, v.Password, v.CSRF = r.FormValue("username"), r.FormValue("password"), r.FormValue("csrf")
 	}
 	if len(v.Password) > 1024 {
-		http.Error(w, "invalid credentials", 400)
+		http.Error(w, "invalid credentials", http.StatusBadRequest)
 		return
 	}
 	if e := s.Auth.Login(w, r, v.Username, v.Password, v.CSRF); e != nil {
@@ -198,7 +198,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if api {
 		reply(w, 200, map[string]bool{"authenticated": true})
 	} else {
-		http.Redirect(w, r, "/", 303)
+		http.Redirect(w, r, "/", http.StatusSeeOther)
 	}
 }
 
@@ -280,49 +280,21 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	if p == "/logout" && r.Method == "POST" {
 		s.Auth.Logout(w, r)
-		http.Redirect(w, r, "/login", 303)
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
 	if strings.HasPrefix(p, "/api/v1/") {
 		s.api(w, r)
 		return
 	}
-	if p == "/actions/follow" && r.Method == "POST" {
-		limit, _ := strconv.Atoi(r.FormValue("limit"))
-		mode := r.FormValue("mode")
-		if mode == "" {
-			mode = "latest"
-		}
-		if mode != "latest" {
-			limit = 0
-		}
-		e := s.App.Follow(r.Context(), r.FormValue("url"), config.Selection{Mode: mode, Limit: limit}, r.FormValue("include_playlists") == "on", r.FormValue("revision"))
-		s.result(w, r, e, "Channel followed. A refresh is queued.")
-		return
-	}
-	if p == "/actions/sync" && r.Method == "POST" {
-		e := s.App.Queue(r.FormValue("id"))
-		s.result(w, r, e, "Channel refresh queued.")
-		return
-	}
-	if p == "/actions/remove" && r.Method == "POST" {
-		e := s.App.RemoveChannel(r.FormValue("id"), r.FormValue("revision"))
-		s.result(w, r, e, "Channel removed from the library. Its identity records are retained.")
-		return
-	}
-	if p == "/actions/config" && r.Method == "POST" {
-		c, e := config.Decode([]byte(r.FormValue("yaml")))
-		if e == nil {
-			e = s.App.Config.Save(c, r.FormValue("revision"))
-		}
-		s.result(w, r, e, "Settings saved. Reload this page before making another edit.")
+	if r.Method == http.MethodPost && s.legacyAction(w, r) {
 		return
 	}
 	if s.actions(w, r) {
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", 405)
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	s.readPage(w, r)
@@ -332,85 +304,14 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 	if s.readAPI(w, r) || s.mutateAPI(w, r) {
 		return
 	}
-	p := r.URL.Path
-	if r.Method == "GET" {
-		switch p {
-		case "/api/v1/config":
-			reply(w, 200, s.App.Config.Snapshot())
-		case "/api/v1/channels":
-			v, e := s.App.Catalog.Channels(r.Context())
-			if e != nil {
-				reply(w, 503, map[string]string{"error": "catalogue unavailable"})
-				return
-			}
-			reply(w, 200, map[string]any{"settings": s.App.Config.Snapshot().Config.Channels, "channels": v})
-		case "/api/v1/jobs":
-			v, e := s.App.Catalog.Jobs(r.Context())
-			if e != nil {
-				reply(w, 503, map[string]string{"error": "jobs unavailable"})
-				return
-			}
-			reply(w, 200, v)
-		case "/api/v1/diagnostics":
-			v, _, e := s.App.Summary(r.Context())
-			if e != nil {
-				reply(w, 503, map[string]string{"error": "diagnostics unavailable"})
-				return
-			}
-			reply(w, 200, v)
-		case "/api/v1/status":
-			v, _, e := s.App.Summary(r.Context())
-			if e != nil {
-				reply(w, 503, map[string]string{"error": "status unavailable"})
-				return
-			}
-			reply(w, 200, v)
-		default:
-			reply(w, 404, map[string]string{"error": "endpoint not found"})
-		}
+	if r.Method == http.MethodGet {
+		s.compatibilityReadAPI(w, r)
 		return
 	}
-	if p == "/api/v1/config" && r.Method == "PUT" {
-		var v struct {
-			Revision string        `json:"revision"`
-			Config   config.Config `json:"config"`
-		}
-		if !decode(w, r, &v) {
-			return
-		}
-		s.result(w, r, s.App.Config.Save(v.Config, v.Revision), "Settings saved")
+	if s.compatibilityMutateAPI(w, r) || s.channelAPI(w, r) {
 		return
 	}
-	if p == "/api/v1/channels" && r.Method == "POST" {
-		var v struct {
-			URL      string `json:"url"`
-			Limit    int    `json:"limit"`
-			Revision string `json:"revision"`
-		}
-		if !decode(w, r, &v) {
-			return
-		}
-		s.result(w, r, s.App.AddChannel(r.Context(), v.URL, v.Limit, v.Revision), "Channel followed")
-		return
-	}
-	if strings.HasPrefix(p, "/api/v1/channels/") {
-		parts := strings.Split(strings.TrimPrefix(p, "/api/v1/channels/"), "/")
-		if len(parts) == 2 && parts[1] == "sync" && r.Method == "POST" {
-			s.result(w, r, s.App.Queue(parts[0]), "Refresh queued")
-			return
-		}
-		if len(parts) == 1 && r.Method == "DELETE" {
-			var v struct {
-				Revision string `json:"revision"`
-			}
-			if !decode(w, r, &v) {
-				return
-			}
-			s.result(w, r, s.App.RemoveChannel(parts[0], v.Revision), "Channel removed")
-			return
-		}
-	}
-	reply(w, 405, map[string]string{"error": "unsupported endpoint or method"})
+	reply(w, http.StatusMethodNotAllowed, map[string]string{"error": "unsupported endpoint or method"})
 }
 
 func (p page) ChannelName(id string) string {

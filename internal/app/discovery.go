@@ -274,33 +274,8 @@ func (r *discoveryRun) selectUpload(ctx context.Context, m source.Metadata, sele
 // All streams each provider tab once. Metadata and durable additions are processed
 // in bounded batches; a restart re-enumerates identities and reuses saved work.
 func (r *discoveryRun) allUploads(ctx context.Context) error {
-	selected, position := 0, 0
-	consume := func(batch []source.Entry) error {
-		for start := 0; start < len(batch); start += 4 {
-			entries := batch[start:min(start+4, len(batch))]
-			values, err := r.metadataBatch(ctx, entries, true)
-			if err != nil {
-				return err
-			}
-			for _, m := range values {
-				position++
-				if err = r.app.Catalog.StageDiscovery(ctx, r.id, "uploads", m.ID, position); err != nil {
-					return err
-				}
-				if !recording(m) {
-					continue
-				}
-				chosen, err := r.selectUpload(ctx, m, selected)
-				if err != nil {
-					return err
-				}
-				if chosen {
-					selected++
-				}
-			}
-		}
-		return nil
-	}
+	u := allUploadDiscovery{run: r}
+	consume := func(batch []source.Entry) error { return u.consume(ctx, batch) }
 	for _, tab := range []string{"videos", "streams", "shorts"} {
 		if _, err := r.reader.Entries(ctx, source.Scope{ChannelID: r.channel.ID, Tab: tab, Start: 1}, consume); err != nil {
 			return err
@@ -312,6 +287,41 @@ func (r *discoveryRun) allUploads(ctx context.Context) error {
 		}
 	}
 	return r.finishUploads(ctx)
+}
+
+type allUploadDiscovery struct {
+	run                *discoveryRun
+	selected, position int
+}
+
+func (u *allUploadDiscovery) consume(ctx context.Context, batch []source.Entry) error {
+	for start := 0; start < len(batch); start += 4 {
+		values, err := u.run.metadataBatch(ctx, batch[start:min(start+4, len(batch))], true)
+		if err != nil {
+			return err
+		}
+		for _, m := range values {
+			if err = u.add(ctx, m); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (u *allUploadDiscovery) add(ctx context.Context, m source.Metadata) error {
+	u.position++
+	if err := u.run.app.Catalog.StageDiscovery(ctx, u.run.id, "uploads", m.ID, u.position); err != nil {
+		return err
+	}
+	if !recording(m) {
+		return nil
+	}
+	chosen, err := u.run.selectUpload(ctx, m, u.selected)
+	if chosen {
+		u.selected++
+	}
+	return err
 }
 
 func (r *discoveryRun) finishUploads(ctx context.Context) error {

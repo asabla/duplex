@@ -24,12 +24,6 @@ type Playlist struct {
 	Error       string `json:"error,omitempty"`
 }
 
-// Member retains source ordering independently of a video's uploader.
-type Member struct {
-	VideoID  string `json:"video_id"`
-	Position int    `json:"position"`
-}
-
 // SavePlaylist preserves season allocation through title and metadata changes.
 func (s *Store) SavePlaylist(ctx context.Context, p Playlist) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -76,67 +70,6 @@ func (s *Store) Playlists(ctx context.Context, channel string) ([]Playlist, erro
 		result = append(result, p)
 	}
 	return result, rows.Err()
-}
-
-// ReplacePlaylistMembers commits only a successfully enumerated selection.
-// Failed/partial enumeration must not call this reconciliation boundary.
-func (s *Store) ReplacePlaylistMembers(ctx context.Context, id string, members []Member, selected map[string]bool, complete bool) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer rollback(tx)
-	if _, err = tx.ExecContext(ctx, `UPDATE playlist_members SET selected=0 WHERE playlist_id=?`, id); err != nil {
-		return err
-	}
-	seen := map[string]bool{}
-	episode := 0
-	for _, m := range members {
-		if seen[m.VideoID] {
-			continue
-		}
-		seen[m.VideoID] = true
-		number := 0
-		if selected[m.VideoID] {
-			episode++
-			number = episode
-		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode) VALUES(?,?,?,?,?) ON CONFLICT(playlist_id,video_id) DO UPDATE SET position=excluded.position,selected=excluded.selected,episode=excluded.episode`, id, m.VideoID, m.Position, selected[m.VideoID], number)
-		if err != nil {
-			return err
-		}
-	}
-	if complete {
-		rows, e := tx.QueryContext(ctx, `SELECT video_id FROM playlist_members WHERE playlist_id=?`, id)
-		if e != nil {
-			return e
-		}
-		obsolete := []string{}
-		for rows.Next() {
-			var video string
-			if e = rows.Scan(&video); e != nil {
-				closeRows(rows)
-				return e
-			}
-			if !seen[video] {
-				obsolete = append(obsolete, video)
-			}
-		}
-		if e = rows.Err(); e != nil {
-			closeRows(rows)
-			return e
-		}
-		closeRows(rows)
-		for _, video := range obsolete {
-			if _, err = tx.ExecContext(ctx, `DELETE FROM playlist_members WHERE playlist_id=? AND video_id=?`, id, video); err != nil {
-				return err
-			}
-		}
-	}
-	if _, err = tx.ExecContext(ctx, `UPDATE playlists SET synced_at=?,error='' WHERE id=?`, time.Now().Unix(), id); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 // PlaylistOccurrenceID remains stable when a playlist is renamed or reordered.

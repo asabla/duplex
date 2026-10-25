@@ -60,7 +60,7 @@ func (s *Server) saveSettings(r *http.Request) error {
 
 func (s *Server) artworkUpload(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 10<<20+64<<10)
-	if err := r.ParseMultipartForm(1 << 20); err != nil {
+	if err := r.ParseMultipartForm(1 << 20); err != nil { //nolint:gosec // G120: MaxBytesReader immediately above bounds the complete multipart request.
 		s.result(w, r, errors.New("invalid upload or artwork exceeds 10 MiB"), "")
 		return
 	}

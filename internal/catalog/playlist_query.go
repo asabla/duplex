@@ -15,15 +15,18 @@ type (
 		Enabled   bool
 		Overrides []PlaylistOverride
 	}
+	// PlaylistOverride supplies one collection policy override.
 	PlaylistOverride struct {
 		ID, Mode string
 		Limit    int
 	}
+	// PlaylistFilter bounds and filters one playlist page.
 	PlaylistFilter struct {
 		Policies                            []ChannelPolicy
 		Query, Channel, Mode, Failure, Sort string
 		Page, PerPage                       int
 	}
+	// PlaylistRow combines catalogue details with effective YAML policy.
 	PlaylistRow struct {
 		Playlist
 		Mode      string `json:"mode"`
@@ -31,6 +34,7 @@ type (
 		Inherited bool   `json:"inherited"`
 		Selected  int    `json:"selected"`
 	}
+	// PlaylistPage contains one bounded result page and its total count.
 	PlaylistPage struct {
 		Items   []PlaylistRow `json:"items"`
 		Page    int           `json:"page"`
@@ -69,33 +73,12 @@ func (s *Store) PlaylistsPage(ctx context.Context, f PlaylistFilter) (PlaylistPa
 		result.PerPage = 25
 	}
 	cte, args := playlistPolicies(f.Policies)
-	clauses := []string{"1=1"}
-	if f.Query != "" {
-		clauses = append(clauses, `instr(lower(p.title||' '||p.id),?)>0`)
-		args = append(args, strings.ToLower(f.Query))
+	where, filterArgs := playlistWhere(f)
+	args = append(args, filterArgs...)
+	order, err := playlistOrder(f.Sort)
+	if err != nil {
+		return result, err
 	}
-	if f.Channel != "" {
-		clauses = append(clauses, `p.channel_id=?`)
-		args = append(args, f.Channel)
-	}
-	if f.Mode != "" {
-		clauses = append(clauses, `p.policy=?`)
-		args = append(args, f.Mode)
-	}
-	if f.Failure == "failed" {
-		clauses = append(clauses, `p.error<>''`)
-	}
-	order := "p.title COLLATE NOCASE,p.id"
-	switch f.Sort {
-	case "", "title":
-	case "season":
-		order = "p.channel_id,p.season,p.id"
-	case "updated":
-		order = "p.synced_at DESC,p.id"
-	default:
-		return result, errors.New("invalid playlist sort")
-	}
-	where := strings.Join(clauses, " AND ")
 	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return result, err
@@ -115,6 +98,41 @@ func (s *Store) PlaylistsPage(ctx context.Context, f PlaylistFilter) (PlaylistPa
 		return result, err
 	}
 	return result, tx.Commit()
+}
+
+func playlistWhere(f PlaylistFilter) (string, []any) {
+	var args []any
+	clauses := []string{"1=1"}
+	if f.Query != "" {
+		clauses = append(clauses, `instr(lower(p.title||' '||p.id),?)>0`)
+		args = append(args, strings.ToLower(f.Query))
+	}
+	if f.Channel != "" {
+		clauses = append(clauses, `p.channel_id=?`)
+		args = append(args, f.Channel)
+	}
+	if f.Mode != "" {
+		clauses = append(clauses, `p.policy=?`)
+		args = append(args, f.Mode)
+	}
+	if f.Failure == "failed" {
+		clauses = append(clauses, `p.error<>''`)
+	}
+
+	return strings.Join(clauses, " AND "), args
+}
+
+func playlistOrder(value string) (string, error) {
+	switch value {
+	case "", "title":
+		return "p.title COLLATE NOCASE,p.id", nil
+	case "season":
+		return "p.channel_id,p.season,p.id", nil
+	case "updated":
+		return "p.synced_at DESC,p.id", nil
+	default:
+		return "", errors.New("invalid playlist sort")
+	}
 }
 
 func readPlaylists(rows *sql.Rows) ([]PlaylistRow, error) {

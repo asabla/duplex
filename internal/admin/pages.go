@@ -52,12 +52,12 @@ func (s *Server) readPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(r.URL.RawQuery) > 8192 || len(r.URL.Query().Get("q")) > 200 {
-		http.Error(w, "filter is too long", 400)
+		http.Error(w, "filter is too long", http.StatusBadRequest)
 		return
 	}
 	status, counts, err := s.App.Summary(r.Context())
 	if err != nil {
-		http.Error(w, "catalogue unavailable", 503)
+		http.Error(w, "catalogue unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	session, _ := s.Auth.Session(r)
@@ -66,7 +66,7 @@ func (s *Server) readPage(w http.ResponseWriter, r *http.Request) {
 		v.ChannelSettings[ch.ID] = ch
 	}
 	if err = s.pageData(r, &v); err != nil {
-		http.Error(w, "cannot read this page: invalid filters or unavailable catalogue", 400)
+		http.Error(w, "cannot read this page: invalid filters or unavailable catalogue", http.StatusBadRequest)
 		return
 	}
 	switch path {

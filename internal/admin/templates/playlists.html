@@ -10,6 +10,7 @@
 </form>
 {{template "pagination" .Pagination}}
 <div class="table-wrap"><table>
+  <caption class="sr-only">Discovered playlists matching the current filters</caption>
   <thead><tr><th scope="col"><a href="{{sortlink .Filters "/playlists" "title"}}">Playlist</a></th><th scope="col">Channel</th><th scope="col"><a href="{{sortlink .Filters "/playlists" "season"}}">Season</a></th><th scope="col">Policy</th><th scope="col">Selected</th><th scope="col"><a href="{{sortlink .Filters "/playlists" "updated"}}">Last discovery</a></th></tr></thead>
   <tbody>
   {{range .PlaylistRows}}

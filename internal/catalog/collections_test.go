@@ -55,11 +55,10 @@ func TestPlaylistSeasonIdentityOrderAndDuplicates(t *testing.T) {
 	if err := s.SavePlaylist(ctx, Playlist{ID: "PLsecond", ChannelID: "owner", Title: "Second"}); err != nil {
 		t.Fatal(err)
 	}
-	selectAll := map[string]bool{"a": true, "b": true, "c": true}
-	if err := s.ReplacePlaylistMembers(ctx, p.ID, []Member{{"b", 1}, {"a", 2}, {"b", 3}, {"c", 4}}, selectAll, true); err != nil {
+	if err := reconcileMembers(ctx, t, s, p.ID, []testMember{{"b", 1}, {"a", 2}, {"b", 3}, {"c", 4}}, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ReplacePlaylistMembers(ctx, "PLsecond", []Member{{"a", 1}}, selectAll, true); err != nil {
+	if err := reconcileMembers(ctx, t, s, "PLsecond", []testMember{{"a", 1}}, true); err != nil {
 		t.Fatal(err)
 	}
 	episodes, err := s.Episodes(ctx)
@@ -77,7 +76,7 @@ func TestPlaylistSeasonIdentityOrderAndDuplicates(t *testing.T) {
 	if err = s.SavePlaylist(ctx, p); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.ReplacePlaylistMembers(ctx, p.ID, []Member{{"a", 1}, {"c", 2}}, selectAll, true); err != nil {
+	if err = reconcileMembers(ctx, t, s, p.ID, []testMember{{"a", 1}, {"c", 2}}, true); err != nil {
 		t.Fatal(err)
 	}
 	episodes, err = s.Episodes(ctx)
@@ -182,10 +181,10 @@ func TestPartialMembershipWindowDoesNotDeleteUnseenIdentity(t *testing.T) {
 	if err := s.SavePlaylist(ctx, Playlist{ID: "PLfirst", ChannelID: "owner", Title: "First"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ReplacePlaylistMembers(ctx, "PLfirst", []Member{{"a", 1}, {"b", 2}}, map[string]bool{"a": true, "b": true}, true); err != nil {
+	if err := reconcileMembers(ctx, t, s, "PLfirst", []testMember{{"a", 1}, {"b", 2}}, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.ReplacePlaylistMembers(ctx, "PLfirst", []Member{{"a", 1}}, map[string]bool{"a": true}, false); err != nil {
+	if err := reconcileMembers(ctx, t, s, "PLfirst", []testMember{{"a", 1}}, false); err != nil {
 		t.Fatal(err)
 	}
 	var count int
@@ -194,7 +193,7 @@ func TestPartialMembershipWindowDoesNotDeleteUnseenIdentity(t *testing.T) {
 	}
 	v := Visibility{PlaylistChannels: []string{"owner"}}
 	c, err := s.Summary(ctx, v)
-	if err != nil || c.Selected != 1 {
+	if err != nil || c.Selected != 2 {
 		t.Fatal(c, err)
 	}
 	v.SkippedPlaylists = []string{"PLfirst"}
@@ -249,4 +248,26 @@ func TestMetadataCannotDetachAnEstablishedUploader(t *testing.T) {
 	if err != nil || v.ChannelID != "uploader" {
 		t.Fatal(v, err)
 	}
+}
+
+type testMember struct {
+	id       string
+	position int
+}
+
+func reconcileMembers(ctx context.Context, t *testing.T, s *Store, id string, members []testMember, complete bool) error {
+	t.Helper()
+	run, err := s.StartJob(ctx, "owner")
+	if err != nil {
+		return err
+	}
+	for _, m := range members {
+		if err = s.StageDiscovery(ctx, run, id, m.id, m.position); err != nil {
+			return err
+		}
+	}
+	if complete {
+		err = s.ReconcileDiscovery(ctx, run, id, "owner", 0)
+	}
+	return err
 }

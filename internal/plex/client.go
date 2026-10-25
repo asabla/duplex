@@ -16,7 +16,7 @@ import (
 )
 
 // ErrMissingNFO means the actual server does not advertise an NFO series agent.
-var ErrMissingNFO = errors.New("Plex server does not expose an NFO series provider; metadata acceptance gate failed")
+var ErrMissingNFO = errors.New("plex server does not expose an NFO series provider; metadata acceptance gate failed")
 
 // Client sends authenticated requests to one configured Plex origin without redirects.
 type Client struct {
@@ -37,16 +37,16 @@ type Capabilities struct {
 func New(base, token string) (*Client, error) {
 	u, err := url.Parse(base)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return nil, errors.New("Plex URL must be an HTTP(S) origin without embedded credentials")
+		return nil, errors.New("plex URL must be an HTTP(S) origin without embedded credentials")
 	}
-	return &Client{base: u, token: strings.TrimSpace(token), http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("Plex redirects are not permitted") }}}, nil
+	return &Client{base: u, token: strings.TrimSpace(token), http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("plex redirects are not permitted") }}}, nil
 }
 
 func (c *Client) get(ctx context.Context, path string, result any) error {
 	return c.request(ctx, http.MethodGet, path, result)
 }
 
-func (c *Client) request(ctx context.Context, method, path string, result any) error {
+func (c *Client) request(ctx context.Context, method, path string, result any) (failure error) {
 	relative, err := url.ParseRequestURI(path)
 	if err != nil || relative.IsAbs() || relative.Host != "" {
 		return errors.New("invalid Plex request path")
@@ -63,11 +63,11 @@ func (c *Client) request(ctx context.Context, method, path string, result any) e
 	req.Header.Set("X-Plex-Client-Identifier", "duplex-qualification")
 	r, err := c.http.Do(req)
 	if err != nil {
-		return errors.New("Plex request failed")
+		return errors.New("plex request failed")
 	}
-	defer r.Body.Close()
+	defer func() { failure = errors.Join(failure, r.Body.Close()) }()
 	if r.StatusCode < 200 || r.StatusCode > 299 {
-		return fmt.Errorf("Plex request rejected (HTTP %d)", r.StatusCode)
+		return fmt.Errorf("plex request rejected (HTTP %d)", r.StatusCode)
 	}
 	b, err := io.ReadAll(io.LimitReader(r.Body, 16*1024*1024+1))
 	if err != nil || len(b) > 16*1024*1024 {
@@ -107,7 +107,7 @@ func (c *Client) Check(ctx context.Context) (Capabilities, error) {
 		parts[n] = v
 	}
 	if parts[0] < 1 || (parts[0] == 1 && (parts[1] < 43 || (parts[1] == 43 && parts[2] < 1))) {
-		return result, errors.New("Plex 1.43.1 or newer is required")
+		return result, errors.New("plex 1.43.1 or newer is required")
 	}
 	var providers struct {
 		Items []struct {

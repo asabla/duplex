@@ -25,7 +25,10 @@ func TestPaginationBoundsAndSearchLinks(t *testing.T) {
 		{"page=999999999&per_page=50", 101, 3, 50, 101, 101},
 		{"page=2&per_page=100", 201, 2, 100, 101, 200},
 	} {
-		q, _ := url.ParseQuery(tc.query)
+		q, err := url.ParseQuery(tc.query)
+		if err != nil {
+			t.Fatal(err)
+		}
 		p := paginate(q, "/catalogue", "Videos", tc.total)
 		if p.Number != tc.number || p.Size != tc.size || p.From != tc.from || p.To != tc.to {
 			t.Fatalf("%s: %+v", tc.query, p)

@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -49,7 +50,7 @@ func TestArtworkOverrideResetAndPersistence(t *testing.T) {
 	if err != nil || !manual.Override || manual.Reference == automatic.Reference {
 		t.Fatal(manual, err)
 	}
-	if err = a.SaveArtwork(t.Context(), testOwner, "show", snap.Revision, bytes.NewReader(upload.Bytes())); err != config.ErrConflict {
+	if err = a.SaveArtwork(t.Context(), testOwner, "show", snap.Revision, bytes.NewReader(upload.Bytes())); !errors.Is(err, config.ErrConflict) {
 		t.Fatal("stale upload replaced settings", err)
 	}
 	// A new manager instance must recover the same override solely from YAML.
