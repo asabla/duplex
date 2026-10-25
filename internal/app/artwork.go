@@ -195,13 +195,32 @@ func (a *App) renderArtwork(ctx context.Context, ch config.Channel) error {
 	if err != nil {
 		return err
 	}
-	seasons, err := a.Catalog.Seasons(ctx, ch.ID)
+	seasonsChanged, err := a.renderSeasonPosters(ctx, ch.ID, input, failure)
 	if err != nil {
 		return err
 	}
-	playlists, err := a.Catalog.Playlists(ctx, ch.ID)
-	if err != nil {
+	changed = changed || seasonsChanged
+	if failure != nil {
+		a.operationFailure("channel branding", failure)
+	}
+	if !changed {
+		return nil
+	}
+	if err = a.Publish(); err != nil {
 		return err
+	}
+	return a.refreshArtwork(ctx, ch.ID)
+}
+
+func (a *App) renderSeasonPosters(ctx context.Context, channel string, input artwork.Input, failure error) (bool, error) {
+	changed := false
+	seasons, err := a.Catalog.Seasons(ctx, channel)
+	if err != nil {
+		return false, err
+	}
+	playlists, err := a.Catalog.Playlists(ctx, channel)
+	if err != nil {
+		return false, err
 	}
 	byID := map[string]catalog.Playlist{}
 	for _, p := range playlists {
@@ -219,22 +238,13 @@ func (a *App) renderArtwork(ctx context.Context, ch config.Channel) error {
 			input.Picture, pictureErr = optionalPicture(ctx, p.Thumbnail)
 			pictureErr = errors.Join(failure, pictureErr)
 		}
-		updated, renderErr := a.renderPoster(ch.ID, scope, input, pictureErr)
+		updated, renderErr := a.renderPoster(channel, scope, input, pictureErr)
 		if renderErr != nil {
-			return renderErr
+			return false, renderErr
 		}
 		changed = changed || updated
 	}
-	if failure != nil {
-		a.operationFailure("channel branding", failure)
-	}
-	if !changed {
-		return nil
-	}
-	if err = a.Publish(); err != nil {
-		return err
-	}
-	return a.refreshArtwork(ctx, ch.ID)
+	return changed, nil
 }
 
 func optionalPicture(ctx context.Context, raw string) (image.Image, error) {
