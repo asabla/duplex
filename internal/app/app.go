@@ -28,6 +28,8 @@ import (
 type App struct {
 	runtimeUsed     map[string]time.Time
 	prepareSlots    chan struct{}
+	preparations    map[string]*preparationRun
+	foreground      int
 	bindings        map[string]*representationBinding
 	httpClient      *http.Client
 	metadata        map[string]metadataLease

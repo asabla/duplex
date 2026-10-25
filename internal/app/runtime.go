@@ -118,6 +118,8 @@ func (a *App) bindUncachedEpisode(ctx context.Context, episode catalog.Episode) 
 	if rep := a.cachedRepresentation(episode.Revision); rep != nil {
 		return rep, nil
 	}
+	finished := a.beginForeground()
+	defer finished()
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 	defer cancel()
 	selected, err := a.Catalog.IsSelected(ctx, episode.VideoID, visibility(a.Config.Snapshot().Config))

@@ -91,7 +91,7 @@ func (s *Store) SavePrepared(ctx context.Context, p Prepared) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO preparation_jobs(video_id,state,updated) VALUES(?,'ready',?) ON CONFLICT(video_id) DO UPDATE SET state='ready',error='',updated=excluded.updated`, p.Metadata.ID, time.Now().Unix())
+	_, err = tx.ExecContext(ctx, `INSERT INTO preparation_jobs(video_id,state,updated) VALUES(?,'ready',?) ON CONFLICT(video_id) DO UPDATE SET state='ready',priority=0,error='',updated=excluded.updated`, p.Metadata.ID, time.Now().Unix())
 	if err != nil {
 		return err
 	}
@@ -114,7 +114,7 @@ func (s *Store) SetPreparation(ctx context.Context, id, state, message string) e
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO preparation_jobs(video_id,state,updated,error) VALUES(?,?,?,?) ON CONFLICT(video_id) DO UPDATE SET state=excluded.state,updated=excluded.updated,error=excluded.error`, id, state, time.Now().Unix(), message)
+	_, err = tx.ExecContext(ctx, `INSERT INTO preparation_jobs(video_id,state,updated,error) VALUES(?,?,?,?) ON CONFLICT(video_id) DO UPDATE SET state=excluded.state,priority=CASE WHEN excluded.state IN ('ready','failed','waiting','skipped') THEN 0 ELSE preparation_jobs.priority END,updated=excluded.updated,error=excluded.error`, id, state, time.Now().Unix(), message)
 	if err != nil {
 		return err
 	}

@@ -141,7 +141,22 @@ func (a *App) PrepareNow(ctx context.Context, id string) error {
 	if !selected {
 		return errors.New("recording is outside the selected library")
 	}
-	return a.queuePreparation(ctx, id, 1000)
+	usable, err := a.usable(ctx, id)
+	if err != nil || usable {
+		return err
+	}
+	if err = a.Catalog.QueuePreparation(ctx, id, 1000); err != nil {
+		return err
+	}
+	requested, err := a.Catalog.RequestedPreparations(ctx)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.interruptBackgroundLocked(max(0, 2-a.foreground-requested))
+	a.mu.Unlock()
+	a.wakePreparation()
+	return nil
 }
 
 func (a *App) preparationWorker(ctx context.Context) {
@@ -149,39 +164,72 @@ func (a *App) preparationWorker(ctx context.Context) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		if err := ctx.Err(); err != nil {
+		if ctx.Err() != nil {
 			return
 		}
-		id, err := a.Catalog.ClaimPreparation(ctx)
-		if errors.Is(err, sql.ErrNoRows) {
-			select {
-			case <-ctx.Done():
+		if a.backgroundPaused() {
+			if !a.waitPreparation(ctx, ticker.C) {
 				return
-			case <-a.prepareWake:
-			case <-ticker.C:
+			}
+			continue
+		}
+		task, err := a.Catalog.ClaimPreparationTask(ctx)
+		if errors.Is(err, sql.ErrNoRows) {
+			if !a.waitPreparation(ctx, ticker.C) {
+				return
 			}
 			continue
 		}
 		if err != nil {
 			a.operationFailure("preparation queue", err)
-			select {
-			case <-ctx.Done():
+			if !a.waitPreparation(ctx, ticker.C) {
 				return
-			case <-ticker.C:
 			}
 			continue
 		}
-		workCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
-		err = a.prepareRecording(workCtx, id)
-		cancel()
-		if err != nil {
-			a.operationFailure("recording preparation", err)
-			cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			if stateErr := a.Catalog.SetPreparation(cleanup, id, "failed", preparationReason(err)); stateErr != nil {
-				a.operationFailure("preparation result", stateErr)
-			}
-			stop()
-		}
+		a.runPreparation(ctx, task)
+	}
+}
+
+func (a *App) waitPreparation(ctx context.Context, tick <-chan time.Time) bool {
+	select {
+	case <-ctx.Done():
+		return false
+	case <-a.prepareWake:
+		return true
+	case <-tick:
+		return true
+	}
+}
+
+func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) {
+	if task.Priority >= 1000 {
+		finished := a.beginForeground()
+		defer finished()
+	}
+	taskContext, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	workContext, timeout := context.WithTimeout(taskContext, 15*time.Minute)
+	defer timeout()
+	started := a.startPreparation(task, cancel)
+	var err error
+	if started {
+		err = a.prepareRecording(workContext, task.VideoID)
+		a.endPreparation(task.VideoID)
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+	defer stop()
+	if !started || errors.Is(context.Cause(taskContext), errPlaybackPriority) {
+		a.operationFailure("resume background preparation", a.Catalog.SetPreparation(cleanup, task.VideoID, "queued", ""))
+		a.wakePreparation()
+		return
+	}
+	if err != nil {
+		a.operationFailure("recording preparation", err)
+		a.operationFailure("preparation result", a.Catalog.SetPreparation(cleanup, task.VideoID, "failed", preparationReason(err)))
 	}
 }
 

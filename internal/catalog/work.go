@@ -74,19 +74,38 @@ func (s *Store) QueuePreparation(ctx context.Context, id string, priority int) e
 
 // ClaimPreparation atomically reserves one durable queued item.
 func (s *Store) ClaimPreparation(ctx context.Context) (string, error) {
+	task, err := s.ClaimPreparationTask(ctx)
+	return task.VideoID, err
+}
+
+// PreparationTask contains a durable queue item and its current request priority.
+type PreparationTask struct {
+	VideoID  string
+	Priority int
+}
+
+// ClaimPreparationTask reserves the highest-priority queued item transactionally.
+func (s *Store) ClaimPreparationTask(ctx context.Context) (PreparationTask, error) {
+	var task PreparationTask
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return "", err
+		return task, err
 	}
 	defer rollback(tx)
-	var id string
-	if err = tx.QueryRowContext(ctx, `SELECT video_id FROM preparation_jobs WHERE state='queued' ORDER BY priority DESC,updated,video_id LIMIT 1`).Scan(&id); err != nil {
-		return "", err
+	if err = tx.QueryRowContext(ctx, `SELECT video_id,priority FROM preparation_jobs WHERE state='queued' ORDER BY priority DESC,updated,video_id LIMIT 1`).Scan(&task.VideoID, &task.Priority); err != nil {
+		return task, err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE preparation_jobs SET state='resolving' WHERE video_id=?`, id); err != nil {
-		return "", err
+	if _, err = tx.ExecContext(ctx, `UPDATE preparation_jobs SET state='resolving' WHERE video_id=?`, task.VideoID); err != nil {
+		return task, err
 	}
-	return id, tx.Commit()
+	return task, tx.Commit()
+}
+
+// RequestedPreparations counts urgent queued work without loading item bodies.
+func (s *Store) RequestedPreparations(ctx context.Context) (int, error) {
+	var count int
+	err := s.DB.QueryRowContext(ctx, `SELECT count(*) FROM preparation_jobs WHERE state='queued' AND priority>=1000`).Scan(&count)
+	return count, err
 }
 
 // IsSelected applies the active YAML projection to one canonical video.
@@ -108,7 +127,7 @@ func (s *Store) PendingPreparations(ctx context.Context) (int, error) {
 // ResetPreparations resumes interrupted work; verified indexes bind lazily on open.
 func (s *Store) ResetPreparations(ctx context.Context, v Visibility) error {
 	cte, args := selectedCTE(v)
-	_, err := s.DB.ExecContext(ctx, cte+`INSERT INTO preparation_jobs(video_id,state,priority,updated) SELECT v.id,'queued',10,? FROM selected s JOIN videos v ON v.id=s.id WHERE v.revision='' OR v.id IN (SELECT video_id FROM preparation_jobs WHERE state IN ('queued','resolving','preparing')) ON CONFLICT(video_id) DO UPDATE SET state='queued',priority=10,updated=excluded.updated`, append(args, time.Now().Unix())...)
+	_, err := s.DB.ExecContext(ctx, cte+`INSERT INTO preparation_jobs(video_id,state,priority,updated) SELECT v.id,'queued',10,? FROM selected s JOIN videos v ON v.id=s.id WHERE v.revision='' OR v.id IN (SELECT video_id FROM preparation_jobs WHERE state IN ('queued','resolving','preparing')) ON CONFLICT(video_id) DO UPDATE SET state='queued',priority=MAX(preparation_jobs.priority,excluded.priority),updated=excluded.updated`, append(args, time.Now().Unix())...)
 	return err
 }
 
