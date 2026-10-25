@@ -12,7 +12,7 @@ func TestScansRequireVerifiedTrashPreference(t *testing.T) {
 		t.Run(setting, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/library/sections/2/prefs" {
-					w.Write([]byte(`<MediaContainer><Setting id="enableBIFGeneration" value="false"/><Setting id="enableIntroMarkerGeneration" value="false"/><Setting id="enableCreditsMarkerGeneration" value="false"/><Setting id="enableLoudnessAnalysis" value="false"/></MediaContainer>`))
+					w.Write([]byte(`<MediaContainer><Setting id="useLocalAssets" value="true"/><Setting id="useSeasonTitles" value="true"/><Setting id="enableBIFGeneration" value="false"/><Setting id="enableIntroMarkerGeneration" value="false"/><Setting id="enableCreditsMarkerGeneration" value="false"/><Setting id="enableLoudnessAnalysis" value="false"/></MediaContainer>`))
 					return
 				}
 				if r.URL.Path == "/library/sections" {
@@ -40,7 +40,7 @@ func TestOptionalAnalysisMustBeDisabled(t *testing.T) {
 			case "/:/prefs":
 				w.Write([]byte(`<MediaContainer><Setting id="autoEmptyTrash" value="0"/></MediaContainer>`))
 			default:
-				w.Write([]byte(`<MediaContainer><Setting id="enableBIFGeneration" value="false"/><Setting id="enableIntroMarkerGeneration" value="` + value + `"/><Setting id="enableCreditsMarkerGeneration" value="false"/><Setting id="enableLoudnessAnalysis" value="false"/></MediaContainer>`))
+				w.Write([]byte(`<MediaContainer><Setting id="useLocalAssets" value="true"/><Setting id="useSeasonTitles" value="true"/><Setting id="enableBIFGeneration" value="false"/><Setting id="enableIntroMarkerGeneration" value="` + value + `"/><Setting id="enableCreditsMarkerGeneration" value="false"/><Setting id="enableLoudnessAnalysis" value="false"/></MediaContainer>`))
 			}
 		}))
 		client, _ := New(server.URL, "")
