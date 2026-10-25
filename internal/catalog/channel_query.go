@@ -29,51 +29,66 @@ func (s *Store) ChannelsPage(ctx context.Context, f ChannelFilter) (ChannelPage,
 	if result.PerPage != 25 && result.PerPage != 50 && result.PerPage != 100 {
 		result.PerPage = 25
 	}
+
 	args := []any{}
 	cte := "WITH " + valueSet("followed", f.IDs, &args) + " "
+
 	where := `EXISTS(SELECT 1 FROM followed f WHERE f.id=c.id)`
 	if f.Query != "" {
 		where += ` AND instr(lower(c.title||' '||c.id),?)>0`
+
 		args = append(args, strings.ToLower(f.Query))
 	}
+
 	if f.Failure == "failed" {
 		where += ` AND c.error<>''`
 	}
+
 	order, err := channelOrder(f.Sort)
 	if err != nil {
 		return result, err
 	}
+
 	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return result, err
 	}
 	defer rollback(tx)
+
 	if err = tx.QueryRowContext(ctx, cte+`SELECT count(*) FROM channels c WHERE `+where, args...).Scan(&result.Total); err != nil {
 		return result, err
 	}
+
 	result.Page = max(1, min(max(1, f.Page), max(1, (result.Total+result.PerPage-1)/result.PerPage)))
 	args = append(args, result.PerPage, (result.Page-1)*result.PerPage)
+
 	rows, err := tx.QueryContext(ctx, cte+`SELECT c.id,c.title,c.synced_at,c.error FROM channels c WHERE `+where+` ORDER BY `+order+` LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return result, err
 	}
+
 	result.Items, err = readChannels(rows)
 	if err != nil {
 		return result, err
 	}
+
 	return result, tx.Commit()
 }
 
 func readChannels(rows *sql.Rows) ([]Channel, error) {
 	defer closeRows(rows)
+
 	out := []Channel{}
+
 	for rows.Next() {
 		var c Channel
 		if err := rows.Scan(&c.ID, &c.Title, &c.SyncedAt, &c.Error); err != nil {
 			return nil, err
 		}
+
 		out = append(out, c)
 	}
+
 	return out, rows.Err()
 }
 
@@ -106,5 +121,6 @@ func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
 	if e != nil {
 		return nil, e
 	}
+
 	return readChannels(rows)
 }

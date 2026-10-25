@@ -23,16 +23,21 @@ func OpenContext(ctx context.Context, path string) (*Store, error) {
 	if e := os.MkdirAll(filepath.Dir(path), 0o700); e != nil {
 		return nil, e
 	}
+
 	db, e := sql.Open("sqlite", path)
 	if e != nil {
 		return nil, e
 	}
+
 	db.SetMaxOpenConns(1)
+
 	var version int
 	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 5 {
 		return nil, errors.Join(errors.New("unsupported catalogue schema version"), db.Close())
 	}
+
 	s := &Store{db}
+
 	_, e = db.ExecContext(ctx, `PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
 CREATE TABLE IF NOT EXISTS channels(id TEXT PRIMARY KEY,title TEXT NOT NULL,synced_at INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS videos(id TEXT PRIMARY KEY,channel_id TEXT NOT NULL REFERENCES channels(id),title TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',state TEXT NOT NULL,published INTEGER NOT NULL DEFAULT 0,year INTEGER NOT NULL DEFAULT 0,number INTEGER NOT NULL DEFAULT 0,exposed INTEGER NOT NULL DEFAULT 0,revision TEXT NOT NULL DEFAULT '',height INTEGER NOT NULL DEFAULT 0,fallback TEXT NOT NULL DEFAULT '',size INTEGER NOT NULL DEFAULT 0,updated INTEGER NOT NULL,seen INTEGER NOT NULL DEFAULT 0);
@@ -45,16 +50,20 @@ CREATE TABLE IF NOT EXISTS plex_bindings(video_id TEXT NOT NULL,server TEXT NOT 
 	if e != nil {
 		return nil, errors.Join(e, db.Close())
 	}
+
 	if e = s.migrate(ctx, version); e != nil {
 		return nil, errors.Join(e, db.Close())
 	}
+
 	if _, e = db.ExecContext(ctx, `UPDATE show_metadata SET attempted=0 WHERE pending=1 AND error=''`); e != nil {
 		return nil, errors.Join(e, db.Close())
 	}
+
 	_, e = db.ExecContext(ctx, `UPDATE sync_jobs SET state='interrupted',finished=?,error='service restarted during sync' WHERE state='running'`, time.Now().Unix())
 	if e != nil {
 		return nil, errors.Join(e, db.Close())
 	}
+
 	return s, nil
 }
 

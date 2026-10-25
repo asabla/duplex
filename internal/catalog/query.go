@@ -42,11 +42,14 @@ func valueSet(name string, values []string, args *[]any) string {
 	if len(values) == 0 {
 		return name + `(id) AS (SELECT '' WHERE 0)`
 	}
+
 	marks := make([]string, len(values))
 	for i, v := range values {
 		marks[i] = "(?)"
+
 		*args = append(*args, v)
 	}
+
 	return name + `(id) AS (VALUES ` + strings.Join(marks, ",") + `)`
 }
 
@@ -56,32 +59,39 @@ func selectedCTE(v Visibility) (string, []any) {
 	parts = append(parts, `selected(id) AS (
 SELECT v.id FROM videos v JOIN active_channels c ON c.id=v.channel_id WHERE v.selected=1
 UNION SELECT m.video_id FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id JOIN playlist_channels c ON c.id=p.channel_id WHERE m.selected=1 AND NOT EXISTS(SELECT 1 FROM skipped_playlists x WHERE x.id=p.id))`)
+
 	return "WITH " + strings.Join(parts, ",") + " ", args
 }
 
 func videoWhere(f VideoFilter) (string, []any, error) {
 	clauses := []string{"1=1"}
 	args := []any{}
+
 	if f.Query != "" {
 		clauses = append(clauses, `instr(v.search_title||' '||lower(v.id||' '||v.channel_id),?)>0`)
 		args = append(args, strings.ToLower(f.Query))
 	}
+
 	if f.Channel != "" {
 		clauses = append(clauses, `(v.channel_id=? OR EXISTS(SELECT 1 FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id WHERE m.video_id=v.id AND p.channel_id=?))`)
 		args = append(args, f.Channel, f.Channel)
 	}
+
 	if f.Playlist != "" {
 		clauses = append(clauses, `EXISTS(SELECT 1 FROM playlist_members m WHERE m.video_id=v.id AND m.playlist_id=?)`)
 		args = append(args, f.Playlist)
 	}
+
 	if f.Lifecycle != "" {
 		clauses = append(clauses, `v.state=?`)
 		args = append(args, f.Lifecycle)
 	}
+
 	if f.Preparation != "" {
 		clauses = append(clauses, `v.preparation=?`)
 		args = append(args, f.Preparation)
 	}
+
 	switch f.Inclusion {
 	case "selected":
 		clauses = append(clauses, `EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)`)
@@ -91,6 +101,7 @@ func videoWhere(f VideoFilter) (string, []any, error) {
 	default:
 		return "", nil, errors.New("invalid library inclusion filter")
 	}
+
 	return strings.Join(clauses, " AND "), args, nil
 }
 
@@ -119,58 +130,75 @@ func (s *Store) VideosPage(ctx context.Context, f VideoFilter) (VideoPage, error
 	if result.PerPage != 25 && result.PerPage != 50 && result.PerPage != 100 {
 		result.PerPage = 25
 	}
+
 	cte, args := selectedCTE(f.Visibility)
+
 	where, filters, err := videoWhere(f)
 	if err != nil {
 		return result, err
 	}
+
 	args = append(args, filters...)
+
 	order, err := videoOrder(f.Sort)
 	if err != nil {
 		return result, err
 	}
+
 	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return result, err
 	}
 	defer rollback(tx)
+
 	if err = tx.QueryRowContext(ctx, cte+`SELECT count(*) FROM videos v WHERE `+where, args...).Scan(&result.Total); err != nil {
 		return result, err
 	}
+
 	result.Page = max(1, min(max(1, f.Page), max(1, (result.Total+result.PerPage-1)/result.PerPage)))
 	columns := `v.id,v.channel_id,v.title,v.description,v.state,v.published,v.year,v.number,EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id),v.revision,v.height,v.fallback,v.size,v.updated,v.preparation,v.preparation_error,v.metadata_at`
+
 	args = append(args, result.PerPage, (result.Page-1)*result.PerPage)
+
 	rows, err := tx.QueryContext(ctx, cte+`SELECT `+columns+` FROM videos v WHERE `+where+` ORDER BY `+order+` LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return result, err
 	}
+
 	result.Items, err = readVideos(rows)
 	if err != nil {
 		return result, err
 	}
+
 	return result, tx.Commit()
 }
 
 func readVideos(rows *sql.Rows) ([]Video, error) {
 	defer closeRows(rows)
+
 	result := []Video{}
+
 	for rows.Next() {
 		var v Video
 		if err := rows.Scan(&v.ID, &v.ChannelID, &v.Title, &v.Description, &v.State, &v.Published, &v.Year, &v.Number, &v.Exposed, &v.Revision, &v.Height, &v.Fallback, &v.Size, &v.Updated, &v.Preparation, &v.PreparationError, &v.MetadataAt); err != nil {
 			return nil, err
 		}
+
 		result = append(result, v)
 	}
+
 	return result, rows.Err()
 }
 
 // Summary counts visible resources without selecting video descriptions.
 func (s *Store) Summary(ctx context.Context, v Visibility) (Counts, error) {
 	cte, args := selectedCTE(v)
+
 	var c Counts
 	// selected contains unique video IDs, including recordings shared by several
 	// playlists. Aggregate it once instead of probing it for each count and video.
 	err := s.DB.QueryRowContext(ctx, cte+`SELECT (SELECT count(*) FROM videos),count(*),COALESCE(sum(v.preparation='ready' AND v.state IN ('recorded','replay-ready')),0),COALESCE(sum(v.preparation='failed'),0) FROM selected x JOIN videos v ON v.id=x.id`, args...).Scan(&c.Discovered, &c.Selected, &c.Ready, &c.Failed)
+
 	return c, err
 }
 
@@ -182,5 +210,6 @@ func (s *Store) Videos(ctx context.Context) ([]Video, error) {
 	if e != nil {
 		return nil, e
 	}
+
 	return readVideos(rows)
 }

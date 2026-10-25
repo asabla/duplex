@@ -29,10 +29,12 @@ func (s *Store) Episodes(ctx context.Context) ([]Episode, error) {
 	query := `SELECT v.channel_id,c.title,v.id,v.title,v.description,'','',v.year,v.number,v.number,v.revision,v.size,v.updated FROM videos v JOIN channels c ON c.id=v.channel_id WHERE v.selected=1 AND v.revision<>'' AND v.number>0 AND v.state IN ('recorded','replay-ready')
 UNION ALL SELECT p.channel_id,c.title,v.id,v.title,v.description,p.id,p.title,p.season,m.episode,m.file_episode,v.revision,v.size,MAX(v.updated,m.updated,p.updated) FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id JOIN channels c ON c.id=p.channel_id JOIN videos v ON v.id=m.video_id WHERE m.selected=1 AND m.episode>0 AND v.revision<>'' AND v.state IN ('recorded','replay-ready')
 ORDER BY 1,8,9,3`
+
 	rows, err := s.DB.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
+
 	return readProjectionRows(rows)
 }
 
@@ -62,31 +64,42 @@ func (s *Store) Seasons(ctx context.Context, id string) (map[string]int, error) 
 		return nil, err
 	}
 	defer closeRows(rows)
+
 	out := map[string]int{}
+
 	for rows.Next() {
-		var scope string
-		var season int
+		var (
+			scope  string
+			season int
+		)
 		if err := rows.Scan(&scope, &season); err != nil {
 			return nil, err
 		}
+
 		out[scope] = season
 	}
+
 	return out, rows.Err()
 }
 
 func readProjectionRows(rows *sql.Rows) ([]Episode, error) {
 	defer closeRows(rows)
+
 	result := []Episode{}
+
 	for rows.Next() {
 		var e Episode
 		if err := rows.Scan(&e.OwnerID, &e.ChannelTitle, &e.VideoID, &e.Title, &e.Description, &e.PlaylistID, &e.SeasonTitle, &e.Season, &e.Number, &e.FileNumber, &e.Revision, &e.Size, &e.Updated); err != nil {
 			return nil, err
 		}
+
 		e.OccurrenceID = "youtube-video:" + e.VideoID
 		if e.PlaylistID != "" {
 			e.OccurrenceID = PlaylistOccurrenceID(e.OwnerID, e.PlaylistID, e.VideoID)
 		}
+
 		result = append(result, e)
 	}
+
 	return result, rows.Err()
 }

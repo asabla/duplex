@@ -13,19 +13,23 @@ func (s *Store) migrate(ctx context.Context, version int) error {
 			return err
 		}
 	}
+
 	if version < 3 {
 		if err := s.migrateProjection(ctx); err != nil {
 			return err
 		}
 	}
+
 	if version < 4 {
 		if err := s.migratePlaylistRoots(ctx); err != nil {
 			return err
 		}
 	}
+
 	if version < 5 {
 		return s.migratePlaylistPaths(ctx)
 	}
+
 	return nil
 }
 
@@ -35,6 +39,7 @@ func (s *Store) migratePlaylistPaths(ctx context.Context) error {
 		return err
 	}
 	defer rollback(tx)
+
 	for _, statement := range []string{
 		`ALTER TABLE playlist_members ADD COLUMN file_episode INTEGER NOT NULL DEFAULT 0`,
 		`UPDATE playlist_members SET file_episode=episode WHERE selected=1 AND episode>0`,
@@ -62,6 +67,7 @@ func (s *Store) migratePlaylistPaths(ctx context.Context) error {
 			return err
 		}
 	}
+
 	return tx.Commit()
 }
 
@@ -70,6 +76,7 @@ func (s *Store) migrateCollections(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
 	statements := []string{
 		`ALTER TABLE videos ADD COLUMN search_title TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE videos ADD COLUMN selected INTEGER NOT NULL DEFAULT 0`,
@@ -101,9 +108,11 @@ func (s *Store) migrateCollections(ctx context.Context) error {
 			return errors.Join(err, tx.Rollback())
 		}
 	}
+
 	if err = backfillSearch(ctx, tx); err != nil {
 		return errors.Join(err, tx.Rollback())
 	}
+
 	return tx.Commit()
 }
 
@@ -114,29 +123,38 @@ func backfillSearch(ctx context.Context, tx *sql.Tx) error {
 		if err != nil {
 			return err
 		}
+
 		type title struct{ id, text string }
+
 		batch := []title{}
+
 		for rows.Next() {
 			var t title
 			if err = rows.Scan(&t.id, &t.text); err != nil {
 				closeRows(rows)
 				return err
 			}
+
 			batch = append(batch, t)
 		}
+
 		if err = rows.Err(); err != nil {
 			closeRows(rows)
 			return err
 		}
+
 		closeRows(rows)
+
 		for _, t := range batch {
 			if _, err = tx.ExecContext(ctx, `UPDATE videos SET search_title=? WHERE id=?`, strings.ToLower(t.text), t.id); err != nil {
 				return err
 			}
 		}
+
 		if len(batch) < 250 {
 			return nil
 		}
+
 		last = batch[len(batch)-1].id
 	}
 }
@@ -147,6 +165,7 @@ func (s *Store) migrateProjection(ctx context.Context) error {
 		return err
 	}
 	defer rollback(tx)
+
 	statements := []string{
 		`ALTER TABLE videos ADD COLUMN requested_height INTEGER NOT NULL DEFAULT 0`,
 		`UPDATE videos SET requested_height=2160 WHERE revision<>''`,
@@ -165,6 +184,7 @@ func (s *Store) migrateProjection(ctx context.Context) error {
 			return err
 		}
 	}
+
 	return tx.Commit()
 }
 
@@ -174,10 +194,12 @@ func (s *Store) migratePlaylistRoots(ctx context.Context) error {
 		return err
 	}
 	defer rollback(tx)
+
 	for _, statement := range []string{`ALTER TABLE playlists ADD COLUMN seen_run INTEGER NOT NULL DEFAULT 0`, `ALTER TABLE playlists ADD COLUMN available INTEGER NOT NULL DEFAULT 1`, `PRAGMA user_version=4`} {
 		if _, err = tx.ExecContext(ctx, statement); err != nil {
 			return err
 		}
 	}
+
 	return tx.Commit()
 }

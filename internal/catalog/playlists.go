@@ -32,26 +32,33 @@ func (s *Store) SavePlaylist(ctx context.Context, p Playlist) error {
 		return err
 	}
 	defer rollback(tx)
+
 	var owner string
+
 	err = tx.QueryRowContext(ctx, `SELECT channel_id,season FROM playlists WHERE id=?`, p.ID).Scan(&owner, &p.Season)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
+
 	if owner != "" && owner != p.ChannelID {
 		return errors.New("playlist owner changed")
 	}
+
 	if errors.Is(err, sql.ErrNoRows) {
 		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(season),0)+1 FROM playlists WHERE channel_id=?`, p.ChannelID).Scan(&p.Season); err != nil {
 			return err
 		}
+
 		if p.Season >= 1000 && p.Season <= 9999 {
 			p.Season = 10000
 		}
 	}
+
 	_, err = tx.ExecContext(ctx, `INSERT INTO playlists(id,channel_id,title,description,thumbnail,season,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET updated=CASE WHEN playlists.title<>excluded.title OR playlists.description<>excluded.description OR (excluded.thumbnail<>'' AND playlists.thumbnail<>excluded.thumbnail) THEN MAX(playlists.updated+1,excluded.updated,COALESCE((SELECT MAX(MAX(v.updated,m.updated))+1 FROM playlist_members m JOIN videos v ON v.id=m.video_id WHERE m.playlist_id=playlists.id),0)) ELSE playlists.updated END,title=excluded.title,description=excluded.description,thumbnail=CASE WHEN excluded.thumbnail<>'' THEN excluded.thumbnail ELSE playlists.thumbnail END`, p.ID, p.ChannelID, p.Title, p.Description, p.Thumbnail, p.Season, time.Now().Unix())
 	if err != nil {
 		return err
 	}
+
 	return tx.Commit()
 }
 
@@ -61,6 +68,7 @@ func (s *Store) Playlists(ctx context.Context, channel string) ([]Playlist, erro
 	if err != nil {
 		return nil, err
 	}
+
 	return readPlaylistMetadata(rows)
 }
 
@@ -76,12 +84,14 @@ func (s *Store) Discover(ctx context.Context, owner string, entries []source.Ent
 		return err
 	}
 	defer rollback(tx)
+
 	for _, entry := range entries {
 		_, err = tx.ExecContext(ctx, `INSERT INTO videos(id,channel_id,title,search_title,state,updated) VALUES(?,?,?,?,'discovered',?) ON CONFLICT(id) DO UPDATE SET title=CASE WHEN excluded.title<>'' THEN excluded.title ELSE videos.title END,search_title=CASE WHEN excluded.title<>'' THEN excluded.search_title ELSE videos.search_title END`, entry.ID, owner, entry.Title, strings.ToLower(entry.Title), time.Now().Unix())
 		if err != nil {
 			return err
 		}
 	}
+
 	return tx.Commit()
 }
 

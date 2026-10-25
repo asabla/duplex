@@ -29,7 +29,9 @@ type hintQuery interface {
 
 func hintVersion(ctx context.Context, query hintQuery, channel string, season int) (HintRevision, error) {
 	var result HintRevision
+
 	err := query.QueryRowContext(ctx, `SELECT c.identity,p.id,p.projection_revision FROM playlists p CROSS JOIN catalogue_identity c WHERE p.channel_id=? AND p.season=?`, channel, season).Scan(&result.Database, &result.Playlist, &result.Revision)
+
 	return result, err
 }
 
@@ -41,39 +43,49 @@ func (s *Store) WalkHints(ctx context.Context, channel string, season int, consu
 		return HintRevision{}, err
 	}
 	defer rollback(tx)
+
 	version, err := hintVersion(ctx, tx, channel, season)
 	if err != nil {
 		return version, err
 	}
+
 	after := 0
 	for {
 		rows, err := tx.QueryContext(ctx, `SELECT m.episode,m.file_episode FROM playlist_members m JOIN videos v ON v.id=m.video_id WHERE m.playlist_id=? AND m.selected=1 AND m.episode>? AND v.revision<>'' AND v.state IN ('recorded','replay-ready') ORDER BY m.episode,m.video_id LIMIT 128`, version.Playlist, after)
 		if err != nil {
 			return version, err
 		}
+
 		hints, err := readHints(rows)
 		if err != nil {
 			return version, err
 		}
+
 		if err = consume(hints); err != nil {
 			return version, err
 		}
+
 		if len(hints) < 128 {
 			return version, tx.Commit()
 		}
+
 		after = hints[len(hints)-1].Number
 	}
 }
 
 func readHints(rows *sql.Rows) ([]FileHint, error) {
 	defer closeRows(rows)
+
 	result := []FileHint{}
+
 	for rows.Next() {
 		var hint FileHint
 		if err := rows.Scan(&hint.Number, &hint.FileNumber); err != nil {
 			return nil, err
 		}
+
 		result = append(result, hint)
 	}
+
 	return result, rows.Err()
 }
