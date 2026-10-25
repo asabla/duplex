@@ -6,7 +6,7 @@ settings; SQLite stores catalogue and work state; the media cache is evictable.
 
 ## Current code organization
 
-The package map below describes production imports inspected on 2026-10-25,
+The package map below describes production imports rechecked on 2026-10-26,
 including platform-specific files. It does not describe test imports or a new
 package layout. Concurrent changes can alter the source; recheck affected
 boundaries before starting a refactor. [Code standards](code-standards.md) defines
@@ -101,6 +101,31 @@ separate code locations. Their byte mapping, limits, and cancellation order are
 unchanged. Linux FUSE mount lifecycle stays separate from static snapshots and
 node callbacks; provider paging retains its existing contract. No new package,
 cache lock, or handle-lifetime rule was introduced by these moves.
+
+CLI dispatch stays in `main.go`; service assembly and lifetime are in `service.go`.
+Initialization, backup, health, Plex checks, and local media fixtures have their
+own command operations. Profiling and qualification remain explicit commands.
+The command interfaces and exit behavior are unchanged.
+
+Configuration keeps schema and decode operations in `config.go`, value and path
+validation in `validation.go`, canonical channel URL policy in `channel_url.go`,
+snapshot/revision ownership in `manager.go`, and atomic file publication in
+`atomic_write.go`. The manager retains its file-operation lock and snapshot lock;
+validation callbacks and publication keep their existing scope and order.
+
+Plex protocol requests stay in `client.go`; capability and library policy checks
+are in `capabilities.go`, observations and pagination in `library.go`, and durable
+source/occurrence identity parsing in `identity.go`. Artwork composition stays in
+`artwork.go`; bounded decode/normalization, text layout, and output storage have
+separate files. The image decoder registrations remain in `images.go`.
+Diagnostics retains its existing recorder, counter, and capture owners. Capture
+stop, callback, file closure, and completion notification retain their order.
+
+The notice script separates linked-module collection, notice rendering, and file
+publication. The coverage script separates block collection, package reporting,
+and merged-profile publication. Controlled script tests retain byte-level output
+and failure checks. Development formatters and rendered-markup validation live in
+`tools/readability`; they are outside the binary and container runtime.
 
 ## Intended direction for later refactors
 
