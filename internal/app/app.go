@@ -308,36 +308,42 @@ func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected st
 
 // Follow creates explicit upload and playlist defaults in the authoritative YAML.
 func (a *App) Follow(ctx context.Context, raw string, selection config.Selection, include bool, expected string) error {
+	_, err := a.FollowChannel(ctx, raw, selection, include, expected)
+	return err
+}
+
+// FollowChannel follows a channel and returns its resolved identity without another source request.
+func (a *App) FollowChannel(ctx context.Context, raw string, selection config.Selection, include bool, expected string) (string, error) {
 	if err := selection.ValidateUploads(); err != nil {
-		return err
+		return "", err
 	}
 	if a.Config.Snapshot().Revision != expected {
-		return config.ErrConflict
+		return "", config.ErrConflict
 	}
 	ctx, stop := context.WithTimeout(ctx, 2*time.Minute)
 	defer stop()
 	ch, e := a.Source.ResolveChannel(ctx, raw)
 	if e != nil {
-		return e
+		return "", e
 	}
 	snap := a.Config.Snapshot()
 	if snap.Revision != expected {
-		return config.ErrConflict
+		return "", config.ErrConflict
 	}
 	for _, c := range snap.Config.Channels {
 		if c.ID == ch.ID {
-			return errors.New("channel is already followed")
+			return "", errors.New("channel is already followed")
 		}
 	}
 	url := "https://www.youtube.com/channel/" + ch.ID
 	snap.Config.Channels = append(snap.Config.Channels, config.Channel{ID: ch.ID, URL: url, Limit: 50, Enabled: true, Indexing: &selection, Playlists: &config.PlaylistPolicy{Enabled: include}})
 	if e = a.Config.Save(snap.Config, expected); e != nil {
-		return e
+		return "", e
 	}
 	if e = a.Catalog.EnsureChannel(ctx, ch.ID, ch.Title); e != nil {
-		return errors.New("settings saved; catalogue channel initialization failed")
+		return "", errors.New("settings saved; catalogue channel initialization failed")
 	}
-	return a.Queue(ch.ID)
+	return ch.ID, a.Queue(ch.ID)
 }
 
 // RemoveChannel updates YAML and removes the channel from the published library.
