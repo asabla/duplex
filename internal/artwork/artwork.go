@@ -28,6 +28,7 @@ import (
 	_ "golang.org/x/image/webp" // YouTube can return WebP branding; uploads remain JPEG/PNG only.
 )
 
+// Poster dimensions and upload limits apply to automatic and manual artwork.
 const (
 	Width     = 1000
 	Height    = 1500
@@ -35,6 +36,7 @@ const (
 	MaxPixels = 24_000_000
 )
 
+// ErrImage reports an invalid format, pixel count, or upload length.
 var ErrImage = errors.New("artwork must be a JPEG or PNG up to 10 MiB and 24 megapixels")
 
 // Input distinguishes channel branding from a collection's own landscape image.
@@ -54,7 +56,7 @@ func decodeImage(data []byte, source bool) (image.Image, error) {
 		return nil, ErrImage
 	}
 	info, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || (format != "jpeg" && format != "png" && !(source && format == "webp")) || info.Width < 1 || info.Height < 1 || int64(info.Width)*int64(info.Height) > MaxPixels {
+	if err != nil || (format != "jpeg" && format != "png" && (!source || format != "webp")) || info.Width < 1 || info.Height < 1 || int64(info.Width)*int64(info.Height) > MaxPixels {
 		return nil, ErrImage
 	}
 	result, _, err := image.Decode(bytes.NewReader(data))

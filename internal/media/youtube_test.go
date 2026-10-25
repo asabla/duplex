@@ -36,7 +36,7 @@ func testRecordedSource(t *testing.T, path, videoFormat string, height int, repl
 	if path == "" {
 		t.Skip("set the gate's resolver JSON environment variable to opt in to real-source testing")
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // G304: The opt-in qualification test reads the operator-selected private source fixture.
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,11 @@ func testRecordedSource(t *testing.T, path, videoFormat string, height int, repl
 	defer closeTest(t, store)
 	client := &http.Client{Timeout: 30 * time.Second}
 	if os.Getenv("DUPLEX_SOURCE_HTTP1") == "1" {
-		transport := http.DefaultTransport.(*http.Transport).Clone()
+		base, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			t.Fatal("default HTTP transport has changed")
+		}
+		transport := base.Clone()
 		transport.Protocols = new(http.Protocols)
 		transport.Protocols.SetHTTP1(true)
 		client.Transport = transport

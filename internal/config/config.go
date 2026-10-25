@@ -163,7 +163,8 @@ func validID(s string) bool {
 		return false
 	}
 	for _, r := range s {
-		if !(r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-') {
+		valid := r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' || r == '-'
+		if !valid {
 			return false
 		}
 	}
@@ -257,7 +258,7 @@ type Manager struct {
 
 // Open loads an existing valid YAML file.
 func Open(path string) (*Manager, error) {
-	b, e := os.ReadFile(path)
+	b, e := os.ReadFile(path) //nolint:gosec // G304: The operator selects the single writable configuration file at startup.
 	if e != nil {
 		return nil, e
 	}
@@ -349,41 +350,35 @@ func (m *Manager) Save(c Config, expected string) error {
 }
 
 // AtomicWrite publishes a synced temporary file and then syncs its parent directory.
-func AtomicWrite(path string, b []byte, mode os.FileMode) error {
-	f, e := os.CreateTemp(filepath.Dir(path), ".duplex-write-*")
-	if e != nil {
-		return e
+func AtomicWrite(path string, b []byte, mode os.FileMode) (result error) {
+	f, err := os.CreateTemp(filepath.Dir(path), ".duplex-write-*")
+	if err != nil {
+		return err
 	}
 	name := f.Name()
-	defer os.Remove(name)
-	ok := false
 	defer func() {
-		if !ok {
-			f.Close()
+		if err := os.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
+			result = errors.Join(result, err)
 		}
 	}()
-	if e = f.Chmod(mode); e == nil {
-		_, e = f.Write(b)
+	if err = f.Chmod(mode); err == nil {
+		_, err = f.Write(b)
 	}
-	if e == nil {
-		e = f.Sync()
+	if err == nil {
+		err = f.Sync()
 	}
-	if closeErr := f.Close(); e == nil {
-		e = closeErr
+	err = errors.Join(err, f.Close())
+	if err != nil {
+		return err
 	}
-	ok = true
-	if e != nil {
-		return e
+	if err = os.Rename(name, path); err != nil {
+		return err
 	}
-	if e = os.Rename(name, path); e != nil {
-		return e
+	directory, err := os.Open(filepath.Dir(path))
+	if err != nil {
+		return err
 	}
-	d, e := os.Open(filepath.Dir(path))
-	if e != nil {
-		return e
-	}
-	defer d.Close()
-	return d.Sync()
+	return errors.Join(directory.Sync(), directory.Close())
 }
 
 // Create writes initial settings without replacing an existing configuration.

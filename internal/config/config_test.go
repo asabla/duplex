@@ -38,7 +38,7 @@ func TestExternalEditsAndStaleSave(t *testing.T) {
 	}
 	c := original.Config
 	c.CacheGiB = 12
-	b, e := os.ReadFile(filepath.Join(dir, "config.yaml"))
+	b, e := os.ReadFile(filepath.Join(dir, "config.yaml")) //nolint:gosec // G304: This reads only a generated configuration in t.TempDir.
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -48,11 +48,17 @@ func TestExternalEditsAndStaleSave(t *testing.T) {
 	if e = Create(other, filepath.Join(dir, "state")); e != nil {
 		t.Fatal(e)
 	}
-	n, _ := Open(other)
+	n, err := Open(other)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if e = n.Save(c, n.Snapshot().Revision); e != nil {
 		t.Fatal(e)
 	}
-	data, _ := os.ReadFile(other)
+	data, err := os.ReadFile(other) //nolint:gosec // G304: This reads an alternate generated configuration in t.TempDir.
+	if err != nil {
+		t.Fatal(err)
+	}
 	if e = AtomicWrite(file, data, 0o600); e != nil {
 		t.Fatal(e)
 	}

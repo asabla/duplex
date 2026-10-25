@@ -17,6 +17,7 @@ import (
 	"duplex/internal/cache"
 )
 
+// ChunkSize is the cache reservation and fetch unit for source media.
 const ChunkSize = 1024 * 1024
 
 // HTTPSource binds reads to one exact-size upstream object and cache namespace.
@@ -126,7 +127,7 @@ func (s *HTTPSource) ID() string { return s.id }
 func (s *HTTPSource) Size() int64 { return s.size }
 
 func (s *HTTPSource) request(ctx context.Context, offset int64, length int) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil) //nolint:gosec // G704: The source adapter validates destinations; the supplied client enforces redirect restrictions.
 	if err != nil {
 		return nil, errors.New("invalid source locator")
 	}
@@ -135,7 +136,7 @@ func (s *HTTPSource) request(ctx context.Context, offset int64, length int) (*ht
 	if s.etag != "" {
 		req.Header.Set("If-Match", s.etag)
 	}
-	resp, err := s.client.Do(req)
+	resp, err := s.client.Do(req) //nolint:gosec // G704: Callers must supply the restricted source client, as required by OpenHTTP.
 	s.Requests.Add(1)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -148,28 +149,27 @@ func (s *HTTPSource) request(ctx context.Context, offset int64, length int) (*ht
 		return nil, errors.New("source request failed")
 	}
 	if resp.StatusCode != http.StatusPartialContent {
-		resp.Body.Close()
+		closeErr := resp.Body.Close()
 		switch resp.StatusCode {
 		case 401, 403:
-			return nil, fmt.Errorf("%w (HTTP %d, offset %d)", ErrExpired, resp.StatusCode, offset)
+			return nil, fmt.Errorf("%w (HTTP %d, offset %d)", errors.Join(ErrExpired, closeErr), resp.StatusCode, offset)
 		case 412:
-			return nil, ErrChanged
+			return nil, errors.Join(ErrChanged, closeErr)
 		}
-		return nil, fmt.Errorf("source rejected byte range (HTTP %d)", resp.StatusCode)
+		return nil, errors.Join(fmt.Errorf("source rejected byte range (HTTP %d)", resp.StatusCode), closeErr)
 	}
 	if resp.Header.Get("Content-Encoding") != "" && resp.Header.Get("Content-Encoding") != "identity" {
-		resp.Body.Close()
-		return nil, errors.New("encoded range response")
+		return nil, errors.Join(errors.New("encoded range response"), resp.Body.Close())
 	}
 	return resp, nil
 }
 
-func (s *HTTPSource) fetch(ctx context.Context, offset int64, length int) ([]byte, error) {
+func (s *HTTPSource) fetch(ctx context.Context, offset int64, length int) (data []byte, result error) {
 	resp, err := s.request(ctx, offset, length)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { result = errors.Join(result, resp.Body.Close()) }()
 	var start, end, total int64
 	if _, err = fmt.Sscanf(resp.Header.Get("Content-Range"), "bytes %d-%d/%d", &start, &end, &total); err != nil || start != offset || end != offset+int64(length)-1 || total != s.size || strings.TrimSpace(resp.Header.Get("Content-Range")) != fmt.Sprintf("bytes %d-%d/%d", start, end, total) {
 		return nil, ErrChanged

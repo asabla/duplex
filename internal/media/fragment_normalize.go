@@ -220,7 +220,7 @@ func (f *fragmentTrack) addChunk(offset int64, samples int) error {
 		return ErrUnsupported
 	}
 	f.table.Co64.ChunkOffset = append(f.table.Co64.ChunkOffset, uint64(offset))
-	return f.table.Stsc.AddEntry(uint32(len(f.table.Co64.ChunkOffset)), uint32(samples), 1)
+	return f.table.Stsc.AddEntry(uint32(len(f.table.Co64.ChunkOffset)), uint32(samples), 1) //nolint:gosec // G115: Both counts are checked against MaxUint32 before the append.
 }
 
 func (f *fragmentTrack) appendSample(sample mp4.Sample, cursor, size int64) (int64, error) {

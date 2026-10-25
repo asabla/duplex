@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 
 	"github.com/Eyevinn/mp4ff/mp4"
@@ -25,33 +26,43 @@ func InspectCombined(ctx context.Context, source Representation) (Details, error
 	if movie.Mvex != nil {
 		return info, ErrUnsupported
 	}
+	if err = inspectCombinedTracks(movie.Traks, &info); err != nil {
+		return info, err
+	}
+	if info.Height <= 0 || info.Width <= 0 || info.DurationSeconds <= 0 || info.DurationSeconds > 31*86400 {
+		return info, ErrUnsupported
+	}
+	return info, nil
+}
+
+func inspectCombinedTracks(tracks []*mp4.TrakBox, info *Details) error {
 	video, audio := false, false
-	for _, track := range movie.Traks {
+	for _, track := range tracks {
 		kind, err := combinedTrackKind(track)
 		if err != nil {
-			return info, err
+			return err
 		}
 		switch track.Mdia.Hdlr.HandlerType {
 		case "vide":
 			if video || !videoCodec(kind) {
-				return info, ErrUnsupported
+				return ErrUnsupported
 			}
 			video = true
-			if err = combinedVideoDetails(track, &info); err != nil {
-				return info, err
+			if err = combinedVideoDetails(track, info); err != nil {
+				return err
 			}
 		case "soun":
 			if audio || !audioCodec(kind) {
-				return info, ErrUnsupported
+				return ErrUnsupported
 			}
 			audio = true
 			info.AudioCodec = kind
 		}
 	}
-	if !video || !audio || info.Height <= 0 || info.Width <= 0 || info.DurationSeconds <= 0 || info.DurationSeconds > 31*86400 {
-		return info, ErrUnsupported
+	if !video || !audio {
+		return ErrUnsupported
 	}
-	return info, nil
+	return nil
 }
 
 func combinedTrackKind(track *mp4.TrakBox) (string, error) {
@@ -106,21 +117,33 @@ func (v *VirtualMP4) SaveIndex(path string) error {
 }
 
 // LoadIndex verifies a saved index against freshly opened immutable source identities.
-func LoadIndex(path string, sources map[string]Representation) (*VirtualMP4, error) {
-	f, e := os.Open(path)
-	if e != nil {
-		return nil, e
+func LoadIndex(path string, sources map[string]Representation) (loaded *VirtualMP4, result error) {
+	f, err := os.Open(path) //nolint:gosec // G304: The application selects this durable index path; it is not a remote file name.
+	if err != nil {
+		return nil, err
 	}
-	defer f.Close()
-	st, e := f.Stat()
-	if e != nil || st.Size() > 256<<20 {
+	defer func() { result = errors.Join(result, f.Close()) }()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() || st.Size() > 256<<20 {
 		return nil, ErrUnsupported
 	}
+	return decodeIndex(io.LimitReader(f, (256<<20)+1), sources)
+}
+
+func decodeIndex(reader io.Reader, sources map[string]Representation) (*VirtualMP4, error) {
 	var envelope struct {
 		Checksum string          `json:"checksum"`
 		Data     json.RawMessage `json:"data"`
 	}
-	if json.NewDecoder(f).Decode(&envelope) != nil {
+	decoder := json.NewDecoder(reader)
+	if decoder.Decode(&envelope) != nil {
+		return nil, ErrUnsupported
+	}
+	var extra any
+	if !errors.Is(decoder.Decode(&extra), io.EOF) {
 		return nil, ErrUnsupported
 	}
 	h := sha256.Sum256(envelope.Data)
@@ -128,25 +151,36 @@ func LoadIndex(path string, sources map[string]Representation) (*VirtualMP4, err
 		return nil, errors.New("packaging index checksum differs")
 	}
 	var v VirtualMP4
-	if json.Unmarshal(envelope.Data, &v) != nil || v.Revision != PackagingVersion || len(v.Sources) != 2 || len(v.Header) < 16 || v.Length < int64(len(v.Header)) {
+	if json.Unmarshal(envelope.Data, &v) != nil {
 		return nil, ErrUnsupported
 	}
-	next := int64(len(v.Header))
-	for i := range v.Spans {
-		span := &v.Spans[i]
-		s := sources[span.SourceID]
-		if s == nil || s.ID() != span.SourceID || (span.SourceID != v.Sources[0] && span.SourceID != v.Sources[1]) || span.Output != next || span.Offset < 0 || span.Length <= 0 || span.Length > s.Size()-span.Offset || span.Length > v.Length-next {
-			return nil, errors.New("index source revision differs")
-		}
-		span.source = s
-		next += span.Length
-		if next > v.Length {
-			return nil, ErrUnsupported
-		}
-	}
-	if next != v.Length {
+	if v.Revision != PackagingVersion || len(v.Sources) != 2 || len(v.Header) < 16 || v.Length < int64(len(v.Header)) {
 		return nil, ErrUnsupported
+	}
+	if err := v.bindSources(sources); err != nil {
+		return nil, err
 	}
 	v.setIdentity()
 	return &v, nil
+}
+
+func (v *VirtualMP4) bindSources(sources map[string]Representation) error {
+	next := int64(len(v.Header))
+	for i := range v.Spans {
+		span := &v.Spans[i]
+		source := sources[span.SourceID]
+		if !validIndexSource(v, span, source) || span.Output != next || span.Length > v.Length-next {
+			return errors.New("index source revision differs")
+		}
+		span.source = source
+		next += span.Length
+	}
+	if next != v.Length {
+		return ErrUnsupported
+	}
+	return nil
+}
+
+func validIndexSource(v *VirtualMP4, span *Span, source Representation) bool {
+	return source != nil && source.ID() == span.SourceID && (span.SourceID == v.Sources[0] || span.SourceID == v.Sources[1]) && span.Offset >= 0 && span.Length > 0 && span.Offset <= source.Size() && span.Length <= source.Size()-span.Offset
 }

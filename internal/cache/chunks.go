@@ -192,7 +192,7 @@ func (s *Store) writeChunk(data []byte, reservation int64) (name string, err err
 }
 
 func syncChunkDirectory(path string) error {
-	directory, err := os.Open(path)
+	directory, err := os.Open(path) //nolint:gosec // G304: The cache store selects this private chunk directory.
 	if err != nil {
 		return err
 	}
@@ -223,7 +223,7 @@ func cleanupChunk(temporary, published string) (retained string, err error) {
 }
 
 func readChunkFile(path string, length int) (data []byte, err error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // G304: The cache store constructs chunk paths from hashed immutable identities.
 	if err != nil {
 		return nil, err
 	}

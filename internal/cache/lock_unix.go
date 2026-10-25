@@ -10,7 +10,7 @@ import (
 )
 
 func lockDirectory(dir string) (*os.File, error) {
-	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600) //nolint:gosec // G304: The operator selects the cache directory; the lock file name is fixed.
 	if err != nil {
 		return nil, err
 	}

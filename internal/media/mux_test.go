@@ -24,7 +24,7 @@ func run(t *testing.T, name string, args ...string) []byte {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // G204: Tests invoke only FFmpeg and ffprobe with controlled fixture arguments.
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	b, err := cmd.Output()
@@ -113,7 +113,7 @@ func testVirtualMP4(t *testing.T, fragmented bool) {
 		t.Fatalf("far seek fetched preceding content: %d", afterSeek-indexBytes)
 	}
 	output := filepath.Join(dir, "virtual.mp4")
-	f, err := os.Create(output)
+	f, err := os.Create(output) //nolint:gosec // G304: The reference output is generated in t.TempDir.
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func testVirtualMP4(t *testing.T, fragmented bool) {
 	for _, seek := range []string{"1", "27"} {
 		run(t, "ffmpeg", "-v", "error", "-ss", seek, "-i", output, "-t", "1", "-f", "null", "-")
 	}
-	gold, err := os.ReadFile(output)
+	gold, err := os.ReadFile(output) //nolint:gosec // G304: This reads the independently generated reference in t.TempDir.
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func testVirtualMP4(t *testing.T, fragmented bool) {
 		go func() {
 			defer wg.Done()
 			for range 100 {
-				offset := rand.Int64N(virtual.Size())
+				offset := rand.Int64N(virtual.Size()) //nolint:gosec // G404: Random byte offsets are test coverage inputs, not security tokens.
 				size := min(int64(65536), virtual.Size()-offset)
 				got := make([]byte, size)
 				_, er := virtual.ReadAt(ctx, got, offset)
@@ -202,13 +202,15 @@ func TestRangeValidation(t *testing.T) {
 	for _, mode := range []string{"ignored", "bad-range", "malformed-range", "changed-length", "changed-etag", "expired", "truncated"} {
 		t.Run(mode, func(t *testing.T) {
 			requests := 0
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				requests++
 				if requests == 1 {
 					w.Header().Set("Content-Range", "bytes 0-0/100")
 					w.Header().Set("ETag", `"v1"`)
 					w.WriteHeader(206)
-					w.Write([]byte{1})
+					if _, err := w.Write([]byte{1}); err != nil {
+						t.Error(err)
+					}
 					return
 				}
 				switch mode {
@@ -233,7 +235,9 @@ func TestRangeValidation(t *testing.T) {
 					}
 					w.WriteHeader(206)
 					if mode != "truncated" {
-						w.Write(make([]byte, 100))
+						if _, err := w.Write(make([]byte, 100)); err != nil {
+							t.Error(err)
+						}
 					}
 				}
 			}))

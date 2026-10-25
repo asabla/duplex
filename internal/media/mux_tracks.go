@@ -50,7 +50,7 @@ func validateMuxTrack(track *mp4.TrakBox, kind string) error {
 		return ErrUnsupported
 	}
 	table := track.Mdia.Minf.Stbl
-	if table.Stsd == nil || len(table.Stsd.Children) != 1 || table.Stsc == nil || table.Stsz == nil || table.Stts == nil || table.Saio != nil || table.Saiz != nil {
+	if !validMuxTables(table) {
 		return fmt.Errorf("%w: incomplete or auxiliary sample tables", ErrUnsupported)
 	}
 	codec := table.Stsd.Children[0].Type()
@@ -61,6 +61,10 @@ func validateMuxTrack(track *mp4.TrakBox, kind string) error {
 		return ErrUnsupported
 	}
 	return nil
+}
+
+func validMuxTables(table *mp4.StblBox) bool {
+	return table.Stsd != nil && len(table.Stsd.Children) == 1 && table.Stsc != nil && table.Stsz != nil && table.Stts != nil && table.Saio == nil && table.Saiz == nil
 }
 
 func sourceOffsets(table *mp4.StblBox) ([]uint64, error) {
@@ -218,7 +222,7 @@ func (v *VirtualMP4) buildHeader(movie *mp4.MoovBox, tracks []muxTrack) error {
 	binary.BigEndian.PutUint32(payload, 1)
 	copy(payload[4:8], "mdat")
 	// assignOffsets guarantees end >= base > 16, so this sum cannot overflow.
-	binary.BigEndian.PutUint64(payload[8:], uint64(end-base+16))
+	binary.BigEndian.PutUint64(payload[8:], uint64(end-base+16)) //nolint:gosec // G115: assignOffsets guarantees end >= base >= 16.
 	header.Write(payload)
 	if int64(header.Len()) != base {
 		return errors.New("unstable MP4 header size")

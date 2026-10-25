@@ -19,7 +19,7 @@ func TestYouTubeVerifiedIndexReuse(t *testing.T) {
 		t.Skip("requires two private resolver responses for the same public source")
 	}
 	load := func(path string) source.Metadata {
-		b, err := os.ReadFile(path)
+		b, err := os.ReadFile(path) //nolint:gosec // G304: The opt-in qualification test reads the operator-selected private source fixture.
 		if err != nil {
 			t.Fatal(err)
 		}

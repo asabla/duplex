@@ -59,7 +59,9 @@ func TestExclusiveOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	if other, err := New(dir, 4096); err == nil {
-		other.Close()
+		if err := other.Close(); err != nil {
+			t.Error(err)
+		}
 		t.Fatal("two processes can own the cache")
 	}
 	if err = s.Close(); err != nil {

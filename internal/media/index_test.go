@@ -38,9 +38,12 @@ func TestDurableIndexRejectsChangedSourcesAndCorruption(t *testing.T) {
 	if _, e = LoadIndex(file, map[string]Representation{"changed": one, "two": two}); e == nil {
 		t.Fatal("changed source accepted")
 	}
-	data, _ := os.ReadFile(file)
+	data, err := os.ReadFile(file) //nolint:gosec // G304: This reads the generated test index in t.TempDir.
+	if err != nil {
+		t.Fatal(err)
+	}
 	data = bytes.Replace(data, []byte(`"offset":0`), []byte(`"offset":1`), 1)
-	if e = os.WriteFile(file, data, 0o600); e != nil {
+	if e = os.WriteFile(file, data, 0o600); e != nil { //nolint:gosec // G703: This corrupts a generated packaging index in t.TempDir to test rejection.
 		t.Fatal(e)
 	}
 	if _, e = LoadIndex(file, map[string]Representation{"one": one, "two": two}); e == nil {

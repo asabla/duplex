@@ -41,5 +41,5 @@ func capacity(blocks, size uint64) (int64, error) {
 	if size == 0 || blocks > math.MaxInt64/size {
 		return 0, errors.New("unsupported filesystem capacity")
 	}
-	return int64(blocks * size), nil
+	return int64(blocks * size), nil //nolint:gosec // G115: The division check above proves the product fits in int64.
 }

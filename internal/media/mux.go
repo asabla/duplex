@@ -13,6 +13,7 @@ import (
 	"github.com/Eyevinn/mp4ff/mp4"
 )
 
+// PackagingVersion identifies the immutable progressive MP4 layout.
 const (
 	PackagingVersion = "progressive-mp4-v1"
 	maxIndexBytes    = 64 * 1024 * 1024

@@ -54,6 +54,7 @@ type Stats struct {
 	Chunks    int   `json:"chunks"`
 }
 
+// New opens one exclusively locked cache and recovers durable chunks.
 func New(dir string, limit int64) (*Store, error) {
 	if limit < 4096 {
 		return nil, errors.New("cache limit must be at least 4096 bytes")
