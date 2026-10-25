@@ -11,3 +11,7 @@ condition = "AND"
 paths = ['''(^|/)docs/source-manifest\.json$''']
 regexTarget = "line"
 regexes = ['''^\s*"[^"]+": "[a-f0-9]{64}"[,]?\s*$''']
+
+[[allowlists]]
+description = "Untracked build artifacts and private installation state"
+paths = ['''(^|/)(\.git|\.cache|bin|var|secrets)/''', '''(^|/)config\.yaml$''', '''(^|/)docs/installed-instance\.md$''']

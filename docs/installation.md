@@ -14,12 +14,12 @@ cache limit does not reserve that capacity in advance.
 
 ```sh
 sudo scripts/prepare-host.sh /var/lib/duplex
-docker compose -f deployment/compose.yaml build
-docker compose -f deployment/compose.yaml run --rm --no-deps duplex-mount \
+docker compose build
+docker compose run --rm --no-deps duplex-mount \
   init --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
-docker compose -f deployment/compose.yaml up -d duplex-mount
+docker compose up -d duplex-mount
 curl --fail http://127.0.0.1:8765/mountz
-docker compose -f deployment/compose.yaml exec duplex-mount \
+docker compose exec duplex-mount \
   cat /state/data/secrets/initial-admin-password
 ```
 
@@ -46,7 +46,7 @@ after duplex restarts. Only the mount service has FUSE access and `SYS_ADMIN`.
 Start the optional isolated Plex service after `/mountz` succeeds:
 
 ```sh
-docker compose -f deployment/compose.yaml --profile plex up -d plex
+docker compose --profile plex up -d plex
 ```
 
 Claim the server in Plex Web and keep remote access disabled for a local household
@@ -85,7 +85,7 @@ Docker context for other projects. Prepare VM-local storage inside the VM:
 
 ```sh
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/prepare-host.sh
-docker --context colima compose -f deployment/compose.yaml build
+docker --context colima compose build
 ```
 
 Use `docker --context colima compose` for the remaining Docker commands above.
@@ -99,7 +99,7 @@ media-cache disk still has space.
 The native service was exercised on Ubuntu 24.04.4 LTS in Colima. The official
 Linux tool bundles require a compatible glibc runtime.
 
-Build `bin/duplex-linux-amd64` or `bin/duplex-linux-arm64` with `make linux`.
+Build `bin/duplex-linux-amd64` or `bin/duplex-linux-arm64` with `GOOS=linux GOARCH=arm64 make build`.
 Install the matching binary as `/usr/local/bin/duplex`. Run
 `sudo scripts/bootstrap-linux.sh` (requires `curl`, `unzip`, `sha256sum`, and
 `install`) to install the pinned official yt-dlp directory

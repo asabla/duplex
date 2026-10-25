@@ -3,7 +3,7 @@
 services:
   duplex-mount:
     build:
-      context: ..
+      context: .
     image: duplex:local
     restart: unless-stopped
     init: true

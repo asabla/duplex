@@ -26,11 +26,11 @@ Go 1.27.3 is required. The module and `.tool-versions` pin dependencies. FFmpeg 
 ffprobe are needed for controlled media tests, not for normal service operation.
 
 ```sh
-make verify
+make check
 make media-test
 ```
 
-`make verify` runs race tests, vet, a local build, and Linux amd64/arm64 builds.
+`make check` runs race tests, vet, a local build, and Linux amd64/arm64 builds.
 Linux FUSE and physical disk tests need their explicit opt-in environment variables
 and isolated test containers. A skipped test does not establish compatibility.
 See the validation register for exact versions, evidence, and real-source tests.
