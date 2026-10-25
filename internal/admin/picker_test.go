@@ -33,9 +33,7 @@ func TestPickersUseBoundedTitleSearchAndKeepTheCurrentScope(t *testing.T) {
 	}
 
 	body, _ = f.request(t, http.MethodGet, "/fragments/playlist-options?playlist_q=missing&playlist=PLpicker00059", "", nil, http.StatusOK)
-	if !strings.Contains(string(body), `value="PLpicker00059" selected>Picker collection 59`) {
-		t.Fatal("current selection was lost outside the search page", string(body))
-	}
+	requireElement(t, body, "option", map[string]string{"value": "PLpicker00059", "selected": ""}, "Picker collection 59")
 
 	body, _ = f.request(t, http.MethodGet, "/artwork?channel="+workflowChannel+"&scope=playlist:PLpicker00059&q=Picker+collection+01", "", nil, http.StatusOK)
 	if !strings.Contains(string(body), "Picker collection 59 (current selection)") || !strings.Contains(string(body), "Picker collection 01") || !strings.Contains(string(body), "Showing 1–1 of 1") {

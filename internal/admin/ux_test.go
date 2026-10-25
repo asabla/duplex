@@ -134,9 +134,7 @@ func TestChannelAndVideoTasksRetainContextAndSavedFormAuthority(t *testing.T) {
 	settings := url.Values{"_form": {"settings-form"}, "cache_gib": {"1"}, "refresh_minutes": {"30"}, "max_height": {"1080"}, "revision": {f.app.Config.Snapshot().Revision}}
 
 	body, _ = f.form(t, "/actions/settings", settings, http.StatusOK)
-	if !strings.Contains(string(body), `id="settings-form" hx-swap-oob="outerHTML"`) {
-		t.Fatal(string(body))
-	}
+	requireElement(t, body, "form", map[string]string{"id": "settings-form", "hx-swap-oob": "outerHTML"}, "")
 
 	settings.Set("refresh_minutes", "bad")
 
@@ -186,11 +184,8 @@ func TestPlaylistSaveUpdatesOnlyItsSummaryAndSkippedCount(t *testing.T) {
 	id := policyFormID(workflowChannel, "PLfixture0001")
 
 	body, _ := f.form(t, "/actions/policy", url.Values{"id": {workflowChannel}, "playlist": {"PLfixture0001"}, "mode": {"skip"}, "_form": {id}, "revision": {f.app.Config.Snapshot().Revision}}, http.StatusOK)
-	for _, part := range []string{`id="selection-` + id + `" hx-swap-oob="outerHTML">Override: Skipped`, `id="count-` + id + `" hx-swap-oob="outerHTML">0`} {
-		if !strings.Contains(string(body), part) {
-			t.Fatal(string(body))
-		}
-	}
+	requireElement(t, body, "span", map[string]string{"id": "selection-" + id, "hx-swap-oob": "outerHTML"}, "Override: Skipped")
+	requireElement(t, body, "span", map[string]string{"id": "count-" + id, "hx-swap-oob": "outerHTML"}, "0")
 
 	body, _ = f.request(t, http.MethodGet, "/playlists?channel="+workflowChannel, "", nil, http.StatusOK)
 	if !strings.Contains(string(body), "Override: Skipped") {
