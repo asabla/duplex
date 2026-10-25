@@ -131,7 +131,7 @@ func TestDefaultFiftyGiBLimitCountsUnfinishedReservations(t *testing.T) {
 		done <- err
 	}()
 	<-started
-	if store.Stats().Allocated != 26<<30 {
+	if used := store.Stats().Allocated; used < 26<<30 || used >= 27<<30 {
 		t.Fatal("unfinished reservation was not counted")
 	}
 	if _, _, e = store.Get(context.Background(), "another-reservation", 0, 25<<30, func(context.Context) ([]byte, error) {
@@ -146,5 +146,81 @@ func TestDefaultFiftyGiBLimitCountsUnfinishedReservations(t *testing.T) {
 	}
 	if store.Stats().Allocated != 0 {
 		t.Fatal("failed reservation was not released")
+	}
+}
+
+func TestExtentMetadataFitsReservedSpaceAndKeepsPins(t *testing.T) {
+	const payload = 1 << 20
+	store, err := New(t.TempDir(), payload+4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTest(t, store)
+	// A fragmented filesystem reports an extent block as part of st_blocks.
+	store.allocation = func(os.FileInfo) int64 { return payload + 4096 }
+	data := bytes.Repeat([]byte{37}, payload)
+	fetches := 0
+	fetch := func(context.Context) ([]byte, error) { fetches++; return data, nil }
+	got, release, err := store.Get(t.Context(), "one", 0, payload, fetch)
+	if err != nil || !bytes.Equal(got, data) || store.Stats().Allocated != payload+4096 {
+		t.Fatal(len(got), store.Stats(), err)
+	}
+	if _, _, err := store.Get(t.Context(), "two", 0, payload, fetch); !errors.Is(err, ErrFull) || fetches != 1 {
+		t.Fatal("pinned extent metadata was not reserved", fetches, err)
+	}
+	release()
+	_, release, err = store.Get(t.Context(), "two", 0, payload, fetch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+	got, release, err = store.Get(t.Context(), "two", 0, payload, fetch)
+	if err != nil || fetches != 2 || !bytes.Equal(got, data) || store.Stats().Allocated > payload+4096 {
+		t.Fatal("published chunk was not reused within its physical limit", fetches, store.Stats(), err)
+	}
+	release()
+}
+
+func TestPublicationReleasesUnusedExtentReservation(t *testing.T) {
+	const payload = 1 << 20
+	store, err := New(t.TempDir(), payload+4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTest(t, store)
+	store.allocation = func(info os.FileInfo) int64 { return ((info.Size() + 4095) / 4096) * 4096 }
+	_, release, err := store.Get(t.Context(), "large", 0, payload, func(context.Context) ([]byte, error) {
+		if store.Stats().Allocated != payload+4096 {
+			t.Error("unfinished allocation excludes extent metadata")
+		}
+		return make([]byte, payload), nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if store.Stats().Allocated != payload {
+		t.Fatal("unused reservation was retained", store.Stats())
+	}
+	_, small, err := store.Get(t.Context(), "small", 0, 4, func(context.Context) ([]byte, error) { return []byte("data"), nil })
+	if err != nil {
+		t.Fatal("unused reservation blocked a small read", err)
+	}
+	small()
+}
+
+func TestUnexpectedExtentAllocationIsNotPublished(t *testing.T) {
+	const payload = 1 << 20
+	store, err := New(t.TempDir(), 2*payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTest(t, store)
+	store.allocation = func(os.FileInfo) int64 { return payload + 8192 }
+	if _, _, err = store.Get(t.Context(), "large", 0, payload, func(context.Context) ([]byte, error) { return make([]byte, payload), nil }); err == nil {
+		t.Fatal("allocation above the reservation was published")
+	}
+	if stats := store.Stats(); stats.Allocated != 0 || stats.Chunks != 0 {
+		t.Fatal("failed allocation retained data", stats)
 	}
 }

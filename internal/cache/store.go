@@ -45,6 +45,7 @@ type Store struct {
 	lock        *os.File
 	closed      bool
 	space       func() (free, total int64, err error)
+	allocation  func(os.FileInfo) int64
 }
 
 // Stats reports physical allocation and the configured cache limit.
@@ -66,7 +67,7 @@ func New(dir string, limit int64) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	store := &Store{dir: dir, limit: limit, items: make(map[string]*entry), lock: lock}
+	store := &Store{dir: dir, limit: limit, items: make(map[string]*entry), lock: lock, allocation: allocated}
 	store.space = func() (int64, int64, error) { return diskSpace(dir) }
 	if err = store.recoverDirectory(); err != nil {
 		return nil, errors.Join(err, unlockDirectory(lock))
@@ -115,7 +116,7 @@ func (s *Store) recoverEntry(file os.DirEntry) error {
 	if s.items[key] != nil {
 		return errors.New("duplicate cache identity")
 	}
-	allocation := allocated(info)
+	allocation := s.allocation(info)
 	if allocation > math.MaxInt64-s.used {
 		return errors.New("cache allocation exceeds supported capacity")
 	}

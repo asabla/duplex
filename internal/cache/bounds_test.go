@@ -25,7 +25,7 @@ func TestInvalidAndOversizedRequestsDoNotEvictOrFetch(t *testing.T) {
 	for _, bounds := range []struct {
 		offset int64
 		length int
-	}{{0, 0}, {-1, 4}, {math.MaxInt64, 1}, {0, int(^uint(0) >> 1)}} {
+	}{{0, 0}, {-1, 4}, {math.MaxInt64, 1}, {0, int(^uint(0) >> 1)}, {0, int(^uint(0)>>1) - 8192}} {
 		if _, _, err = store.Get(t.Context(), "bad", bounds.offset, bounds.length, fetch); err == nil {
 			t.Fatal("invalid range accepted")
 		}

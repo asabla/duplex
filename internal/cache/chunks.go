@@ -24,7 +24,10 @@ func (s *Store) Get(ctx context.Context, identity string, offset int64, length i
 	}
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", identity, offset, length)))
 	key := hex.EncodeToString(hash[:])
-	reservation := ((int64(length) + 4095) / 4096) * 4096
+	reservation, err := chunkReservation(int64(length))
+	if err != nil {
+		return nil, nil, err
+	}
 	interruptions := 0
 	for {
 		if err := ctx.Err(); err != nil {
@@ -49,6 +52,20 @@ func (s *Store) Get(ctx context.Context, identity string, offset int64, length i
 		}
 		return s.readChunk(key, item, length)
 	}
+}
+
+func chunkReservation(length int64) (int64, error) {
+	payload := ((length + 4095) / 4096) * 4096
+	metadata := int64(0)
+	if payload > 4*4096 {
+		// Fragmented files can allocate extent-tree blocks in addition to their
+		// payload. Reserve one block per MiB, then charge the observed allocation.
+		metadata = ((payload-1)/(1<<20) + 1) * 4096
+	}
+	if payload > math.MaxInt64-metadata {
+		return 0, errors.New("invalid chunk allocation bounds")
+	}
+	return payload + metadata, nil
 }
 
 func (s *Store) acquireChunk(key string, reservation int64) (*entry, bool, <-chan struct{}, error) {
@@ -136,7 +153,14 @@ func (s *Store) fetchChunk(ctx context.Context, key string, item *entry, length 
 	}
 	temp := ""
 	if err == nil {
-		temp, err = s.writeChunk(data, item.allocation)
+		var allocation int64
+		temp, allocation, err = s.writeChunk(data, item.allocation)
+		if err == nil {
+			s.mu.Lock()
+			s.used -= item.allocation - allocation
+			item.allocation = allocation
+			s.mu.Unlock()
+		}
 	}
 	if err == nil {
 		digest := sha256.Sum256(data)
@@ -182,10 +206,10 @@ func (s *Store) finishChunk(key string, item *entry, failure error, retained str
 	close(done)
 }
 
-func (s *Store) writeChunk(data []byte, reservation int64) (name string, err error) {
+func (s *Store) writeChunk(data []byte, reservation int64) (name string, allocation int64, err error) {
 	file, err := os.CreateTemp(s.dir, ".part-")
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 	name = file.Name()
 	written, err := file.Write(data)
@@ -197,16 +221,17 @@ func (s *Store) writeChunk(data []byte, reservation int64) (name string, err err
 	}
 	err = errors.Join(err, file.Close())
 	if err != nil {
-		return name, err
+		return name, 0, err
 	}
 	info, err := os.Stat(name) // #nosec G703 -- The writer selects this private temporary chunk path.
 	if err != nil {
-		return name, err
+		return name, 0, err
 	}
-	if allocated(info) > reservation {
-		return name, errors.New("cache allocation exceeds reservation")
+	allocation = s.allocation(info)
+	if allocation > reservation {
+		return name, allocation, errors.New("cache allocation exceeds reservation")
 	}
-	return name, nil
+	return name, allocation, nil
 }
 
 func syncChunkDirectory(path string) error {
