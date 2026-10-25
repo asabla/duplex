@@ -19,7 +19,7 @@ func TestPhysicalDiskExhaustion(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer store.Close()
+	defer closeTest(t, store)
 	// Force a reservation/write race: another process can fill the disk after a
 	// successful capacity probe. The writer must still fail without publication.
 	store.space = func() (int64, int64, error) { return 1 << 50, 1 << 50, nil }
@@ -52,7 +52,10 @@ func TestPhysicalDiskExhaustion(t *testing.T) {
 			t.Fatal("published data corrupted after disk-full")
 		}
 	}
-	files, _ := os.ReadDir(filepath.Join(root, "chunks"))
+	files, readErr := os.ReadDir(filepath.Join(root, "chunks"))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	for _, file := range files {
 		if len(file.Name()) > 6 && file.Name()[:6] == ".part-" {
 			t.Fatal("unfinished write left after disk-full")
@@ -69,7 +72,7 @@ func TestPhysicalPressureEvictsOnlyUnpinnedChunks(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer store.Close()
+	defer closeTest(t, store)
 	data := make([]byte, 1<<20)
 	data[0] = 19
 	for n := range 8 {

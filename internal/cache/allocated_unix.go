@@ -29,6 +29,9 @@ func diskSpace(dir string) (free, total int64, err error) {
 	if err = syscall.Statfs(dir, &stat); err != nil {
 		return
 	}
+	if stat.Bsize <= 0 {
+		return 0, 0, errors.New("invalid filesystem block size")
+	}
 	free, err = capacity(uint64(stat.Bavail), uint64(stat.Bsize))
 	if err != nil {
 		return 0, 0, err

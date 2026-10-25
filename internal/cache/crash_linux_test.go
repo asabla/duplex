@@ -4,6 +4,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,7 +21,7 @@ func TestInterruptedChunkPublication(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		defer store.Close()
+		defer closeTest(t, store)
 		data := make([]byte, 64<<20)
 		for i := range data {
 			data[i] = byte(i)
@@ -33,16 +34,22 @@ func TestInterruptedChunkPublication(t *testing.T) {
 		select {}
 	}
 	dir := filepath.Join(t.TempDir(), "cache")
-	binary, _ := os.Executable()
-	child := exec.Command(binary, "-test.run=^TestInterruptedChunkPublication$")
+	binary, executableErr := os.Executable()
+	if executableErr != nil {
+		t.Fatal(executableErr)
+	}
+	child := exec.CommandContext(t.Context(), binary, "-test.run=^TestInterruptedChunkPublication$") //nolint:gosec // G204: The child is this test executable with fixed crash-fixture arguments.
 	child.Env = append(os.Environ(), "DUPLEX_CACHE_CHILD="+dir)
 	if e := child.Start(); e != nil {
 		t.Fatal(e)
 	}
-	defer func() { _ = child.Process.Kill(); _ = child.Wait() }()
+	defer stopCrashChild(t, child)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		files, _ := filepath.Glob(filepath.Join(dir, ".part-*"))
+		files, globErr := filepath.Glob(filepath.Join(dir, ".part-*"))
+		if globErr != nil {
+			t.Fatal(globErr)
+		}
 		if len(files) > 0 {
 			break
 		}
@@ -54,16 +61,26 @@ func TestInterruptedChunkPublication(t *testing.T) {
 	if e := child.Process.Kill(); e != nil {
 		t.Fatal(e)
 	}
-	_ = child.Wait()
+	if err := child.Wait(); err == nil {
+		t.Fatal("killed fixture exited successfully")
+	} else {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) {
+			t.Fatal(err)
+		}
+	}
 	store, e := New(dir, 128<<20)
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer store.Close()
+	defer closeTest(t, store)
 	if store.Stats().Chunks != 0 {
 		t.Fatal("interrupted data published")
 	}
-	files, _ := filepath.Glob(filepath.Join(dir, ".part-*"))
+	files, globErr := filepath.Glob(filepath.Join(dir, ".part-*"))
+	if globErr != nil {
+		t.Fatal(globErr)
+	}
 	if len(files) != 0 {
 		t.Fatal("unfinished writes not recovered")
 	}
@@ -74,5 +91,21 @@ func TestInterruptedChunkPublication(t *testing.T) {
 	defer release()
 	if data[0] != 37 {
 		t.Fatal("incorrect recovered data")
+	}
+}
+
+func stopCrashChild(t *testing.T, child *exec.Cmd) {
+	t.Helper()
+	if child.ProcessState != nil {
+		return
+	}
+	if err := child.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		t.Error(err)
+	}
+	if err := child.Wait(); err != nil {
+		var exit *exec.ExitError
+		if !errors.As(err, &exit) {
+			t.Error(err)
+		}
 	}
 }

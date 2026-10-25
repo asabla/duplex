@@ -128,7 +128,7 @@ func (s *Store) fetchChunk(ctx context.Context, key string, item *entry, length 
 		digest := sha256.Sum256(data)
 		item.digest = hex.EncodeToString(digest[:])
 		item.path = filepath.Join(s.dir, key+"-"+item.digest+".chunk")
-		err = os.Rename(temp, item.path)
+		err = os.Rename(temp, item.path) // #nosec G703 -- Both paths are constructed in the private cache from a generated temporary name and a hashed chunk key.
 		if err == nil {
 			err = syncChunkDirectory(s.dir)
 		}
@@ -181,7 +181,7 @@ func (s *Store) writeChunk(data []byte, reservation int64) (name string, err err
 	if err != nil {
 		return name, err
 	}
-	info, err := os.Stat(name)
+	info, err := os.Stat(name) // #nosec G703 -- The writer selects this private temporary chunk path.
 	if err != nil {
 		return name, err
 	}
@@ -203,7 +203,7 @@ func removeChunkFile(path string) error {
 	if path == "" {
 		return nil
 	}
-	err := os.Remove(path)
+	err := os.Remove(path) // #nosec G703 -- Cleanup paths are constructed by the cache store; no client path is accepted.
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
