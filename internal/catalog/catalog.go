@@ -114,7 +114,11 @@ func (s *Store) Close() error { return s.DB.Close() }
 
 // OpenForBackup opens an existing catalogue without interrupting running jobs.
 func OpenForBackup(path string) (*Store, error) {
-	ctx := context.Background()
+	return OpenForBackupContext(context.Background(), path)
+}
+
+// OpenForBackupContext opens an existing catalogue without recovery mutations.
+func OpenForBackupContext(ctx context.Context, path string) (*Store, error) {
 	if _, e := os.Stat(path); e != nil {
 		return nil, e
 	}

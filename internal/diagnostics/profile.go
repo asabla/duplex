@@ -35,7 +35,7 @@ func StartCapture(ctx context.Context, directory, kind string, duration time.Dur
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return nil, err
 	}
-	file, err := os.OpenFile(filepath.Join(directory, fmt.Sprintf("%s-%d.pprof", kind, time.Now().UnixNano())), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	file, err := os.OpenFile(filepath.Join(directory, fmt.Sprintf("%s-%d.pprof", kind, time.Now().UnixNano())), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // G304: The operator selects the private profile directory; kind is validated against fixed values.
 	if err != nil {
 		return nil, err
 	}

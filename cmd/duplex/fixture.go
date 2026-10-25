@@ -4,21 +4,19 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"flag"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"sync/atomic"
-	"syscall"
-	"time"
 )
 
 // fixtureHTTP is a qualification origin, not a production source adapter.
-func fixtureHTTP(args []string) error {
+func fixtureHTTP(ctx context.Context, args []string) error {
 	f := flag.NewFlagSet("fixture-http", flag.ContinueOnError)
 	dir := f.String("dir", "", "directory containing controlled video.mp4 and audio.m4a")
 	listen := f.String("listen", "127.0.0.1:8080", "fixture origin address")
@@ -31,56 +29,58 @@ func fixtureHTTP(args []string) error {
 	mux := http.NewServeMux()
 	var requests, bytes atomic.Int64
 	for _, name := range []string{"video.mp4", "audio.m4a"} {
-		p := filepath.Join(*dir, name)
-		source, e := os.Open(p)
-		if e != nil {
-			return e
+		handler, err := fixtureHandler(*dir, name, &requests, &bytes)
+		if err != nil {
+			return err
 		}
-		h := sha256.New()
-		if _, e = io.Copy(h, source); e != nil {
-			source.Close()
-			return e
-		}
-		source.Close()
-		etag := `"` + hex.EncodeToString(h.Sum(nil)) + `"`
-		mux.HandleFunc("GET /"+name, func(w http.ResponseWriter, r *http.Request) {
-			requests.Add(1)
-			if _, e := os.Stat(filepath.Join(*dir, "expired")); e == nil {
-				http.Error(w, "fixture locator expired", 403)
-				return
-			}
-			file, e := os.Open(p)
-			if e != nil {
-				http.Error(w, "fixture unavailable", 503)
-				return
-			}
-			defer file.Close()
-			stat, e := file.Stat()
-			if e != nil {
-				http.Error(w, "fixture unavailable", 503)
-				return
-			}
-			w.Header().Set("ETag", etag)
-			http.ServeContent(&countingWriter{ResponseWriter: w, count: &bytes}, r, name, stat.ModTime(), file)
-		})
+		mux.HandleFunc("GET /"+name, handler)
 	}
-	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]int64{"requests": requests.Load(), "bytes": bytes.Load()})
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]int64{"requests": requests.Load(), "bytes": bytes.Load()})
 	})
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	server := &http.Server{Addr: *listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		server.Shutdown(shutdown)
-	}()
-	e := server.ListenAndServe()
-	if errors.Is(e, http.ErrServerClosed) {
-		return nil
+	listener, err := (&net.ListenConfig{}).Listen(ctx, "tcp", *listen)
+	if err != nil {
+		return err
 	}
-	return e
+	return serveHTTP(ctx, listener, mux)
+}
+
+func fixtureHandler(dir, name string, requests, bytes *atomic.Int64) (http.HandlerFunc, error) {
+	path := filepath.Join(dir, name)
+	source, err := os.Open(path) //nolint:gosec // G304: The operator selects the controlled fixture directory.
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.New()
+	_, err = io.Copy(h, source)
+	if err = errors.Join(err, source.Close()); err != nil {
+		return nil, err
+	}
+	etag := `"` + hex.EncodeToString(h.Sum(nil)) + `"`
+	return func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		if _, err := os.Stat(filepath.Join(dir, "expired")); err == nil {
+			http.Error(w, "fixture locator expired", http.StatusForbidden)
+			return
+		}
+		file, err := os.Open(path) //nolint:gosec // G304: Only the two fixed fixture names are served from the operator-selected directory.
+		if err != nil {
+			http.Error(w, "fixture unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		defer func() {
+			if err := file.Close(); err != nil {
+				slog.Error("fixture close failed")
+			}
+		}()
+		info, err := file.Stat()
+		if err != nil {
+			http.Error(w, "fixture unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("ETag", etag)
+		http.ServeContent(&countingWriter{ResponseWriter: w, count: bytes}, r, name, info.ModTime(), file)
+	}, nil
 }
 
 type countingWriter struct {

@@ -9,10 +9,8 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"duplex/internal/admin"
@@ -66,7 +64,7 @@ func initialize(args []string) error {
 	return nil
 }
 
-func serve(args []string) error {
+func serve(ctx context.Context, args []string) (result error) {
 	f := flag.NewFlagSet("serve", flag.ContinueOnError)
 	file := f.String("config", "config.yaml", "writable YAML settings file")
 	noMount := f.Bool("no-mount", false, "administration test mode; readiness remains false")
@@ -87,13 +85,11 @@ func serve(args []string) error {
 	if e != nil {
 		return errors.New("cannot load administrator credentials; run duplex init first")
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	application, e := app.Open(ctx, manager, &source.YouTube{Executable: *yt, Deno: *deno}, *noMount)
 	if e != nil {
 		return e
 	}
-	defer application.Close()
+	defer func() { result = errors.Join(result, application.Close()) }()
 	profile, e := startProfile(ctx, application, *profileDirectory, *profileKind, *profileDuration)
 	if e != nil {
 		return e
@@ -107,53 +103,58 @@ func serve(args []string) error {
 	if e != nil {
 		return e
 	}
-	listener, e := net.Listen("tcp", c.Listen)
+	listener, e := (&net.ListenConfig{}).Listen(ctx, "tcp", c.Listen)
 	if e != nil {
 		return e
 	}
-	server := &http.Server{Handler: handler.Handler(), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute}
-	if socket := os.Getenv("NOTIFY_SOCKET"); socket != "" {
-		if strings.HasPrefix(socket, "@") {
-			socket = "\x00" + socket[1:]
-		}
-		if connection, e := net.Dial("unixgram", socket); e == nil {
-			_, _ = connection.Write([]byte("READY=1\nSTATUS=duplex mount and administration are ready"))
-			connection.Close()
+	if !*noMount {
+		if e = notifyReady(ctx, os.Getenv("NOTIFY_SOCKET")); e != nil {
+			return errors.Join(e, listener.Close())
 		}
 	}
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		server.Shutdown(shutdown)
-	}()
 	fmt.Println("duplex service started")
-	e = server.Serve(listener)
-	if errors.Is(e, http.ErrServerClosed) {
-		return nil
-	}
-	return e
+	return serveHTTP(ctx, listener, handler.Handler())
 }
 
-func health(args []string) error {
+func notifyReady(ctx context.Context, socket string) error {
+	if socket == "" {
+		return nil
+	}
+	if strings.HasPrefix(socket, "@") {
+		socket = "\x00" + socket[1:]
+	}
+	// The service manager supplies its local Unix datagram socket.
+	connection, err := (&net.Dialer{}).DialContext(ctx, "unixgram", socket)
+	if err != nil {
+		return errors.New("service manager notification failed")
+	}
+	_, err = connection.Write([]byte("READY=1\nSTATUS=duplex mount and administration are ready"))
+	return errors.Join(err, connection.Close())
+}
+
+func health(ctx context.Context, args []string) (result error) {
 	f := flag.NewFlagSet("health", flag.ContinueOnError)
 	url := f.String("url", "http://127.0.0.1:8765/mountz", "health URL")
 	if e := f.Parse(args); e != nil {
 		return e
 	}
 	client := &http.Client{Timeout: 5 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("health redirects rejected") }}
-	response, e := client.Get(*url)
+	request, e := http.NewRequestWithContext(ctx, http.MethodGet, *url, nil)
+	if e != nil {
+		return e
+	}
+	response, e := client.Do(request)
 	if e != nil {
 		return errors.New("service is unavailable")
 	}
-	defer response.Body.Close()
+	defer func() { result = errors.Join(result, response.Body.Close()) }()
 	if response.StatusCode != 200 {
 		return errors.New("service is not ready")
 	}
 	return nil
 }
 
-func backup(args []string) error {
+func backup(ctx context.Context, args []string) (result error) {
 	f := flag.NewFlagSet("backup", flag.ContinueOnError)
 	file := f.String("config", "config.yaml", "YAML settings file")
 	output := f.String("output", "", "new SQLite backup file")
@@ -167,10 +168,10 @@ func backup(args []string) error {
 	if e != nil {
 		return e
 	}
-	s, e := catalog.OpenForBackup(filepath.Join(m.Snapshot().Config.DataDir, "catalogue.sqlite"))
+	s, e := catalog.OpenForBackupContext(ctx, filepath.Join(m.Snapshot().Config.DataDir, "catalogue.sqlite"))
 	if e != nil {
 		return e
 	}
-	defer s.Close()
-	return s.Backup(context.Background(), *output)
+	defer func() { result = errors.Join(result, s.Close()) }()
+	return s.Backup(ctx, *output)
 }
