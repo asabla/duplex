@@ -19,6 +19,7 @@ import (
 	"duplex/internal/config"
 )
 
+// Pinned source dependencies are verified before source discovery starts.
 const (
 	YTDLPVersion = "2026.10.21"
 	DenoVersion  = "2.9.8"
@@ -130,7 +131,7 @@ func (m Metadata) Date() time.Time {
 }
 
 // SourceAdapter separates discovery metadata from playback-source resolution.
-type SourceAdapter interface {
+type SourceAdapter interface { //nolint:revive // Keep the architecture interface name explicit at source and application boundaries.
 	ResolveChannel(context.Context, string) (Channel, error)
 	Enumerate(context.Context, string) (Channel, error)
 	Metadata(context.Context, string) (Metadata, error)
@@ -158,6 +159,8 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 }
 
 func (y *YouTube) run(ctx context.Context, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
 	release, err := y.acquire(ctx, false)
 	if err != nil {
 		return nil, err
@@ -183,7 +186,7 @@ func (y *YouTube) Check(ctx context.Context) error {
 	if binary == "" {
 		binary = "yt-dlp"
 	}
-	b, e := exec.CommandContext(ctx, binary, "--version").Output()
+	b, e := exec.CommandContext(ctx, binary, "--version").Output() //nolint:gosec // G204: The operator selects the pinned resolver; arguments are fixed.
 	if e != nil {
 		return errors.New("yt-dlp could not start; check its runtime installation")
 	}
@@ -194,12 +197,12 @@ func (y *YouTube) Check(ctx context.Context) error {
 	if deno == "" {
 		deno = "deno"
 	}
-	b, e = exec.CommandContext(ctx, deno, "--version").Output()
+	b, e = exec.CommandContext(ctx, deno, "--version").Output() //nolint:gosec // G204: The operator selects the pinned JavaScript runtime; arguments are fixed.
 	if e != nil {
-		return errors.New("Deno could not start; check its runtime installation")
+		return errors.New("deno could not start; check its runtime installation")
 	}
 	if !strings.HasPrefix(string(b), "deno "+DenoVersion+" ") {
-		return errors.New("Deno version differs from pinned release")
+		return errors.New("deno version differs from pinned release")
 	}
 	return nil
 }
@@ -230,47 +233,12 @@ func decodeChannel(b []byte) (Channel, error) {
 		title = l.Title
 	}
 	result := Channel{ID: id, Title: title}
-	for _, image := range l.Thumbnails {
-		if !AllowedURL(image.URL) {
-			continue
-		}
-		if strings.Contains(image.ID, "avatar") || (image.Width > 0 && image.Width == image.Height) {
-			result.Avatar = image.URL
-		}
-		if strings.Contains(image.ID, "banner") || (image.Height > 0 && image.Width/image.Height >= 3) {
-			result.Banner = image.URL
-		}
-	}
-	groupCounter := 0
-	var flatten func([]json.RawMessage, int) error
-	flatten = func(items []json.RawMessage, group int) error {
-		for _, raw := range items {
-			if string(raw) == "null" {
-				return errors.New("channel snapshot contains an inaccessible entry")
-			}
-			var item struct {
-				Entry
-				Entries []json.RawMessage `json:"entries"`
-			}
-			if json.Unmarshal(raw, &item) != nil {
-				return errors.New("invalid channel entry")
-			}
-			if item.Entries != nil {
-				groupCounter++
-				if e := flatten(item.Entries, groupCounter); e != nil {
-					return e
-				}
-			} else if videoID.MatchString(item.ID) {
-				item.Entry.Group = group
-				result.Entries = append(result.Entries, item.Entry)
-			} else {
-				return errors.New("incomplete channel snapshot")
-			}
-		}
-		return nil
-	}
-	if e := flatten(l.Entries, 0); e != nil {
-		return Channel{}, e
+	result.Avatar, result.Banner = channelImages(l.Thumbnails)
+	var err error
+	group := 0
+	result.Entries, err = flattenChannel(l.Entries, 0, &group)
+	if err != nil {
+		return Channel{}, err
 	}
 	seen := map[string]bool{}
 	entries := result.Entries[:0]
@@ -285,6 +253,53 @@ func decodeChannel(b []byte) (Channel, error) {
 }
 
 // ResolveChannel converts a supported channel URL to its stable owner identity.
+func channelImages(images []ArtworkImage) (avatar, banner string) {
+	for _, image := range images {
+		if !AllowedURL(image.URL) {
+			continue
+		}
+		if strings.Contains(image.ID, "avatar") || (image.Width > 0 && image.Width == image.Height) {
+			avatar = image.URL
+		}
+		if strings.Contains(image.ID, "banner") || (image.Height > 0 && image.Width/image.Height >= 3) {
+			banner = image.URL
+		}
+	}
+	return avatar, banner
+}
+
+func flattenChannel(items []json.RawMessage, group int, counter *int) ([]Entry, error) {
+	var entries []Entry
+	for _, raw := range items {
+		if string(raw) == "null" {
+			return nil, errors.New("channel snapshot contains an inaccessible entry")
+		}
+		var item struct {
+			Entry
+			Entries []json.RawMessage `json:"entries"`
+		}
+		if json.Unmarshal(raw, &item) != nil {
+			return nil, errors.New("invalid channel entry")
+		}
+		switch {
+		case item.Entries != nil:
+			*counter++
+			children, err := flattenChannel(item.Entries, *counter, counter)
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, children...)
+		case videoID.MatchString(item.ID):
+			item.Group = group
+			entries = append(entries, item.Entry)
+		default:
+			return nil, errors.New("incomplete channel snapshot")
+		}
+	}
+	return entries, nil
+}
+
+// ResolveChannel resolves a submitted channel URL to stable identity and branding.
 func (y *YouTube) ResolveChannel(ctx context.Context, raw string) (Channel, error) {
 	u, e := config.ChannelURL(raw)
 	if e != nil {
@@ -348,24 +363,9 @@ type Candidate struct {
 	Combined bool
 }
 
+// Candidates ranks finite supported video and original-language audio combinations.
 func Candidates(m Metadata, maxHeight int) []Candidate {
-	audio := []Format{}
-	videos := []Format{}
-	combined := []Format{}
-	for _, f := range m.Formats {
-		if f.Protocol != "https" || !AllowedURL(f.URL) || f.Ext != "mp4" && f.Ext != "m4a" {
-			continue
-		}
-		if f.VCodec == "none" && (strings.HasPrefix(f.ACodec, "mp4a") || f.ACodec == "opus") {
-			audio = append(audio, f)
-		} else if f.Height > 0 && f.Height <= maxHeight && (strings.HasPrefix(f.VCodec, "avc") || strings.HasPrefix(f.VCodec, "av01") || strings.HasPrefix(f.VCodec, "vp09")) {
-			if f.ACodec == "none" {
-				videos = append(videos, f)
-			} else if strings.HasPrefix(f.ACodec, "mp4a") {
-				combined = append(combined, f)
-			}
-		}
-	}
+	audio, videos, combined := candidateFormats(m.Formats, maxHeight)
 	sort.SliceStable(audio, func(i, j int) bool {
 		a, b := audio[i], audio[j]
 		ao, bo := strings.Contains(strings.ToLower(a.Note), "original"), strings.Contains(strings.ToLower(b.Note), "original")
@@ -405,7 +405,30 @@ func Candidates(m Metadata, maxHeight int) []Candidate {
 	return result
 }
 
-// Only resolver-owned Google media hosts are permitted. Public channel input
+func candidateFormats(formats []Format, maxHeight int) (audio, videos, combined []Format) {
+	for _, f := range formats {
+		if f.Protocol != "https" || !AllowedURL(f.URL) || (f.Ext != "mp4" && f.Ext != "m4a") {
+			continue
+		}
+		switch {
+		case f.VCodec == "none" && (strings.HasPrefix(f.ACodec, "mp4a") || f.ACodec == "opus"):
+			audio = append(audio, f)
+		case f.Height > 0 && f.Height <= maxHeight && supportedVideoCodec(f.VCodec):
+			if f.ACodec == "none" {
+				videos = append(videos, f)
+			} else if strings.HasPrefix(f.ACodec, "mp4a") {
+				combined = append(combined, f)
+			}
+		}
+	}
+	return audio, videos, combined
+}
+
+func supportedVideoCodec(codec string) bool {
+	return strings.HasPrefix(codec, "avc") || strings.HasPrefix(codec, "av01") || strings.HasPrefix(codec, "vp09")
+}
+
+// AllowedURL permits only resolver-owned Google media and artwork hosts. Public channel input
 // never becomes an arbitrary HTTP or subprocess destination.
 func AllowedURL(raw string) bool {
 	u, e := url.Parse(raw)

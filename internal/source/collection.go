@@ -204,13 +204,13 @@ func (y *YouTube) command(ctx context.Context, args []string, single bool) (*exe
 	}
 	path, err := exec.LookPath(deno)
 	if err != nil {
-		return nil, errors.New("Deno is unavailable")
+		return nil, errors.New("deno is unavailable")
 	}
 	base := []string{"--ignore-config", "--no-warnings", "--no-progress", "--ignore-no-formats-error", "--no-remote-components", "--no-js-runtimes", "--js-runtimes", "deno:" + path, "--socket-timeout", "20", "--retries", "1", "--extractor-retries", "1", "--skip-download", "--abort-on-error"}
 	if single {
 		base = append(base, "--dump-single-json")
 	}
-	command := exec.CommandContext(ctx, binary, append(base, args...)...)
+	command := exec.CommandContext(ctx, binary, append(base, args...)...) //nolint:gosec // G204: The operator selects the pinned executable; source URLs are validated and passed as arguments without a shell.
 	command.WaitDelay = 5 * time.Second
 	return command, nil
 }
