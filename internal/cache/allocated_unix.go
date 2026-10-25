@@ -10,10 +10,18 @@ import (
 )
 
 func allocated(info os.FileInfo) int64 {
-	if st, ok := info.Sys().(*syscall.Stat_t); ok {
-		return max(st.Blocks*512, ((info.Size()+4095)/4096)*4096)
+	size := info.Size()
+	if size < 0 || size > math.MaxInt64-4095 {
+		return math.MaxInt64
 	}
-	return ((info.Size() + 4095) / 4096) * 4096
+	rounded := ((size + 4095) / 4096) * 4096
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		if stat.Blocks < 0 || stat.Blocks > math.MaxInt64/512 {
+			return math.MaxInt64
+		}
+		return max(stat.Blocks*512, rounded)
+	}
+	return rounded
 }
 
 func diskSpace(dir string) (free, total int64, err error) {

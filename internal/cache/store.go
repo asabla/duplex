@@ -3,10 +3,9 @@ package cache
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,59 +65,73 @@ func New(dir string, limit int64) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	success := false
-	defer func() {
-		if !success {
-			unlockDirectory(lock)
-		}
-	}()
-	s := &Store{dir: dir, limit: limit, items: make(map[string]*entry)}
-	s.space = func() (int64, int64, error) { return diskSpace(dir) }
-	s.lock = lock
-	files, err := os.ReadDir(dir)
+	store := &Store{dir: dir, limit: limit, items: make(map[string]*entry), lock: lock}
+	store.space = func() (int64, int64, error) { return diskSpace(dir) }
+	if err = store.recoverDirectory(); err != nil {
+		return nil, errors.Join(err, unlockDirectory(lock))
+	}
+	if err = store.reserve(0); err != nil {
+		return nil, errors.Join(err, unlockDirectory(lock))
+	}
+	return store, nil
+}
+
+func (s *Store) recoverDirectory() error {
+	files, err := os.ReadDir(s.dir)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	for _, f := range files {
-		if f.Name() == ".lock" {
+	for _, file := range files {
+		if file.Name() == ".lock" {
 			continue
 		}
-		if f.IsDir() {
-			return nil, errors.New("unexpected directory in media cache")
+		if err = s.recoverEntry(file); err != nil {
+			return err
 		}
-		path := filepath.Join(dir, f.Name())
-		if strings.HasPrefix(f.Name(), ".part-") {
-			if err := os.Remove(path); err != nil {
-				return nil, err
-			}
-			continue
-		}
-		parts := strings.Split(strings.TrimSuffix(f.Name(), ".chunk"), "-")
-		if !strings.HasSuffix(f.Name(), ".chunk") || len(parts) != 2 || len(parts[0]) != 64 || len(parts[1]) != 64 {
-			return nil, errors.New("unexpected file in media cache")
-		}
-		if _, err := hex.DecodeString(parts[0] + parts[1]); err != nil {
-			return nil, err
-		}
-		st, err := f.Info()
-		if err != nil {
-			return nil, err
-		}
-		if !st.Mode().IsRegular() {
-			return nil, errors.New("non-regular cache entry")
-		}
-		allocation := allocated(st)
-		if _, exists := s.items[parts[0]]; exists {
-			return nil, errors.New("duplicate cache identity")
-		}
-		s.items[parts[0]] = &entry{path: path, digest: parts[1], allocation: allocation, used: st.ModTime()}
-		s.used += allocation
 	}
-	if err := s.reserve(0); err != nil {
-		return nil, err
+	return nil
+}
+
+func (s *Store) recoverEntry(file os.DirEntry) error {
+	if file.IsDir() {
+		return errors.New("unexpected directory in media cache")
 	}
-	success = true
-	return s, nil
+	path := filepath.Join(s.dir, file.Name())
+	if strings.HasPrefix(file.Name(), ".part-") {
+		return os.Remove(path)
+	}
+	key, digest, err := chunkName(file.Name())
+	if err != nil {
+		return err
+	}
+	info, err := file.Info()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("non-regular cache entry")
+	}
+	if s.items[key] != nil {
+		return errors.New("duplicate cache identity")
+	}
+	allocation := allocated(info)
+	if allocation > math.MaxInt64-s.used {
+		return errors.New("cache allocation exceeds supported capacity")
+	}
+	s.items[key] = &entry{path: path, digest: digest, allocation: allocation, used: info.ModTime()}
+	s.used += allocation
+	return nil
+}
+
+func chunkName(name string) (key, digest string, err error) {
+	parts := strings.Split(strings.TrimSuffix(name, ".chunk"), "-")
+	if !strings.HasSuffix(name, ".chunk") || len(parts) != 2 || len(parts[0]) != 64 || len(parts[1]) != 64 {
+		return "", "", errors.New("unexpected file in media cache")
+	}
+	if _, err = hex.DecodeString(parts[0] + parts[1]); err != nil {
+		return "", "", err
+	}
+	return parts[0], parts[1], nil
 }
 
 // Close refuses to release cache ownership while a reader or writer is active.
@@ -162,7 +175,7 @@ func (s *Store) Resize(limit int64) error {
 
 // reserve is called with mu held, except during construction.
 func (s *Store) reserve(n int64) error {
-	for s.used+n > s.limit {
+	for s.used > s.limit || n > s.limit-s.used {
 		if err := s.evictOne(); err != nil {
 			return err
 		}
@@ -207,136 +220,12 @@ func (s *Store) reserveFetch(n int64) error {
 			}
 		}
 		headroom := min(int64(64<<20), max(int64(4096), total/100))
-		if s.used+n <= s.limit && free >= n+pending+headroom {
+		if s.used <= s.limit && n <= s.limit-s.used && pending <= math.MaxInt64-n-headroom && free >= n+pending+headroom {
 			s.used += n
 			return nil
 		}
 		if err = s.evictOne(); err != nil {
 			return err
 		}
-	}
-}
-
-// Get pins the entry until release. Concurrent callers share one fetch. The
-// fetch callback must honor ctx and must return exactly length bytes.
-func (s *Store) Get(ctx context.Context, identity string, offset int64, length int, fetch func(context.Context) ([]byte, error)) ([]byte, func(), error) {
-	if length <= 0 || offset < 0 {
-		return nil, nil, errors.New("invalid chunk bounds")
-	}
-	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", identity, offset, length)))
-	key := hex.EncodeToString(h[:])
-	for {
-		s.mu.Lock()
-		if s.closed {
-			s.mu.Unlock()
-			return nil, nil, errors.New("cache is closed")
-		}
-		if e, ok := s.items[key]; ok {
-			if e.done != nil {
-				done := e.done
-				s.mu.Unlock()
-				select {
-				case <-ctx.Done():
-					return nil, nil, ctx.Err()
-				case <-done:
-				}
-				if e.err != nil {
-					return nil, nil, e.err
-				}
-				continue
-			}
-			e.pins++
-			e.used = time.Now()
-			s.mu.Unlock()
-			data, err := os.ReadFile(e.path)
-			digest := sha256.Sum256(data)
-			if err != nil || len(data) != length || hex.EncodeToString(digest[:]) != e.digest {
-				s.mu.Lock()
-				e.pins--
-				if e.pins == 0 {
-					if er := os.Remove(e.path); er != nil && !os.IsNotExist(er) {
-						s.mu.Unlock()
-						return nil, nil, er
-					}
-					delete(s.items, key)
-					s.used -= e.allocation
-				}
-				s.mu.Unlock()
-				return nil, nil, errors.New("corrupt cache entry; retry after invalidation")
-			}
-			var once sync.Once
-			return data, func() { once.Do(func() { s.mu.Lock(); e.pins--; s.mu.Unlock() }) }, nil
-		}
-		reservation := int64((length+4095)/4096) * 4096
-		if err := s.reserveFetch(reservation); err != nil {
-			s.mu.Unlock()
-			return nil, nil, err
-		}
-		e := &entry{done: make(chan struct{}), allocation: reservation, pins: 1, used: time.Now()}
-		s.items[key] = e
-		s.mu.Unlock()
-		data, err := fetch(ctx)
-		if err == nil && len(data) != length {
-			err = errors.New("short upstream chunk")
-		}
-		var temp string
-		if err == nil {
-			f, er := os.CreateTemp(s.dir, ".part-")
-			err = er
-			if err == nil {
-				temp = f.Name()
-				_, err = f.Write(data)
-				if err == nil {
-					err = f.Sync()
-				}
-				if er = f.Close(); err == nil {
-					err = er
-				}
-				if err == nil {
-					var st os.FileInfo
-					st, err = os.Stat(temp)
-					if err == nil && allocated(st) > reservation {
-						err = errors.New("cache allocation exceeds reservation")
-					}
-				}
-			}
-		}
-		if err == nil {
-			digest := sha256.Sum256(data)
-			e.digest = hex.EncodeToString(digest[:])
-			e.path = filepath.Join(s.dir, key+"-"+e.digest+".chunk")
-			err = os.Rename(temp, e.path)
-			if err == nil {
-				d, er := os.Open(s.dir)
-				if er == nil {
-					er = d.Sync()
-					_ = d.Close()
-				}
-				err = er
-			}
-		}
-		if err != nil {
-			if temp != "" {
-				_ = os.Remove(temp)
-			}
-			if e.path != "" {
-				_ = os.Remove(e.path)
-			}
-		}
-		s.mu.Lock()
-		done := e.done
-		e.err = err
-		e.done = nil
-		if err != nil {
-			delete(s.items, key)
-			s.used -= reservation
-		}
-		close(done)
-		s.mu.Unlock()
-		if err != nil {
-			return nil, nil, err
-		}
-		var once sync.Once
-		return data, func() { once.Do(func() { s.mu.Lock(); e.pins--; s.mu.Unlock() }) }, nil
 	}
 }
