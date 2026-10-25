@@ -96,6 +96,7 @@ representation can no longer be read.
 
 - [Install](docs/installation.md): Linux, Colima, and Plex setup.
 - [Operate](docs/operations.md): policies, artwork, storage, backups, upgrades, and recovery.
+- [Administration panel](docs/administration.md): channels, filtering, preparation failures, policies, and artwork.
 - [Configuration](docs/configuration.md) and [JSON API](docs/api.md): field and endpoint references.
 - [Troubleshooting](docs/troubleshooting.md): symptoms and corrective actions.
 - [Architecture](docs/architecture.md): identities, selection, packaging, and cache rules.
