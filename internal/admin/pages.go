@@ -114,20 +114,7 @@ func (s *Server) pageData(r *http.Request, v *page) error {
 	case "/fragments/playlist-options":
 		return s.playlistOptions(r, v)
 	case "/", "/channels", "/fragments/channels":
-		q := r.URL.Query()
-		filter := catalog.ChannelFilter{Query: q.Get("q"), Failure: q.Get("failure"), Sort: q.Get("sort"), Page: number(r, "page"), PerPage: number(r, "per_page")}
-		result, err := s.App.Channels(r.Context(), filter, q.Get("policy"), q.Get("state"))
-		if err != nil {
-			return err
-		}
-		v.ChannelData = result.Items
-		v.Pagination = paginate(q, "/channels", "Channels", result.Total)
-		ids := make([]string, 0, len(result.Items))
-		for _, ch := range result.Items {
-			ids = append(ids, ch.ID)
-		}
-		v.ChannelTotals, err = s.App.ChannelCounts(r.Context(), ids)
-		return err
+		return s.channelListData(r, v)
 	case "/playlists":
 		result, err := s.App.Playlists(r.Context(), playlistFilter(r))
 		if err != nil {
@@ -233,4 +220,21 @@ func validReadPage(path string) bool {
 	default:
 		return false
 	}
+}
+
+func (s *Server) channelListData(r *http.Request, v *page) error {
+	q := r.URL.Query()
+	filter := catalog.ChannelFilter{Query: q.Get("q"), Failure: q.Get("failure"), Sort: q.Get("sort"), Page: number(r, "page"), PerPage: number(r, "per_page")}
+	result, err := s.App.Channels(r.Context(), filter, q.Get("policy"), q.Get("state"))
+	if err != nil {
+		return err
+	}
+	v.ChannelData = result.Items
+	v.Pagination = paginate(q, "/channels", "Channels", result.Total)
+	ids := make([]string, 0, len(result.Items))
+	for _, ch := range result.Items {
+		ids = append(ids, ch.ID)
+	}
+	v.ChannelTotals, err = s.App.ChannelCounts(r.Context(), ids)
+	return err
 }

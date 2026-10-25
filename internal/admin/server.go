@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -10,14 +9,10 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
-	"strconv"
 	"strings"
-	"time"
 
 	"duplex/internal/app"
-	"duplex/internal/catalog"
 	"duplex/internal/config"
 )
 
@@ -30,73 +25,10 @@ type Server struct {
 	Auth      *Auth
 	templates *template.Template
 }
-type page struct {
-	Page                     string
-	CSRF                     string
-	Error                    string
-	Notice                   string
-	ReturnURL                string
-	Status                   app.Status
-	YAML                     string
-	Revision                 string
-	Query                    string
-	Total, Matches           int
-	Pagination               pagination
-	ChannelRows              []config.Channel
-	ChannelData              []catalog.Channel
-	ChannelSettings          map[string]config.Channel
-	PlaylistRows             []catalog.PlaylistRow
-	Counts                   catalog.Counts
-	Filters                  url.Values
-	Artwork                  app.ArtworkPreview
-	SeasonRows               []catalog.ArtworkSeason
-	SeasonPagination         pagination
-	CurrentSeasonOnPage      bool
-	PlaylistOptions          []catalog.PlaylistRow
-	PlaylistFallback         string
-	Channel                  config.Channel
-	ChannelInfo              catalog.Channel
-	ChannelTotals            map[string]catalog.Counts
-	CurrentURL, BackURL, Tab string
-	VideoBackURL             string
-	OOB                      bool
-	ErrorFieldID             string
-	Video                    catalog.Video
-}
 
 // New parses the embedded templates and binds the shared application services.
 func New(a *app.App, auth *Auth) (*Server, error) {
-	t, e := template.New("duplex").Funcs(template.FuncMap{"states": func(values ...string) []string { return values }, "heights": func(values ...int) []int { return values }, "sortlink": sortLink, "sortaria": sortARIA, "playback": playback, "stage": stageLabel, "channelLink": channelLink, "gib": func(n int64) string { return strconv.FormatFloat(float64(n)/(1<<30), 'f', 2, 64) }, "day": func(n int64) string {
-		if n == 0 {
-			return "Unknown"
-		}
-		return time.Unix(n, 0).UTC().Format("2006-01-02")
-	}, "when": func(n int64) string {
-		if n == 0 {
-			return "Never"
-		}
-		return time.Unix(n, 0).UTC().Format("2006-01-02 15:04 MST")
-	}, "height": func(n int) string {
-		if n == 0 {
-			return "Unavailable"
-		}
-		return strconv.Itoa(n) + "p"
-	}, "age": func(n int64) string {
-		if n == 0 {
-			return "Never"
-		}
-		elapsed := time.Since(time.Unix(n, 0))
-		if elapsed < time.Minute {
-			return "Just now"
-		}
-		if elapsed < time.Hour {
-			return strconv.Itoa(int(elapsed.Minutes())) + " minutes ago"
-		}
-		if elapsed < 24*time.Hour {
-			return strconv.Itoa(int(elapsed.Hours())) + " hours ago"
-		}
-		return strconv.Itoa(int(elapsed.Hours()/24)) + " days ago"
-	}, "inc": func(n int) int { return n + 1 }}).ParseFS(content, "templates/*.html")
+	t, e := template.New("duplex").Funcs(templateFunctions()).ParseFS(content, "templates/*.html")
 	if e != nil {
 		return nil, e
 	}
@@ -223,19 +155,6 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) render(w http.ResponseWriter, name string, v any) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	var rendered bytes.Buffer
-	if err := s.templates.ExecuteTemplate(&rendered, name, v); err != nil {
-		slog.Error("page rendering failed")
-		http.Error(w, "page unavailable", http.StatusInternalServerError)
-		return
-	}
-	if _, err := rendered.WriteTo(w); err != nil {
-		slog.Error("page response write failed")
-	}
-}
-
 func reply(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -330,15 +249,6 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, http.StatusMethodNotAllowed, map[string]string{"error": "unsupported endpoint or method"})
-}
-
-func (p page) ChannelName(id string) string {
-	for _, ch := range p.Status.Channels {
-		if ch.ID == id && ch.Title != "" {
-			return ch.Title
-		}
-	}
-	return id
 }
 
 func writeText(w http.ResponseWriter, text string) {
