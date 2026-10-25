@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+var errFetchInterrupted = errors.New("shared cache fetch interrupted")
+
 // Get reserves unfinished writes, deduplicates fetches, and pins published data.
 // A failed cleanup remains accounted for until eviction or a later retry removes it.
 func (s *Store) Get(ctx context.Context, identity string, offset int64, length int, fetch func(context.Context) ([]byte, error)) ([]byte, func(), error) {
@@ -23,6 +25,7 @@ func (s *Store) Get(ctx context.Context, identity string, offset int64, length i
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", identity, offset, length)))
 	key := hex.EncodeToString(hash[:])
 	reservation := ((int64(length) + 4095) / 4096) * 4096
+	interruptions := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
@@ -32,8 +35,12 @@ func (s *Store) Get(ctx context.Context, identity string, offset int64, length i
 			return nil, nil, err
 		}
 		if done != nil {
-			if err = s.waitChunk(ctx, item, done); err != nil {
-				return nil, nil, err
+			retry, failure := s.waitChunk(ctx, item, done, interruptions)
+			if failure != nil {
+				return nil, nil, failure
+			}
+			if retry {
+				interruptions++
 			}
 			continue
 		}
@@ -79,15 +86,22 @@ func (s *Store) acquireChunk(key string, reservation int64) (*entry, bool, <-cha
 	return item, true, nil, nil
 }
 
-func (s *Store) waitChunk(ctx context.Context, item *entry, done <-chan struct{}) error {
+// waitChunk permits an independent reader to replace an interrupted fetch.
+// Only cancellation of the fetch owner's context qualifies; source failures
+// remain real errors. Three replacements bound retries for four viewers.
+func (s *Store) waitChunk(ctx context.Context, item *entry, done <-chan struct{}, interruptions int) (bool, error) {
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
+		return false, ctx.Err()
 	case <-done:
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	return item.err
+	failure := item.err
+	s.mu.Unlock()
+	if errors.Is(failure, errFetchInterrupted) && interruptions < 3 && ctx.Err() == nil {
+		return true, nil
+	}
+	return false, failure
 }
 
 func (s *Store) releaseChunk(item *entry) func() {
@@ -139,7 +153,11 @@ func (s *Store) fetchChunk(ctx context.Context, key string, item *entry, length 
 		retained, cleanupErr = cleanupChunk(temp, item.path)
 		err = errors.Join(err, cleanupErr)
 	}
-	s.finishChunk(key, item, err, retained)
+	sharedFailure := err
+	if err != nil && ctx.Err() != nil {
+		sharedFailure = errors.Join(err, errFetchInterrupted)
+	}
+	s.finishChunk(key, item, sharedFailure, retained)
 	if err != nil {
 		return nil, nil, err
 	}
