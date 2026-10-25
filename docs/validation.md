@@ -1,6 +1,13 @@
 # duplex household acceptance register
 
-Recorded 2026-10-25. The application is implemented. The media and mount gates
+The cleanup branch is not release-qualified or deployed. The results below
+describe the earlier household build. Current playlist tests found watch-state
+transfer during renumbering. Stable paths, file hints, and unlocked pre-scan
+index updates passed both controlled reorder directions, but production,
+pagination, removal, resume, and restart checks remain open. See the
+[playlist investigation](evidence/playlist-reorder-investigation.json).
+
+Recorded 2026-10-25 for the earlier build. Its media and mount gates
 passed for the profiles below. Acceptance applies to this private household
 installation and Plex Web. It does not establish all-device compatibility,
 four simultaneous 4K conversions, or public distribution readiness.
