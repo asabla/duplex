@@ -413,6 +413,9 @@ func AllowedURL(raw string) bool {
 		return false
 	}
 	h := strings.ToLower(u.Hostname())
+	if h == "yt3.googleusercontent.com" {
+		return true
+	}
 	for _, suffix := range []string{"googlevideo.com", "ytimg.com", "ggpht.com", "youtube.com"} {
 		if h == suffix || strings.HasSuffix(h, "."+suffix) {
 			return true

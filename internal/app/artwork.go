@@ -271,7 +271,7 @@ func optionalPicture(ctx context.Context, raw string) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	return artwork.Decode(data)
+	return artwork.DecodeSource(data)
 }
 
 func (a *App) renderPoster(channel, scope string, input artwork.Input, sourceError error) (bool, error) {

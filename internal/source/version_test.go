@@ -48,3 +48,16 @@ func TestSignedAssetVersionDoesNotDependOnLease(t *testing.T) {
 		}
 	}
 }
+
+func TestChannelBrandingHostIsSpecific(t *testing.T) {
+	for _, raw := range []string{"https://yt3.googleusercontent.com/avatar", "https://yt3.ggpht.com/avatar"} {
+		if !AllowedURL(raw) {
+			t.Fatal("public branding rejected", raw)
+		}
+	}
+	for _, raw := range []string{"https://googleusercontent.com/avatar", "https://drive.googleusercontent.com/private", "https://yt3.googleusercontent.com.evil.test/avatar"} {
+		if AllowedURL(raw) {
+			t.Fatal("unrelated host allowed", raw)
+		}
+	}
+}

@@ -25,6 +25,7 @@ import (
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
+	_ "golang.org/x/image/webp" // YouTube can return WebP branding; uploads remain JPEG/PNG only.
 )
 
 const (
@@ -43,12 +44,17 @@ type Input struct {
 }
 
 // Decode validates dimensions and format before allocating decoded pixels.
-func Decode(data []byte) (image.Image, error) {
+func Decode(data []byte) (image.Image, error) { return decodeImage(data, false) }
+
+// DecodeSource also accepts WebP branding while retaining the same allocation limits.
+func DecodeSource(data []byte) (image.Image, error) { return decodeImage(data, true) }
+
+func decodeImage(data []byte, source bool) (image.Image, error) {
 	if len(data) == 0 || len(data) > MaxUpload {
 		return nil, ErrImage
 	}
 	info, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || (format != "jpeg" && format != "png") || info.Width < 1 || info.Height < 1 || int64(info.Width)*int64(info.Height) > MaxPixels {
+	if err != nil || (format != "jpeg" && format != "png" && !(source && format == "webp")) || info.Width < 1 || info.Height < 1 || int64(info.Width)*int64(info.Height) > MaxPixels {
 		return nil, ErrImage
 	}
 	result, _, err := image.Decode(bytes.NewReader(data))
@@ -80,7 +86,11 @@ func Render(input Input) ([]byte, error) {
 	canvas := image.NewRGBA(image.Rect(0, 0, Width, Height))
 	fill(canvas, canvas.Bounds(), color.RGBA{20, 24, 30, 255})
 	seed := sha256.Sum256([]byte(input.Channel))
-	fill(canvas, image.Rect(0, 0, Width, 580), color.RGBA{32 + seed[0]/4, 32 + seed[1]/4, 32 + seed[2]/4, 255})
+	headerColor := color.RGBA{32 + seed[0]/4, 32 + seed[1]/4, 32 + seed[2]/4, 255}
+	if input.Avatar != nil || input.Banner != nil || input.Picture != nil {
+		headerColor = color.RGBA{27, 32, 39, 255}
+	}
+	fill(canvas, image.Rect(0, 0, Width, 580), headerColor)
 	picture := input.Picture
 	if picture == nil {
 		picture = input.Banner
@@ -88,7 +98,9 @@ func Render(input Input) ([]byte, error) {
 	if picture != nil {
 		contain(canvas, image.Rect(0, 0, Width, 580), picture)
 	}
-	if input.Avatar != nil {
+	if input.Avatar != nil && picture == nil {
+		contain(canvas, image.Rect(180, 40, 820, 680), input.Avatar)
+	} else if input.Avatar != nil {
 		fill(canvas, image.Rect(48, 464, 296, 712), color.RGBA{240, 242, 245, 255})
 		contain(canvas, image.Rect(60, 476, 284, 700), input.Avatar)
 	}
