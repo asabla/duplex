@@ -15,6 +15,7 @@ import (
 
 	"duplex/internal/catalog"
 	"duplex/internal/config"
+	"duplex/internal/library"
 	"duplex/internal/source"
 )
 
@@ -93,10 +94,18 @@ func TestCatalogueFilesystemUsesDurableSizesAndStableHandles(t *testing.T) {
 	if err != nil || show.Size() == 0 {
 		t.Fatal(show, err)
 	}
-	for _, name := range []string{"../secret", "/absolute", "Channel-missing", "Channel-" + testOwner + "/Season 2026/invalid.mp4", base + ".unknown", base + ".mp4/child"} {
+	for _, name := range []string{"../secret", "/absolute", "Channel-missing", "Channel-missing/Season 2026", "Channel-" + testOwner + "/Season 1", "Channel-" + testOwner + "/Season 2025", "Channel-" + testOwner + "/Season 2026/invalid.mp4", base + ".unknown", base + ".mp4/child"} {
 		if _, err = provider.Stat(t.Context(), name); !errors.Is(err, fs.ErrNotExist) {
 			t.Fatal(name, err)
 		}
+		if _, err = provider.ReadDir(t.Context(), name, "", 1); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal("listed invalid directory", name, err)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err = provider.ReadDir(ctx, "Channel-"+testOwner+"/Season 2026", "", 1); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
 	}
 	if _, _, err = provider.Open(t.Context(), "Channel-"+testOwner); err == nil {
 		t.Fatal("opened a directory as media")
@@ -111,11 +120,26 @@ func TestCatalogueFilesystemLexicalPagingAcrossLargeEpisodeNumbers(t *testing.T)
 	for i, number := range []int{1000, 9999, 10000, 10001} {
 		projectionVideo(t, a, fmt.Sprintf("video%06d", i), number)
 	}
+	assets := []library.Entry{}
+	for _, suffix := range []string{".jpg", ".en.srt"} {
+		entry, err := a.saveAsset("video000002", suffix, []byte("local sidecar fixture"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		assets = append(assets, entry)
+	}
+	if err := a.saveAssetManifest("video000002", assets); err != nil {
+		t.Fatal(err)
+	}
 	provider := catalogueFS{app: a}
 	directory := "Channel-" + testOwner + "/Season 2026"
 	var expected []string
 	for _, number := range []int{1000, 9999, 10000, 10001} {
-		for _, suffix := range []string{".mp4", ".nfo"} {
+		suffixes := []string{".mp4", ".nfo"}
+		if number == 10000 {
+			suffixes = append(suffixes, ".jpg", ".en.srt")
+		}
+		for _, suffix := range suffixes {
 			expected = append(expected, fmt.Sprintf("Channel-%s - S2026E%04d%s", testOwner, number, suffix))
 		}
 	}
@@ -194,6 +218,11 @@ func TestCatalogueFilesystemPlaylistPoliciesAndIndependentOccurrenceIDs(t *testi
 	}
 	if _, err := provider.Stat(t.Context(), path.Join("Channel-"+testOwner, "Season 0002")); err != nil {
 		t.Fatal(err)
+	}
+	for _, after := range []string{"", "Channel-" + testOwner + " - S0001E9999.nfo"} {
+		if _, err := provider.ReadDir(t.Context(), path.Join("Channel-"+testOwner, "Season 0001"), after, 1); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal("skipped playlist directory visible", after, err)
+		}
 	}
 	show, _, err := provider.Open(t.Context(), "Channel-"+testOwner+"/tvshow.nfo")
 	if err != nil {

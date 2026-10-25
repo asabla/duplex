@@ -58,6 +58,45 @@ func BenchmarkCatalogueSummaryLatest50(b *testing.B) {
 	}
 }
 
+func BenchmarkCatalogueSelectedPages(b *testing.B) {
+	const count = 10000
+	for _, scenario := range []string{"latest50", "shared_playlists"} {
+		b.Run(scenario, func(b *testing.B) {
+			app := benchmarkReadApp(b, count)
+			if _, err := app.Catalog.DB.ExecContext(b.Context(), `UPDATE videos SET published=published+number`); err != nil {
+				b.Fatal(err)
+			}
+			selected := count
+			if scenario == "latest50" {
+				selected = 50
+				if _, err := app.Catalog.DB.ExecContext(b.Context(), `UPDATE videos SET selected=(number>9950)`); err != nil {
+					b.Fatal(err)
+				}
+			} else {
+				for _, id := range []string{"PLbenchmark001", "PLbenchmark002"} {
+					if err := app.Catalog.SavePlaylist(b.Context(), catalog.Playlist{ID: id, ChannelID: testOwner, Title: id}); err != nil {
+						b.Fatal(err)
+					}
+					if _, err := app.Catalog.DB.ExecContext(b.Context(), `INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode,file_episode,updated) SELECT ?,id,number,1,number,number,updated FROM videos`, id); err != nil {
+						b.Fatal(err)
+					}
+				}
+			}
+			for _, pageNumber := range []int{1, selected / 25} {
+				b.Run(fmt.Sprint(pageNumber), func(b *testing.B) {
+					b.ReportAllocs()
+					for b.Loop() {
+						page, err := app.Videos(b.Context(), catalog.VideoFilter{Inclusion: "selected", PerPage: 25, Page: pageNumber})
+						if err != nil || page.Total != selected || len(page.Items) != 25 || page.Page != pageNumber {
+							b.Fatal(page.Total, len(page.Items), page.Page, err)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
 func benchmarkReadApp(b *testing.B, count int) *App {
 	b.Helper()
 	app := benchmarkCatalogue(b, count)

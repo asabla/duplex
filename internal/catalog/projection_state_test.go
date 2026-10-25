@@ -97,8 +97,8 @@ func TestProjectionPagesUseVisibilityAndExactNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	visible := Visibility{Channels: []string{"uploader"}}
-	page, err := s.ProjectionFilesPage(t.Context(), visible, "uploader", 2026, "", 1)
-	if err != nil || len(page) != 1 || page[0].Size != 4096 {
+	page, err := s.ProjectionEntries(t.Context(), visible, "uploader", 2026, "", 1)
+	if err != nil || len(page) != 1 || page[0].VideoID != "a" || page[0].FileNumber != 1 {
 		t.Fatal(page, err)
 	}
 	seasons, err := s.ProjectionSeasons(t.Context(), visible, "uploader", "", 1)
@@ -112,6 +112,16 @@ func TestProjectionPagesUseVisibilityAndExactNames(t *testing.T) {
 	if _, err = s.ProjectionChanged(t.Context(), Visibility{}, "uploader"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("unfollowed projection visible", err)
 	}
+	for _, tc := range []struct {
+		visibility Visibility
+		season     int
+		want       bool
+	}{{visible, 2026, true}, {Visibility{}, 2026, false}, {visible, 2025, false}} {
+		exists, err := s.HasProjectionSeason(t.Context(), tc.visibility, "uploader", tc.season)
+		if err != nil || exists != tc.want {
+			t.Fatal(tc, exists, err)
+		}
+	}
 	for _, scope := range []string{"year:2026", "playlist:absent"} {
 		exists, err := s.HasSeason(t.Context(), "uploader", scope)
 		if err != nil || exists != (scope == "year:2026") {
@@ -122,7 +132,7 @@ func TestProjectionPagesUseVisibilityAndExactNames(t *testing.T) {
 		if _, err = s.ProjectionPage(t.Context(), visible, "uploader", 2026, 0, limit); err == nil {
 			t.Fatal("unbounded episode page")
 		}
-		if _, err = s.ProjectionFilesPage(t.Context(), visible, "uploader", 2026, "", limit); err == nil {
+		if _, err = s.ProjectionEntries(t.Context(), visible, "uploader", 2026, "", limit); err == nil {
 			t.Fatal("unbounded file page")
 		}
 		if _, err = s.ProjectionSeasons(t.Context(), visible, "uploader", "", limit); err == nil {

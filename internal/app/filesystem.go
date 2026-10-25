@@ -245,18 +245,49 @@ func (p catalogueFS) showMetadata(ctx context.Context, ch config.Channel, visibl
 	return entry, err
 }
 
+func (p catalogueFS) checkDirectory(ctx context.Context, name string) error {
+	if !cleanLibraryPath(name) {
+		return fs.ErrNotExist
+	}
+	parts := strings.Split(name, "/")
+	if len(parts) == 2 && strings.HasPrefix(parts[1], "Season ") {
+		ch, err := p.channel(parts[0])
+		if err != nil {
+			return err
+		}
+		season, err := seasonNumber(parts[1])
+		if err != nil {
+			return err
+		}
+		visible := visibility(config.Config{Channels: []config.Channel{ch}})
+		exists, err := p.app.Catalog.HasProjectionSeason(ctx, visible, ch.ID, season)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fs.ErrNotExist
+		}
+		return nil
+	}
+	info, err := p.Stat(ctx, name)
+	if err != nil {
+		return err
+	}
+	if !info.Directory {
+		return fs.ErrInvalid
+	}
+	return nil
+}
+
 func (p catalogueFS) ReadDir(ctx context.Context, name, after string, limit int) ([]library.Child, error) {
 	if limit < 1 || limit > 256 {
 		return nil, fs.ErrInvalid
 	}
-	info, err := p.Stat(ctx, name)
-	if err != nil {
+	if err := p.checkDirectory(ctx, name); err != nil {
 		return nil, err
 	}
-	if !info.Directory {
-		return nil, fs.ErrInvalid
-	}
 	var children []library.Child
+	var err error
 	if name == "" {
 		children, err = p.rootChildren(ctx, after)
 	} else {
@@ -353,22 +384,16 @@ func (p catalogueFS) episodeChildren(ctx context.Context, ch config.Channel, vis
 		}
 		base = path.Base(library.EpisodeBase(ch.ID, season, number))
 	}
-	episodes, err := p.app.Catalog.ProjectionFilesPage(ctx, visible, ch.ID, season, base, min(256, limit+1))
+	episodes, err := p.app.Catalog.ProjectionEntries(ctx, visible, ch.ID, season, base, min(256, limit+1))
 	if err != nil {
 		return nil, err
 	}
 	children := []library.Child{}
-	if after < ".plexmatch" {
-		selected, err := p.app.Catalog.ProjectionSeasonAt(ctx, visible, ch.ID, season)
-		if err != nil {
-			return nil, projectionError(err)
-		}
-		if strings.HasPrefix(selected.Scope, "playlist:") {
-			children = append(children, library.Child{Name: ".plexmatch"})
-		}
+	if after < ".plexmatch" && len(episodes) > 0 && episodes[0].PlaylistID != "" {
+		children = append(children, library.Child{Name: ".plexmatch"})
 	}
 	for _, ep := range episodes {
-		name := path.Base(library.EpisodeBase(ep.OwnerID, ep.Season, ep.FileNumber))
+		name := path.Base(library.EpisodeBase(ch.ID, season, ep.FileNumber))
 		suffixes := []string{".mp4", ".nfo"}
 		for _, asset := range p.app.loadAssets(ep.VideoID) {
 			suffixes = append(suffixes, asset.Path)

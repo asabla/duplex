@@ -42,7 +42,7 @@ improvement; it does not establish a service memory reduction.
 An exploratory change from `EXISTS` to `IN` for the selected-video filter
 increased its 10,000-row median from 25.24 to 29.24 ms. It was removed.
 
-### Remaining measured work
+### Work identified in this profile
 
 - A page of 128 filesystem entries took a median 3.123 ms at 1,000 recordings
   and 21.776 ms at 10,000. Both allocated about 275 KB. The query plan sorts
@@ -79,6 +79,61 @@ go test ./internal/app -run '^$' \
 The [structured results](evidence/catalogue-profile.json) retain sample ranges,
 allocation counts, fixture scope, and the rejected experiment. Raw local
 profiles and logs are in `.cache/profiling-20261025/` and are not committed.
+
+## Directory read follow-up, 2026-10-25
+
+The baseline is `bb897d5`, which includes the summary improvement above.
+The comparison uses the same machine, Go version, GOMAXPROCS, and three
+one-second samples per workload. Isolated source copies exclude concurrent
+UX edits. Both copies use the same benchmark source. Before, candidate, and
+final benchmarks run in sequence without profiles.
+
+| Recordings | Directory page before | Directory page after | Time reduction | Bytes before | Bytes after |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 2.951 ms | 1.804 ms | 38.9% | 274,789 | 185,711 |
+| 10,000 | 20.769 ms | 11.214 ms | 46.0% | 274,747 | 185,670 |
+
+Each page contains 128 directory entries. Allocation fell by 32.4%, from 4,523
+to 2,730 allocations per page. This measures directory enumeration in a single
+synthetic year season on macOS, not Plex scanning or playback.
+
+Directory listing now loads only the video ID, playlist ID, and stable file
+number. It checks that the season is visible with `EXISTS`, which can stop at
+the first match. The first page uses its returned playlist identity to include
+`.plexmatch`, instead of reading the season again. File information requests
+still use the timestamp aggregate. Filename comparison and visibility rules
+remain the same.
+
+Tests cover sidecars at the episode 9,999 boundary, one-entry pages, playlist
+hints after reorder, skipped seasons with an end cursor, invalid paths, and
+cancellation. Directory latency with many playlists, optional assets, or long
+descriptions still needs measurement. The formatted filename sort remains a
+candidate for an indexed lexical key.
+
+### Rejected video-page changes
+
+A direct join to selected video IDs reduced the uploads-only page time from
+about 24.7 to 17.1 ms in the first experiment. A new shared-playlist benchmark
+found a regression: the last page median increased from 47.64 to 53.42 ms.
+That fixture has 10,000 selected uploads also selected through two playlists,
+with distinct publication times. The join change was removed. The benchmark
+also retains first and last pages for a sparse Latest 50 selection.
+
+Forcing the selected CTE to be materialized also stayed out of production.
+One exploratory sample increased the join candidate's uploads-only video page
+from about 17.1 to 21.0 ms. This was not a repeated comparison.
+
+Run all retained catalogue workloads with:
+
+```sh
+go test ./internal/app -run '^$' \
+  -bench 'BenchmarkCatalogueReads|BenchmarkCatalogueSummaryLatest50|BenchmarkCatalogueSelectedPages|BenchmarkCatalogueFilesystemPage' \
+  -benchmem -count=3 -benchtime=1s
+```
+
+The [follow-up results](evidence/catalogue-profile-followup.json) include sample
+ranges, source hashes, and both rejected candidates. Private source copies and
+logs are in `.cache/profiling-followup/`. No running container was changed.
 
 ## Baseline
 

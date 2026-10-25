@@ -3,8 +3,59 @@ package catalog
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"testing"
 )
+
+func TestSelectedPagesFilterSharedVideosBeforePagination(t *testing.T) {
+	s := collectionStore(t)
+	members := []testMember{}
+	want := []string{}
+	for i := range 90 {
+		id := fmt.Sprintf("video%03d", i)
+		title := "Drop " + id
+		if i%2 == 0 {
+			title = "Keep " + id
+			if i%3 != 0 {
+				want = append(want, id)
+			}
+		}
+		preparedVideo(t, s, id, title)
+		if i%2 == 0 {
+			if err := s.ExposePrepared(t.Context(), id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if i%3 == 0 {
+			if _, err := s.DB.ExecContext(t.Context(), `UPDATE videos SET preparation='failed' WHERE id=?`, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		members = append(members, testMember{id, i + 1})
+	}
+	for _, id := range []string{"PLone", "PLtwo"} {
+		if err := s.SavePlaylist(t.Context(), Playlist{ID: id, ChannelID: "owner", Title: id}); err != nil {
+			t.Fatal(err)
+		}
+		if err := reconcileMembers(t.Context(), t, s, id, members, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	slices.Reverse(want)
+	page, err := s.VideosPage(t.Context(), VideoFilter{
+		Visibility: Visibility{Channels: []string{"uploader"}, PlaylistChannels: []string{"owner"}},
+		Inclusion:  "selected", Channel: "owner", Playlist: "PLone", Query: "KEEP", Preparation: "ready", Lifecycle: "recorded", Sort: "title_desc", PerPage: 25, Page: 2,
+	})
+	if err != nil || page.Total != len(want) || page.Page != 2 || len(page.Items) != len(want)-25 {
+		t.Fatal(page.Total, page.Page, len(page.Items), want, err)
+	}
+	for i, row := range page.Items {
+		if row.ID != want[i+25] || !row.Exposed {
+			t.Fatal(i, row.ID, row.Exposed, want[i+25])
+		}
+	}
+}
 
 func TestPolicyFilteredPlaylistPages(t *testing.T) {
 	s := collectionStore(t)

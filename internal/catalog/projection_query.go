@@ -97,18 +97,45 @@ func (s *Store) ProjectionChanged(ctx context.Context, v Visibility, owner strin
 	return changed.Int64, err
 }
 
-// ProjectionFilesPage uses the exact mounted base name for lexical keyset paging.
-func (s *Store) ProjectionFilesPage(ctx context.Context, v Visibility, owner string, season int, after string, limit int) ([]Episode, error) {
+// ProjectionEntry contains only the identities needed to list episode files.
+type ProjectionEntry struct {
+	VideoID    string
+	PlaylistID string
+	FileNumber int
+}
+
+// HasProjectionSeason checks directory visibility without reading timestamps or
+// aggregating every episode in the season.
+func (s *Store) HasProjectionSeason(ctx context.Context, v Visibility, owner string, season int) (bool, error) {
+	cte, args := projectionCTE(v)
+	args = append(args, owner, season)
+	var exists bool
+	err := s.DB.QueryRowContext(ctx, cte+`SELECT EXISTS(SELECT 1 FROM episodes WHERE owner=? AND season=?)`, args...).Scan(&exists)
+	return exists, err
+}
+
+// ProjectionEntries uses exact mounted base names for lexical keyset paging
+// without loading episode metadata.
+func (s *Store) ProjectionEntries(ctx context.Context, v Visibility, owner string, season int, after string, limit int) ([]ProjectionEntry, error) {
 	if limit < 1 || limit > 256 {
 		return nil, errors.New("invalid projection page size")
 	}
 	cte, args := projectionCTE(v)
 	args = append(args, owner, season, after, limit)
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND printf('Channel-%s - S%04dE%04d',owner,season,file_number)>=? ORDER BY printf('Channel-%s - S%04dE%04d',owner,season,file_number),video LIMIT ?`, args...)
+	rows, err := s.DB.QueryContext(ctx, cte+`SELECT video,playlist,file_number FROM episodes WHERE owner=? AND season=? AND printf('Channel-%s - S%04dE%04d',owner,season,file_number)>=? ORDER BY printf('Channel-%s - S%04dE%04d',owner,season,file_number),video LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
-	return readProjectionRows(rows)
+	defer closeRows(rows)
+	result := []ProjectionEntry{}
+	for rows.Next() {
+		var entry ProjectionEntry
+		if err := rows.Scan(&entry.VideoID, &entry.PlaylistID, &entry.FileNumber); err != nil {
+			return nil, err
+		}
+		result = append(result, entry)
+	}
+	return result, rows.Err()
 }
 
 // ProjectionPosters pages season artwork names without loading all seasons.
