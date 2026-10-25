@@ -36,39 +36,51 @@ type Input struct {
 func Render(input Input) ([]byte, error) {
 	canvas := image.NewRGBA(image.Rect(0, 0, Width, Height))
 	fill(canvas, canvas.Bounds(), color.RGBA{20, 24, 30, 255})
+
 	seed := sha256.Sum256([]byte(input.Channel))
+
 	headerColor := color.RGBA{32 + seed[0]/4, 32 + seed[1]/4, 32 + seed[2]/4, 255}
 	if input.Avatar != nil || input.Banner != nil || input.Picture != nil {
 		headerColor = color.RGBA{27, 32, 39, 255}
 	}
+
 	fill(canvas, image.Rect(0, 0, Width, 580), headerColor)
+
 	picture := input.Picture
 	if picture == nil {
 		picture = input.Banner
 	}
+
 	if picture != nil {
 		contain(canvas, image.Rect(0, 0, Width, 580), picture)
 	}
+
 	if input.Avatar != nil && picture == nil {
 		contain(canvas, image.Rect(180, 40, 820, 680), input.Avatar)
 	} else if input.Avatar != nil {
 		fill(canvas, image.Rect(48, 464, 296, 712), color.RGBA{240, 242, 245, 255})
 		contain(canvas, image.Rect(60, 476, 284, 700), input.Avatar)
 	}
+
 	identity := input.Channel
 	if input.Label == "CHANNEL" {
 		identity = "YOUTUBE CHANNEL"
 	}
+
 	if err := text(canvas, identity, image.Pt(56, 785), 40, 2, false); err != nil {
 		return nil, err
 	}
+
 	if err := text(canvas, input.Title, image.Pt(56, 920), 68, 4, true); err != nil {
 		return nil, err
 	}
+
 	fill(canvas, image.Rect(56, 1340, 944, 1343), color.RGBA{115, 125, 138, 255})
+
 	if err := text(canvas, input.Label, image.Pt(56, 1412), 32, 1, false); err != nil {
 		return nil, err
 	}
+
 	return encode(canvas)
 }
 
@@ -81,12 +93,14 @@ func contain(dst draw.Image, box image.Rectangle, src image.Image) {
 	if b.Empty() {
 		return
 	}
+
 	width, height := box.Dx(), box.Dy()
 	if int64(b.Dx())*int64(height) > int64(b.Dy())*int64(width) {
 		height = max(1, int(int64(b.Dy())*int64(width)/int64(b.Dx())))
 	} else {
 		width = max(1, int(int64(b.Dx())*int64(height)/int64(b.Dy())))
 	}
+
 	start := image.Pt(box.Min.X+(box.Dx()-width)/2, box.Min.Y+(box.Dy()-height)/2)
 	xdraw.CatmullRom.Scale(dst, image.Rectangle{Min: start, Max: start.Add(image.Pt(width, height))}, src, b, draw.Over, nil)
 }
@@ -100,19 +114,24 @@ func Fingerprint(input Input) (string, error) {
 			return "", err
 		}
 	}
+
 	for _, picture := range []image.Image{input.Avatar, input.Banner, input.Picture} {
 		if picture == nil {
 			if _, err := hash.Write([]byte{0}); err != nil {
 				return "", err
 			}
+
 			continue
 		}
+
 		if _, err := hash.Write([]byte{1}); err != nil {
 			return "", err
 		}
+
 		if err := jpeg.Encode(hash, picture, &jpeg.Options{Quality: 90}); err != nil {
 			return "", err
 		}
 	}
+
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }

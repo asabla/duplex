@@ -26,47 +26,60 @@ func serve(ctx context.Context, args []string) (result error) {
 	profileKind := f.String("profile-kind", "cpu", "one of cpu, allocs, block, or trace")
 	profileDuration := f.Duration("profile-duration", time.Minute, "profile capture duration")
 	yt := f.String("yt-dlp", "yt-dlp", "pinned yt-dlp executable")
+
 	deno := f.String("deno", "deno", "pinned Deno executable")
 	if e := f.Parse(args); e != nil {
 		return e
 	}
+
 	manager, e := config.Open(*file)
 	if e != nil {
 		return e
 	}
+
 	c := manager.Snapshot().Config
+
 	auth, e := admin.OpenAuth(filepath.Join(c.DataDir, "secrets", "admin.json"))
 	if e != nil {
 		return errors.New("cannot load administrator credentials; run duplex init first")
 	}
+
 	application, e := app.Open(ctx, manager, &source.YouTube{Executable: *yt, Deno: *deno}, *noMount)
 	if e != nil {
 		return e
 	}
+
 	defer func() { result = errors.Join(result, application.Close()) }()
+
 	profile, e := startProfile(ctx, application, *profileDirectory, *profileKind, *profileDuration)
 	if e != nil {
 		return e
 	}
+
 	defer func() {
 		if err := profile.Stop(); err != nil {
 			slog.Error("profile capture failed", "error", err)
 		}
 	}()
+
 	handler, e := admin.New(application, auth)
 	if e != nil {
 		return e
 	}
+
 	listener, e := (&net.ListenConfig{}).Listen(ctx, "tcp", c.Listen)
 	if e != nil {
 		return e
 	}
+
 	if !*noMount {
 		if e = notifyReady(ctx, os.Getenv("NOTIFY_SOCKET")); e != nil {
 			return errors.Join(e, listener.Close())
 		}
 	}
+
 	fmt.Println("duplex service started")
+
 	return serveHTTP(ctx, listener, handler.Handler())
 }
 
@@ -74,14 +87,18 @@ func notifyReady(ctx context.Context, socket string) error {
 	if socket == "" {
 		return nil
 	}
+
 	if strings.HasPrefix(socket, "@") {
 		socket = "\x00" + socket[1:]
 	}
+
 	// The service manager supplies its local Unix datagram socket.
 	connection, err := (&net.Dialer{}).DialContext(ctx, "unixgram", socket)
 	if err != nil {
 		return errors.New("service manager notification failed")
 	}
+
 	_, err = connection.Write([]byte("READY=1\nSTATUS=duplex mount and administration are ready"))
+
 	return errors.Join(err, connection.Close())
 }

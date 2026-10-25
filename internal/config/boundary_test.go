@@ -10,6 +10,7 @@ func TestUnlistedIdentityValidation(t *testing.T) {
 			t.Fatal(id, err)
 		}
 	}
+
 	for _, id := range []string{"", "too-short", "aqz/KE-bpKQ", "aqz-KE-bpK?", "aqz-KE-bpKé"} {
 		channel.Unlisted = []string{id}
 		if err := validateChannels([]Channel{channel}); err == nil {
@@ -24,14 +25,17 @@ func TestPlexSettingsRequireAnOrigin(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
 	for _, raw := range []string{"https://user:secret@plex", "http://plex/library", "http://plex?token=secret", "http://plex#private", "file:///private", ":bad"} {
 		if err := validatePlex(Plex{URL: raw}); err == nil {
 			t.Fatal("unsafe origin accepted", raw)
 		}
 	}
+
 	if err := (Selection{Mode: "all"}).ValidateUploads(); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := (Selection{Mode: "skip"}).ValidateUploads(); err == nil {
 		t.Fatal("upload skip policy accepted")
 	}

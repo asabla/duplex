@@ -15,9 +15,11 @@ func TestVersionDoesNotImplyNFO(t *testing.T) {
 				if r.Header.Get("X-Plex-Token") != "secret" {
 					t.Error("missing token header")
 				}
+
 				if r.URL.Query().Get("X-Plex-Token") != "" {
 					t.Error("token leaked into URL")
 				}
+
 				switch r.URL.Path {
 				case "/identity":
 					writeTestResponse(t, w, []byte(`<MediaContainer version="1.43.5.11029-test"/>`))
@@ -32,10 +34,12 @@ func TestVersionDoesNotImplyNFO(t *testing.T) {
 				}
 			}))
 			defer s.Close()
+
 			c, err := New(s.URL, "secret")
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			result, err := c.Check(context.Background())
 			if hasNFO {
 				if err != nil || !result.NFOSeries {
@@ -60,6 +64,7 @@ func TestOriginValidation(t *testing.T) {
 
 func writeTestResponse(t *testing.T, w http.ResponseWriter, data []byte) {
 	t.Helper()
+
 	if _, err := w.Write(data); err != nil {
 		t.Error(err)
 	}

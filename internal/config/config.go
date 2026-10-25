@@ -61,33 +61,42 @@ func (c Config) Validate() error {
 	if c.Version != 1 {
 		return errors.New("unsupported configuration version")
 	}
+
 	if _, _, err := net.SplitHostPort(c.Listen); err != nil {
 		return errors.New("listen must contain host and port")
 	}
+
 	if err := validateStorage([]string{c.DataDir, c.CacheDir, c.IndexDir, c.Mountpoint}); err != nil {
 		return err
 	}
+
 	if c.CacheGiB < 1 || c.CacheGiB > 1048576 || c.RefreshMinutes < 1 || c.RefreshMinutes > 10080 || c.Workers < 1 || c.Workers > 4 || c.MaxHeight < 144 || c.MaxHeight > 2160 {
 		return errors.New("invalid cache, refresh, worker, or quality setting")
 	}
+
 	if err := validatePlex(c.Plex); err != nil {
 		return err
 	}
+
 	return validateChannels(c.Channels)
 }
 
 // Decode reads exactly one YAML configuration and validates all settings.
 func Decode(b []byte) (Config, error) {
 	var c Config
+
 	d := yaml.NewDecoder(bytes.NewReader(b))
 	d.KnownFields(true)
+
 	if e := d.Decode(&c); e != nil {
 		return c, errors.New("invalid YAML configuration")
 	}
+
 	var extra any
 	if err := d.Decode(&extra); !errors.Is(err, io.EOF) {
 		return c, errors.New("configuration must contain one YAML document")
 	}
+
 	return c, c.Validate()
 }
 
@@ -96,12 +105,15 @@ func Create(path, base string) error {
 	if _, e := os.Lstat(path); e == nil {
 		return fmt.Errorf("configuration already exists")
 	}
+
 	if e := os.MkdirAll(filepath.Dir(path), 0o700); e != nil {
 		return e
 	}
+
 	b, e := yaml.Marshal(Default(base))
 	if e != nil {
 		return e
 	}
+
 	return AtomicWrite(path, b, 0o600)
 }

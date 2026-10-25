@@ -12,28 +12,35 @@ func AtomicWrite(path string, b []byte, mode os.FileMode) (result error) {
 	if err != nil {
 		return err
 	}
+
 	name := f.Name()
 	defer func() {
 		if err := os.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
 			result = errors.Join(result, err)
 		}
 	}()
+
 	if err = f.Chmod(mode); err == nil {
 		_, err = f.Write(b)
 	}
+
 	if err == nil {
 		err = f.Sync()
 	}
+
 	err = errors.Join(err, f.Close())
 	if err != nil {
 		return err
 	}
+
 	if err = os.Rename(name, path); err != nil {
 		return err
 	}
+
 	directory, err := os.Open(filepath.Dir(path))
 	if err != nil {
 		return err
 	}
+
 	return errors.Join(directory.Sync(), directory.Close())
 }

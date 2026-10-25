@@ -15,17 +15,21 @@ func TestScansRequireVerifiedTrashPreference(t *testing.T) {
 					writeTestResponse(t, w, []byte(`<MediaContainer><Setting id="useLocalAssets" value="true"/><Setting id="useSeasonTitles" value="true"/><Setting id="enableBIFGeneration" value="false"/><Setting id="enableIntroMarkerGeneration" value="false"/><Setting id="enableCreditsMarkerGeneration" value="false"/><Setting id="enableLoudnessAnalysis" value="false"/></MediaContainer>`))
 					return
 				}
+
 				if r.URL.Path == "/library/sections" {
 					writeTestResponse(t, w, []byte(`<MediaContainer><Directory key="2" agent="tv.plex.agents.nfo.series"/></MediaContainer>`))
 					return
 				}
+
 				writeTestResponse(t, w, []byte(`<MediaContainer>`+setting+`</MediaContainer>`))
 			}))
 			defer server.Close()
+
 			client, createErr := New(server.URL, "")
 			if createErr != nil {
 				t.Fatal(createErr)
 			}
+
 			err := client.LibraryHealth(context.Background(), "2")
 			if (err == nil) != (setting == `<Setting id="autoEmptyTrash" value="0"/>`) {
 				t.Fatal(err)
@@ -46,12 +50,16 @@ func TestOptionalAnalysisMustBeDisabled(t *testing.T) {
 				writeTestResponse(t, w, []byte(`<MediaContainer><Setting id="useLocalAssets" value="true"/><Setting id="useSeasonTitles" value="true"/><Setting id="enableBIFGeneration" value="false"/><Setting id="enableIntroMarkerGeneration" value="`+value+`"/><Setting id="enableCreditsMarkerGeneration" value="false"/><Setting id="enableLoudnessAnalysis" value="false"/></MediaContainer>`))
 			}
 		}))
+
 		client, createErr := New(server.URL, "")
 		if createErr != nil {
 			t.Fatal(createErr)
 		}
+
 		err := client.LibraryHealth(context.Background(), "2")
+
 		server.Close()
+
 		if (err == nil) != (value == "false") {
 			t.Fatal(value, err)
 		}

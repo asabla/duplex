@@ -30,6 +30,7 @@ func New(base, token string) (*Client, error) {
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
 		return nil, errors.New("plex URL must be an HTTP(S) origin without embedded credentials")
 	}
+
 	return &Client{base: u, token: strings.TrimSpace(token), http: &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return errors.New("plex redirects are not permitted") }}}, nil
 }
 
@@ -42,33 +43,44 @@ func (c *Client) request(ctx context.Context, method, path string, result any) (
 	if err != nil || relative.IsAbs() || relative.Host != "" {
 		return errors.New("invalid Plex request path")
 	}
+
 	u := c.base.ResolveReference(relative)
+
 	req, err := http.NewRequestWithContext(ctx, method, u.String(), nil)
 	if err != nil {
 		return errors.New("invalid Plex request")
 	}
+
 	if c.token != "" {
 		req.Header.Set("X-Plex-Token", c.token)
 	}
+
 	req.Header.Set("X-Plex-Product", "duplex")
 	req.Header.Set("X-Plex-Client-Identifier", "duplex-qualification")
+
 	r, err := c.http.Do(req)
 	if err != nil {
 		return errors.New("plex request failed")
 	}
+
 	defer func() { failure = errors.Join(failure, r.Body.Close()) }()
+
 	if r.StatusCode < 200 || r.StatusCode > 299 {
 		return fmt.Errorf("plex request rejected (HTTP %d)", r.StatusCode)
 	}
+
 	b, err := io.ReadAll(io.LimitReader(r.Body, 16*1024*1024+1))
 	if err != nil || len(b) > 16*1024*1024 {
 		return errors.New("invalid Plex response size")
 	}
+
 	if result == nil {
 		return nil
 	}
+
 	if err = xml.Unmarshal(b, result); err != nil {
 		return errors.New("invalid Plex XML response")
 	}
+
 	return nil
 }

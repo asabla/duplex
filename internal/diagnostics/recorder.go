@@ -27,15 +27,19 @@ func (r *Recorder) Add(operation string, elapsed time.Duration) {
 	if r == nil {
 		return
 	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	if r.values == nil {
 		r.values = make(map[string]Measurement)
 	}
+
 	m, exists := r.values[operation]
 	if !exists && len(r.values) >= 128 {
 		return
 	}
+
 	m.Operation = operation
 	m.Count++
 	m.Total += elapsed
@@ -54,13 +58,17 @@ func (r *Recorder) Snapshot() []Measurement {
 	if r == nil {
 		return nil
 	}
+
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	result := make([]Measurement, 0, len(r.values))
 	for _, m := range r.values {
 		result = append(result, m)
 	}
+
 	sort.Slice(result, func(i, j int) bool { return result[i].Operation < result[j].Operation })
+
 	return result
 }
 

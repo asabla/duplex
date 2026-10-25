@@ -32,6 +32,7 @@ func (c Channel) Selection() Selection {
 	if c.Indexing != nil {
 		return *c.Indexing
 	}
+
 	return Selection{Mode: "latest", Limit: c.Limit}
 }
 
@@ -40,9 +41,11 @@ func (c Channel) PlaylistSelection(id string) Selection {
 	if c.Playlists == nil || !c.Playlists.Enabled {
 		return Selection{Mode: "skip"}
 	}
+
 	if p, ok := c.Playlists.Overrides[id]; ok && p.Mode != "inherit" {
 		return p
 	}
+
 	return c.Selection()
 }
 
@@ -63,6 +66,7 @@ func (s Selection) validate(override bool) error {
 	default:
 		return errors.New("indexing mode must be latest or all")
 	}
+
 	return nil
 }
 
@@ -70,24 +74,29 @@ func (c Channel) validatePolicy() error {
 	if err := c.Selection().validate(false); err != nil {
 		return err
 	}
+
 	if c.Playlists != nil {
 		for id, p := range c.Playlists.Overrides {
 			if !ValidPlaylistID(id) {
 				return errors.New("invalid playlist ID")
 			}
+
 			if err := p.validate(true); err != nil {
 				return err
 			}
 		}
 	}
+
 	if c.Artwork.Poster != "" && !ValidArtworkReference(c.Artwork.Poster) {
 		return errors.New("invalid show artwork reference")
 	}
+
 	for scope, ref := range c.Artwork.Seasons {
 		if !validSeasonScope(scope) || !ValidArtworkReference(ref) {
 			return errors.New("invalid season artwork reference")
 		}
 	}
+
 	return nil
 }
 
@@ -107,6 +116,7 @@ func validSeasonScope(scope string) bool {
 	if yearScopePattern.MatchString(scope) {
 		return true
 	}
+
 	return strings.HasPrefix(scope, "playlist:") && ValidPlaylistID(strings.TrimPrefix(scope, "playlist:"))
 }
 
