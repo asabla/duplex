@@ -352,6 +352,7 @@ func (r *discoveryRun) playlists(ctx context.Context) error {
 		return err
 	}
 	after := ""
+	var failures []error
 	for {
 		playlists, err := r.app.Catalog.DiscoveredPlaylists(ctx, r.id, r.channel.ID, after, 100)
 		if err != nil {
@@ -359,19 +360,26 @@ func (r *discoveryRun) playlists(ctx context.Context) error {
 		}
 		for _, p := range playlists {
 			after = p.ID
-			policy := r.channel.PlaylistSelection(p.ID)
-			if policy.Mode == "skip" {
-				continue
-			}
-			if err = r.playlist(ctx, p.ID, policy); err != nil {
-				return err
+			if err = r.refreshPlaylist(ctx, p.ID); err != nil {
+				failures = append(failures, err)
+				if ctx.Err() != nil {
+					return errors.Join(failures...)
+				}
 			}
 		}
 		if len(playlists) < 100 {
 			break
 		}
 	}
-	return r.app.Publish()
+	return errors.Join(append(failures, r.app.Publish())...)
+}
+
+func (r *discoveryRun) refreshPlaylist(ctx context.Context, id string) error {
+	policy := r.channel.PlaylistSelection(id)
+	if policy.Mode == "skip" {
+		return nil
+	}
+	return r.playlist(ctx, id, policy)
 }
 
 func (r *discoveryRun) discoverPlaylists(ctx context.Context) error {
@@ -407,7 +415,9 @@ func (r *discoveryRun) playlist(ctx context.Context, id string, policy config.Se
 	p := playlistDiscovery{run: r, id: id, policy: policy}
 	_, err := r.reader.Entries(ctx, source.Scope{PlaylistID: id, Start: 1}, func(batch []source.Entry) error { return p.consume(ctx, batch) })
 	if err != nil {
-		return err
+		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+		defer stop()
+		return errors.Join(err, r.app.Catalog.FailPlaylist(cleanup, id))
 	}
 	limit := 0
 	if policy.Mode == "latest" {

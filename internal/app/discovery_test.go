@@ -250,6 +250,43 @@ func TestInterruptedPlaylistKeepsMembershipAndSkipsPolicy(t *testing.T) {
 	}
 }
 
+func TestPlaylistFailureIsVisibleAndDoesNotStopOtherCollections(t *testing.T) {
+	s := fixtureCollection(4)
+	first, second := "PLfixture0001", "PLfixture0002"
+	s.lists = []source.Playlist{{ID: first, Title: "First"}, {ID: second, Title: "Second"}}
+	s.entries[first] = []source.Entry{{ID: "video000001"}}
+	s.entries[second] = []source.Entry{{ID: "video000002"}}
+	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "latest", Limit: 2}), s)
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	s.fail = first
+	s.entries[first] = nil
+	s.entries[second] = []source.Entry{{ID: "video000003"}}
+	if err := a.Sync(t.Context(), testOwner); err == nil {
+		t.Fatal("failed collection became a successful job")
+	}
+	rows, err := a.Catalog.Playlists(t.Context(), testOwner)
+	if err != nil || len(rows) != 2 || rows[0].Error == "" || rows[1].Error != "" {
+		t.Fatal(rows, err)
+	}
+	var firstCount, secondCount int
+	if err = a.Catalog.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM playlist_members WHERE playlist_id=? AND video_id='video000001' AND selected=1`, first).Scan(&firstCount); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.Catalog.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM playlist_members WHERE playlist_id=? AND video_id='video000003' AND selected=1`, second).Scan(&secondCount); err != nil || firstCount != 1 || secondCount != 1 {
+		t.Fatal(firstCount, secondCount, err)
+	}
+	s.fail = ""
+	if err = a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	rows, err = a.Catalog.Playlists(t.Context(), testOwner)
+	if err != nil || rows[0].Error != "" {
+		t.Fatal(rows, err)
+	}
+}
+
 func TestPreparationWaitingAndSelectionCancellation(t *testing.T) {
 	s := fixtureCollection(1)
 	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "latest", Limit: 1}), s)

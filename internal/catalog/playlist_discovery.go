@@ -6,6 +6,13 @@ import (
 	"errors"
 )
 
+// FailPlaylist records a redacted failure without changing membership or the
+// timestamp of the last complete snapshot. Successful reconciliation clears it.
+func (s *Store) FailPlaylist(ctx context.Context, id string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE playlists SET error=? WHERE id=?`, "playlist refresh failed; previous complete membership retained", id)
+	return err
+}
+
 // DiscoverPlaylist records a safe addition before root enumeration completes.
 func (s *Store) DiscoverPlaylist(ctx context.Context, run int64, playlist Playlist) error {
 	if err := s.SavePlaylist(ctx, playlist); err != nil {
