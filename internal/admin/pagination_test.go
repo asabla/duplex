@@ -110,7 +110,7 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	for _, path := range []string{"/?page=5", "/jobs?page=5"} {
+	for _, path := range []string{"/?page=5", "/jobs?page=5", "/fragments/jobs?page=5"} {
 		body := get(path)
 		if !strings.Contains(body, "job-channel-000") || strings.Contains(body, "job-channel-003") || strings.Count(body, "Showing 101–103 of 103") != 2 {
 			t.Fatalf("older jobs inaccessible or pagination missing at %s", path)
@@ -122,7 +122,11 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 			t.Fatalf("channel page or polling lost state at %s", path)
 		}
 	}
-	body := get("/catalogue?page=2&per_page=25")
+	body := get("/fragments/jobs?channel=job-channel-000&state=complete&sort=oldest&per_page=50")
+	if !strings.Contains(body, "job-channel-000") || strings.Contains(body, "job-channel-001") || !strings.Contains(body, `hx-get="/fragments/jobs?channel=job-channel-000&amp;page=1&amp;per_page=50&amp;sort=oldest&amp;state=complete"`) {
+		t.Fatal("jobs polling lost filters or read the wrong bounded result")
+	}
+	body = get("/catalogue?page=2&per_page=25")
 	if strings.Count(body, "Showing 26–50 of 61") != 2 || !strings.Contains(body, "Video 025") || strings.Contains(body, "Video 024") || strings.Contains(body, "Video 050") {
 		t.Fatal("video page includes wrong rows or lacks two controls")
 	}

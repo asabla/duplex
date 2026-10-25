@@ -29,8 +29,8 @@
 <table>
   <caption class="sr-only">Videos matching the current filters</caption>
   <thead><tr>
-    <th scope="col"><a href="{{sortlink .Filters "/catalogue" "title"}}">Video</a></th>
-    <th scope="col"><a href="{{sortlink .Filters "/catalogue" "newest"}}">Published</a></th>
+    <th scope="col" aria-sort="{{sortaria .Filters "title" "" "newest"}}"><a href="{{sortlink .Filters "/catalogue" "title"}}">Video</a></th>
+    <th scope="col" aria-sort="{{sortaria .Filters "oldest" "newest" "newest"}}"><a href="{{sortlink .Filters "/catalogue" "newest"}}">Published</a></th>
     <th scope="col">Lifecycle</th><th scope="col">Preparation</th><th scope="col">Quality</th><th scope="col">Library</th><th scope="col">Action</th>
   </tr></thead>
   <tbody>

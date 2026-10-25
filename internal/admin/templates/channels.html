@@ -23,11 +23,11 @@
 {{end}}
 
 {{define "channels"}}
-<section id="channel-list" hx-get="{{.Pagination.FragmentURL}}" hx-trigger="channelsChanged from:body" hx-swap="outerHTML">
+<section id="channel-list" hx-get="{{.Pagination.FragmentURL}}" hx-trigger="channelsChanged from:body" hx-swap="outerHTML" data-preserve-edits>
 {{template "pagination" .Pagination}}
 <div class="table-wrap"><table>
   <caption class="sr-only">Followed channels matching the current filters</caption>
-  <thead><tr><th scope="col"><a href="{{sortlink .Filters "/channels" "title"}}">Channel</a></th><th scope="col">Policy</th><th scope="col"><a href="{{sortlink .Filters "/channels" "updated"}}">Last discovery</a></th><th scope="col">Actions</th></tr></thead>
+  <thead><tr><th scope="col" aria-sort="{{sortaria .Filters "title" "" "title"}}"><a href="{{sortlink .Filters "/channels" "title"}}">Channel</a></th><th scope="col">Policy</th><th scope="col" aria-sort="{{sortaria .Filters "" "updated" "title"}}"><a href="{{sortlink .Filters "/channels" "updated"}}">Last discovery</a></th><th scope="col">Actions</th></tr></thead>
   <tbody>
   {{range .ChannelData}}{{$settings:=index $.ChannelSettings .ID}}{{$selection:=$settings.Selection}}
     <tr>

@@ -103,3 +103,27 @@ func (s *Server) artworkResult(w http.ResponseWriter, r *http.Request, err error
 	}
 	s.result(w, r, err, message)
 }
+
+// actionReturnURL accepts only an administration page on this server. The
+// supplied query retains filters without permitting an external redirect.
+func actionReturnURL(r *http.Request) string {
+	location := r.Header.Get("HX-Current-URL")
+	if location == "" {
+		location = r.Referer()
+	}
+	candidate, err := url.Parse(location)
+	if err == nil && candidate.User == nil && (candidate.Host == "" || candidate.Host == r.Host) && (candidate.Scheme == "" || candidate.Scheme == "http" || candidate.Scheme == "https") && len(candidate.RawQuery) <= 8192 {
+		switch candidate.Path {
+		case "/channels", "/playlists", "/catalogue", "/jobs", "/settings", "/artwork", "/diagnostics":
+			return candidate.RequestURI()
+		}
+	}
+	switch r.URL.Path {
+	case "/actions/settings", "/actions/config":
+		return "/settings"
+	case "/actions/prepare":
+		return "/catalogue"
+	default:
+		return "/channels"
+	}
+}

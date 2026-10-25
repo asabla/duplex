@@ -32,3 +32,25 @@ document.addEventListener('htmx:beforeSwap', function (event) {
     event.detail.isError = false;
   }
 });
+
+// A background refresh must not discard an edit or move keyboard focus.
+function protectEdits(event) {
+  const form = event.target.closest('form');
+  if (form && (form.querySelector('input[name="revision"]') ||
+    form.closest('[data-preserve-edits]'))) {
+    form.dataset.dirty = 'true';
+  }
+}
+
+document.addEventListener('input', protectEdits);
+document.addEventListener('change', protectEdits);
+document.addEventListener('htmx:beforeSwap', function (event) {
+  const target = event.detail.target;
+  if (!target || !target.matches('[data-preserve-edits]')) return;
+  const editing = target.querySelector('form[data-dirty="true"]');
+  const focused = target.contains(document.activeElement) &&
+    document.activeElement.matches('input, select, textarea, button, a, summary');
+  if (editing || focused) {
+    event.detail.shouldSwap = false;
+  }
+});

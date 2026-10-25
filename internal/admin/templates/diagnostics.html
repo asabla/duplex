@@ -18,7 +18,7 @@
 {{end}}
 
 {{define "job-progress"}}
-<div id="job-progress" hx-get="/fragments/jobs" hx-trigger="every 5s" hx-swap="outerHTML">
+<div id="job-progress">
   <p>{{.Status.PendingJobs}} pending discovery or media tasks. Discovery can finish while media preparation continues.</p>
   {{range .Status.Jobs}}{{if eq .State "running"}}<p>Job {{.ID}} · {{.Stage}} · {{.Discovered}} entries processed</p>{{end}}{{end}}
 </div>
@@ -34,6 +34,8 @@
 {{end}}
 
 {{define "jobs"}}
+<section id="job-list" hx-get="{{.Pagination.FragmentURL}}" hx-trigger="every 5s" hx-swap="outerHTML" data-preserve-edits>
+{{template "job-progress" .}}
 {{template "pagination" .Pagination}}
 <div class="table-wrap"><table>
   <thead><tr><th scope="col">Job</th><th scope="col">Channel</th><th scope="col">Result</th><th scope="col">Stage</th><th scope="col">Entries processed</th><th scope="col">Started</th></tr></thead>
@@ -42,6 +44,7 @@
   {{else}}<tr><td colspan="6" class="empty">No matching jobs.</td></tr>{{end}}</tbody>
 </table></div>
 {{template "pagination" .Pagination}}
+</section>
 {{end}}
 
 {{define "diagnostics-page"}}

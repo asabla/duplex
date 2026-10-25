@@ -35,6 +35,7 @@ type page struct {
 	CSRF            string
 	Error           string
 	Notice          string
+	ReturnURL       string
 	Status          app.Status
 	YAML            string
 	Revision        string
@@ -53,7 +54,7 @@ type page struct {
 
 // New parses the embedded templates and binds the shared application services.
 func New(a *app.App, auth *Auth) (*Server, error) {
-	t, e := template.New("duplex").Funcs(template.FuncMap{"states": func(values ...string) []string { return values }, "heights": func(values ...int) []int { return values }, "sortlink": sortLink, "gib": func(n int64) string { return strconv.FormatFloat(float64(n)/(1<<30), 'f', 2, 64) }, "day": func(n int64) string {
+	t, e := template.New("duplex").Funcs(template.FuncMap{"states": func(values ...string) []string { return values }, "heights": func(values ...int) []int { return values }, "sortlink": sortLink, "sortaria": sortARIA, "gib": func(n int64) string { return strconv.FormatFloat(float64(n)/(1<<30), 'f', 2, 64) }, "day": func(n int64) string {
 		if n == 0 {
 			return "Unknown"
 		}
@@ -269,11 +270,15 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, e error, message
 	}
 	if e != nil {
 		w.WriteHeader(400)
-		s.render(w, "notice", page{Error: safeError(e)})
+		s.render(w, "notice", page{Error: safeError(e), ReturnURL: actionReturnURL(r)})
+		return
+	}
+	if r.Header.Get("HX-Request") != "true" {
+		http.Redirect(w, r, actionReturnURL(r), http.StatusSeeOther) // #nosec G710 -- actionReturnURL permits only enumerated same-host administration paths.
 		return
 	}
 	w.Header().Set("HX-Trigger", "channelsChanged")
-	s.render(w, "notice", page{Notice: message})
+	s.render(w, "notice", page{Notice: message, ReturnURL: actionReturnURL(r)})
 }
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {

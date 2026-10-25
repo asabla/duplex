@@ -75,7 +75,7 @@ func (s *Server) readPage(w http.ResponseWriter, r *http.Request) {
 	case "/fragments/status":
 		s.render(w, "status", v)
 	case "/fragments/jobs":
-		s.render(w, "job-progress", v)
+		s.render(w, "jobs", v)
 	default:
 		s.render(w, "layout", v)
 	}
@@ -110,13 +110,13 @@ func (s *Server) pageData(r *http.Request, v *page) error {
 		}
 		v.PlaylistRows = result.Items
 		v.Pagination = paginate(r.URL.Query(), path, "Playlists", result.Total)
-	case "/", "/jobs":
+	case "/", "/jobs", "/fragments/jobs":
 		result, err := s.App.Catalog.FilterJobs(r.Context(), jobFilter(r))
 		if err != nil {
 			return err
 		}
 		v.Status.Jobs = result.Items
-		v.Pagination = paginate(r.URL.Query(), path, "Jobs", result.Total)
+		v.Pagination = paginate(r.URL.Query(), "/jobs", "Jobs", result.Total)
 	case "/settings":
 		data, err := yaml.Marshal(v.Status.Config.Config)
 		if err != nil {

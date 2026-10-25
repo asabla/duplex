@@ -58,8 +58,13 @@ func (p pagination) start() int { return (p.Number - 1) * p.Size }
 func (p pagination) end() int   { return min(p.start()+p.Size, p.Total) }
 
 func (p pagination) FragmentURL() string {
-	q := url.Values{"page": {strconv.Itoa(p.Number)}, "per_page": {strconv.Itoa(p.Size)}}
-	return "/fragments/channels?" + q.Encode()
+	q := url.Values{}
+	for key, values := range p.Filters {
+		q[key] = append([]string(nil), values...)
+	}
+	q.Set("page", strconv.Itoa(p.Number))
+	q.Set("per_page", strconv.Itoa(p.Size))
+	return "/fragments" + p.Path + "?" + q.Encode()
 }
 
 func sortLink(values url.Values, path, order string) string {
@@ -70,4 +75,18 @@ func sortLink(values url.Values, path, order string) string {
 	query.Set("sort", order)
 	query.Del("page")
 	return path + "?" + query.Encode()
+}
+
+func sortARIA(values url.Values, ascending, descending, fallback string) string {
+	order := values.Get("sort")
+	if order == "" {
+		order = fallback
+	}
+	if ascending != "" && order == ascending {
+		return "ascending"
+	}
+	if descending != "" && order == descending {
+		return "descending"
+	}
+	return "none"
 }
