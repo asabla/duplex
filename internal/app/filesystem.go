@@ -384,11 +384,13 @@ func (p catalogueFS) episodeChildren(ctx context.Context, ch config.Channel, vis
 		}
 		base = path.Base(library.EpisodeBase(ch.ID, season, number))
 	}
-	episodes, err := p.app.Catalog.ProjectionEntries(ctx, visible, ch.ID, season, base, min(256, limit+1))
+	// Every episode has at least an MP4 and NFO. The cursor can exclude all
+	// suffixes of the first row, so include one extra episode in the query.
+	episodes, err := p.app.Catalog.ProjectionEntries(ctx, visible, ch.ID, season, base, (limit+1)/2+1)
 	if err != nil {
 		return nil, err
 	}
-	children := []library.Child{}
+	children := make([]library.Child, 0, limit+2)
 	if after < ".plexmatch" && len(episodes) > 0 && episodes[0].PlaylistID != "" {
 		children = append(children, library.Child{Name: ".plexmatch"})
 	}
@@ -402,6 +404,11 @@ func (p catalogueFS) episodeChildren(ctx context.Context, ch config.Channel, vis
 			if name+suffix > after {
 				children = append(children, library.Child{Name: name + suffix})
 			}
+		}
+		// Suffixes start with '.', which sorts before a digit extending a base
+		// name. Later episode bases cannot supply an earlier filename.
+		if len(children) >= limit {
+			break
 		}
 	}
 	return children, nil

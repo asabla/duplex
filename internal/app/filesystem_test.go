@@ -144,7 +144,7 @@ func TestCatalogueFilesystemLexicalPagingAcrossLargeEpisodeNumbers(t *testing.T)
 		}
 	}
 	sort.Strings(expected)
-	for _, size := range []int{1, 3, 128} {
+	for _, size := range []int{1, 2, 3, 25, 128, 256} {
 		after := ""
 		got := []string{}
 		for range 20 {
@@ -179,8 +179,10 @@ func TestCatalogueFilesystemLexicalPagingAcrossLargeEpisodeNumbers(t *testing.T)
 	if err != nil || len(channel) != 1 || channel[0].Name != "tvshow.nfo" {
 		t.Fatal(channel, err)
 	}
-	if _, err = provider.ReadDir(t.Context(), directory, "", 0); err == nil {
-		t.Fatal("unbounded page accepted")
+	for _, size := range []int{0, 257} {
+		if _, err = provider.ReadDir(t.Context(), directory, "", size); err == nil {
+			t.Fatal("unbounded page accepted", size)
+		}
 	}
 }
 
