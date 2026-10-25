@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/url"
 	"os"
@@ -21,11 +22,14 @@ import (
 var ErrConflict = errors.New("configuration changed; reload before saving")
 
 type Channel struct {
-	ID       string   `yaml:"id" json:"id"`
-	URL      string   `yaml:"url" json:"url"`
-	Limit    int      `yaml:"limit" json:"limit"`
-	Enabled  bool     `yaml:"enabled" json:"enabled"`
-	Unlisted []string `yaml:"unlisted_videos,omitempty" json:"unlisted_videos,omitempty"`
+	ID        string          `yaml:"id" json:"id"`
+	URL       string          `yaml:"url" json:"url"`
+	Limit     int             `yaml:"limit" json:"limit"`
+	Enabled   bool            `yaml:"enabled" json:"enabled"`
+	Unlisted  []string        `yaml:"unlisted_videos,omitempty" json:"unlisted_videos,omitempty"`
+	Indexing  *Selection      `yaml:"indexing,omitempty" json:"indexing,omitempty"`
+	Playlists *PlaylistPolicy `yaml:"playlists,omitempty" json:"playlists,omitempty"`
+	Artwork   Artwork         `yaml:"artwork,omitempty" json:"artwork,omitempty"`
 }
 type Plex struct {
 	URL       string `yaml:"url" json:"url"`
@@ -50,6 +54,7 @@ type Config struct {
 func Default(base string) Config {
 	return Config{Version: 1, Listen: "127.0.0.1:8765", DataDir: filepath.Join(base, "data"), CacheDir: filepath.Join(base, "media"), IndexDir: filepath.Join(base, "indexes"), Mountpoint: filepath.Join(base, "library", "media"), CacheGiB: 50, RefreshMinutes: 30, Workers: 2, MaxHeight: 2160, Channels: []Channel{}}
 }
+
 func (c Config) Validate() error {
 	if c.Version != 1 {
 		return errors.New("unsupported configuration version")
@@ -81,8 +86,11 @@ func (c Config) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, ch := range c.Channels {
-		if ch.Limit < 1 || ch.Limit > 10000 || !validID(ch.ID) || seen[ch.ID] {
+		if !validID(ch.ID) || seen[ch.ID] {
 			return errors.New("invalid or duplicate channel settings")
+		}
+		if err := ch.validatePolicy(); err != nil {
+			return err
 		}
 		seen[ch.ID] = true
 		for _, id := range ch.Unlisted {
@@ -101,9 +109,11 @@ func (c Config) Validate() error {
 	}
 	return nil
 }
+
 func outside(p string) bool {
 	return p == ".." || len(p) > 3 && p[:3] == ".."+string(filepath.Separator)
 }
+
 func validID(s string) bool {
 	if len(s) != 24 || s[:2] != "UC" {
 		return false
@@ -115,6 +125,7 @@ func validID(s string) bool {
 	}
 	return true
 }
+
 func ChannelURL(raw string) (string, error) {
 	u, e := url.Parse(raw)
 	if e != nil || u.User != nil || u.Scheme != "https" || u.Port() != "" || u.RawQuery != "" || u.Fragment != "" {
@@ -182,16 +193,35 @@ func Open(path string) (*Manager, error) {
 	}
 	return &Manager{path: path, current: Snapshot{Config: c, Revision: revision(b), LoadedAt: time.Now().UTC()}}, nil
 }
+
 func (m *Manager) Snapshot() Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.current
-	s.Config.Channels = append([]Channel{}, s.Config.Channels...)
-	for i := range s.Config.Channels {
-		s.Config.Channels[i].Unlisted = append([]string{}, s.Config.Channels[i].Unlisted...)
+	s.Config = clone(s.Config)
+	return s
+}
+
+func clone(c Config) Config {
+	s := c
+	s.Channels = append([]Channel{}, c.Channels...)
+	for i := range s.Channels {
+		ch := &s.Channels[i]
+		ch.Unlisted = append([]string{}, ch.Unlisted...)
+		if ch.Indexing != nil {
+			p := *ch.Indexing
+			ch.Indexing = &p
+		}
+		if ch.Playlists != nil {
+			p := *ch.Playlists
+			p.Overrides = maps.Clone(p.Overrides)
+			ch.Playlists = &p
+		}
+		ch.Artwork.Seasons = maps.Clone(ch.Artwork.Seasons)
 	}
 	return s
 }
+
 func (m *Manager) Reload() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -216,6 +246,7 @@ func (m *Manager) Reload() bool {
 	m.current = Snapshot{Config: c, Revision: r, LoadedAt: time.Now().UTC()}
 	return true
 }
+
 func (m *Manager) Save(c Config, expected string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -233,12 +264,13 @@ func (m *Manager) Save(c Config, expected string) error {
 	if e != nil {
 		return e
 	}
-	if e = AtomicWrite(m.path, b, 0600); e != nil {
+	if e = AtomicWrite(m.path, b, 0o600); e != nil {
 		return e
 	}
-	m.current = Snapshot{Config: c, Revision: revision(b), LoadedAt: time.Now().UTC()}
+	m.current = Snapshot{Config: clone(c), Revision: revision(b), LoadedAt: time.Now().UTC()}
 	return nil
 }
+
 func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 	f, e := os.CreateTemp(filepath.Dir(path), ".duplex-write-*")
 	if e != nil {
@@ -275,16 +307,17 @@ func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 	defer d.Close()
 	return d.Sync()
 }
+
 func Create(path, base string) error {
 	if _, e := os.Lstat(path); e == nil {
 		return fmt.Errorf("configuration already exists")
 	}
-	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
+	if e := os.MkdirAll(filepath.Dir(path), 0o700); e != nil {
 		return e
 	}
 	b, e := yaml.Marshal(Default(base))
 	if e != nil {
 		return e
 	}
-	return AtomicWrite(path, b, 0600)
+	return AtomicWrite(path, b, 0o600)
 }

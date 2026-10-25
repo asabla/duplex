@@ -18,7 +18,7 @@ func TestExternalEditsAndStaleSave(t *testing.T) {
 		t.Fatal(e)
 	}
 	original := m.Snapshot()
-	if e = os.WriteFile(file, []byte("version: [invalid"), 0600); e != nil {
+	if e = os.WriteFile(file, []byte("version: [invalid"), 0o600); e != nil {
 		t.Fatal(e)
 	}
 	if m.Reload() {
@@ -30,7 +30,7 @@ func TestExternalEditsAndStaleSave(t *testing.T) {
 	if e = m.Save(original.Config, original.Revision); !errors.Is(e, ErrConflict) {
 		t.Fatal("stale save overwrote invalid external edit", e)
 	}
-	if e = AtomicWrite(file, []byte("version: 1\n"), 0600); e != nil {
+	if e = AtomicWrite(file, []byte("version: 1\n"), 0o600); e != nil {
 		t.Fatal(e)
 	}
 	if m.Reload() {
@@ -53,13 +53,14 @@ func TestExternalEditsAndStaleSave(t *testing.T) {
 		t.Fatal(e)
 	}
 	data, _ := os.ReadFile(other)
-	if e = AtomicWrite(file, data, 0600); e != nil {
+	if e = AtomicWrite(file, data, 0o600); e != nil {
 		t.Fatal(e)
 	}
 	if !m.Reload() || m.Snapshot().Config.CacheGiB != 12 || m.Snapshot().Error != "" {
 		t.Fatal("valid external edit did not load")
 	}
 }
+
 func TestRejectUnsafeChannelAndOverlappingStorage(t *testing.T) {
 	for _, u := range []string{"http://www.youtube.com/@a", "https://youtube.com.evil.test/@a", "https://user:secret@youtube.com/@a", "https://youtube.com/watch?v=x", "https://youtube.com/@a?x=1", "https://youtube.com/@a/other"} {
 		if _, e := ChannelURL(u); e == nil {
