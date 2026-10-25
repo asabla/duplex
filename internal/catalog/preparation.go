@@ -13,6 +13,7 @@ import (
 
 // SaveMetadata updates canonical metadata without removing existing media.
 func (s *Store) SaveMetadata(ctx context.Context, m source.Metadata) error {
+ if m.ID=="" || m.ChannelID=="" {return errors.New("source video and uploader identities are required")}
 	if err := s.EnsureChannel(ctx, m.ChannelID, m.Channel); err != nil {
 		return err
 	}
@@ -22,12 +23,12 @@ func (s *Store) SaveMetadata(ctx context.Context, m source.Metadata) error {
 	}
 	defer rollback(tx)
 	var priorOwner string
-	var number int
-	err = tx.QueryRowContext(ctx, `SELECT channel_id,number FROM videos WHERE id=?`, m.ID).Scan(&priorOwner, &number)
+	var metadataAt int64
+ err = tx.QueryRowContext(ctx, `SELECT channel_id,metadata_at FROM videos WHERE id=?`, m.ID).Scan(&priorOwner,&metadataAt)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	if number > 0 && priorOwner != m.ChannelID {
+	if metadataAt > 0 && priorOwner != m.ChannelID {
 		return errors.New("source uploader identity changed")
 	}
 	date := m.Date()

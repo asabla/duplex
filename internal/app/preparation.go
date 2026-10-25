@@ -178,6 +178,8 @@ func (a *App) preparationWorker() {
 }
 
 func (a *App) prepareRecording(ctx context.Context, id string) error {
+ a.mu.RLock();toolError:=a.toolError;a.mu.RUnlock()
+ if toolError!=""{return errors.New(toolError)}
 	selected, err := a.Catalog.IsSelected(ctx, id, visibility(a.Config.Snapshot().Config))
 	if err != nil {
 		return err
@@ -199,7 +201,7 @@ func (a *App) prepareRecording(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	if m.ID != id {
+	if m.ID != id || m.ChannelID=="" {
 		return errors.New("source video identity changed")
 	}
 	if err = a.Catalog.SaveMetadata(ctx, m); err != nil {
