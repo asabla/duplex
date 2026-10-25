@@ -388,7 +388,7 @@ func (y *YouTube) Resolve(ctx context.Context, id string) (Metadata, error) {
 	if !videoID.MatchString(id) {
 		return Metadata{}, errors.New("invalid video ID")
 	}
-	b, e := y.run(ctx, "--no-playlist", "--", "https://www.youtube.com/watch?v="+id)
+	b, e := y.run(ctx, "--extractor-args", "youtube:formats=duplicate", "--no-playlist", "--", "https://www.youtube.com/watch?v="+id)
 	if e != nil {
 		return Metadata{}, e
 	}
@@ -443,7 +443,7 @@ func Candidates(m Metadata, maxHeight int) []Candidate {
 	result := []Candidate{}
 	if len(audio) > 0 {
 		for _, v := range videos {
-			result = append(result, Candidate{Video: v, Audio: &audio[0], Height: v.Height})
+			result = append(result, Candidate{Video: v, Audio: matchingAudio(audio, v), Height: v.Height})
 		}
 	}
 	for _, v := range combined {
@@ -456,6 +456,33 @@ func Candidates(m Metadata, maxHeight int) []Candidate {
 		return result[i].Combined
 	})
 	return result
+}
+
+// matchingAudio keeps the preferred language and codec while choosing the same
+// resolver client as the video. One rejected client must not hide a usable pair.
+func matchingAudio(audio []Format, video Format) *Format {
+	best := &audio[0]
+	client := mediaClientName(video.URL)
+	if client == "" {
+		return best
+	}
+	for i := range audio {
+		candidate := &audio[i]
+		sameOriginal := strings.Contains(strings.ToLower(candidate.Note), "original") == strings.Contains(strings.ToLower(best.Note), "original")
+		sameCodec := strings.HasPrefix(candidate.ACodec, "mp4a") == strings.HasPrefix(best.ACodec, "mp4a")
+		if sameOriginal && sameCodec && candidate.LanguagePreference == best.LanguagePreference && mediaClientName(candidate.URL) == client {
+			return candidate
+		}
+	}
+	return best
+}
+
+func mediaClientName(raw string) string {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return parsed.Query().Get("c")
 }
 
 func candidateFormats(formats []Format, maxHeight int) (audio, videos, combined []Format) {

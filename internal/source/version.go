@@ -33,7 +33,8 @@ func assetVersion(raw, format string) (string, int64) {
 	if err != nil || modified == 0 {
 		return "", 0
 	}
-	if q.Get("itag") != format {
+	itag := q.Get("itag")
+	if itag == "" || (format != itag && !strings.HasPrefix(format, itag+"-")) {
 		return "", 0
 	}
 	data := strings.Join([]string{format, q.Get("clen"), q.Get("lmt"), q.Get("mime"), q.Get("dur")}, "\x00")

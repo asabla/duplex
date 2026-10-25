@@ -62,6 +62,13 @@ bounds, and ambiguous addressing fail verification. A lower supported quality
 can be selected with a visible reason. If no candidate works, the recording is
 explicitly unavailable for playback.
 
+Preparation retains the pinned resolver's duplicate format alternatives. If one
+client rejects a media URL, another client can still supply the same resolution.
+Video and audio from the same client are paired only when the audio has the same
+original-language preference and codec class. All candidates still pass range,
+size, and container checks; preparation attempts remain bounded. This uses the
+resolver's documented [`formats=duplicate` option](https://github.com/yt-dlp/yt-dlp/blob/2026.10.21/README.md#extractor-arguments).
+
 A saved index can be rebound only when fresh sources establish the same identities.
 A strong ETag is one source of evidence. The YouTube version path also checks the
 signed object-version fields, exact size, and fresh beginning, middle, and end

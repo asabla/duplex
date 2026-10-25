@@ -84,7 +84,7 @@ func TestSourceProcessContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"--ignore-config", "--no-remote-components", "--no-js-runtimes", "--js-runtimes", "--no-playlist", "--\nhttps://www.youtube.com/watch?v=aqz-KE-bpKQ"} {
+	for _, required := range []string{"--ignore-config", "--no-remote-components", "--no-js-runtimes", "--js-runtimes", "--no-playlist", "youtube:formats=duplicate", "--\nhttps://www.youtube.com/watch?v=aqz-KE-bpKQ"} {
 		if !strings.Contains(string(args), required) {
 			t.Fatalf("missing required process argument %q", required)
 		}
@@ -247,7 +247,7 @@ func TestMetadataProfileFallsBackWithoutChangingIdentityOrDates(t *testing.T) {
 		t.Fatal(metadata, err)
 	}
 	arguments, err = os.ReadFile(filepath.Join(dir, "arguments")) //nolint:gosec // G304: This reads only a controlled process log in t.TempDir.
-	if err != nil || bytes.Contains(arguments, []byte("--extractor-args")) {
+	if err != nil || bytes.Contains(arguments, []byte("player_skip=js,configs")) || !bytes.Contains(arguments, []byte("youtube:formats=duplicate")) {
 		t.Fatal("incomplete metadata did not use full resolution", string(arguments), err)
 	}
 	writeSourceFixture(t, filepath.Join(dir, "metadata-response"), `{"id":"aqz-KE-bpKQ","availability":"private"}`, 0o600)

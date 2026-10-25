@@ -61,3 +61,17 @@ func TestChannelBrandingHostIsSpecific(t *testing.T) {
 		}
 	}
 }
+
+func TestQualifiedFormatVersionsRetainFullIdentity(t *testing.T) {
+	raw := "https://rr1.googlevideo.com/videoplayback?itag=140&clen=1000000&lmt=1774133434281302&mime=audio%2Fmp4&dur=120&sig=signature&sparams=clen,lmt,mime,dur"
+	first, size := assetVersion(raw, "140-19")
+	second, _ := assetVersion(raw, "140-drc")
+	if first == "" || second == "" || first == second || size != 1000000 {
+		t.Fatal("qualified formats lost independent verified identities")
+	}
+	for _, format := range []string{"14", "1400", "141-19"} {
+		if key, _ := assetVersion(raw, format); key != "" {
+			t.Fatal("mismatched itag accepted", format)
+		}
+	}
+}
