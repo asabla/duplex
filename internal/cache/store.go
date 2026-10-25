@@ -3,12 +3,8 @@ package cache
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
-	"math"
 	"os"
-	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 )
@@ -78,64 +74,6 @@ func New(dir string, limit int64) (*Store, error) {
 	return store, nil
 }
 
-func (s *Store) recoverDirectory() error {
-	files, err := os.ReadDir(s.dir)
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		if file.Name() == ".lock" {
-			continue
-		}
-		if err = s.recoverEntry(file); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (s *Store) recoverEntry(file os.DirEntry) error {
-	if file.IsDir() {
-		return errors.New("unexpected directory in media cache")
-	}
-	path := filepath.Join(s.dir, file.Name())
-	if strings.HasPrefix(file.Name(), ".part-") {
-		return os.Remove(path)
-	}
-	key, digest, err := chunkName(file.Name())
-	if err != nil {
-		return err
-	}
-	info, err := file.Info()
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return errors.New("non-regular cache entry")
-	}
-	if s.items[key] != nil {
-		return errors.New("duplicate cache identity")
-	}
-	allocation := s.allocation(info)
-	if allocation > math.MaxInt64-s.used {
-		return errors.New("cache allocation exceeds supported capacity")
-	}
-	s.items[key] = &entry{path: path, digest: digest, allocation: allocation, used: info.ModTime()}
-	s.used += allocation
-	return nil
-}
-
-func chunkName(name string) (key, digest string, err error) {
-	parts := strings.Split(strings.TrimSuffix(name, ".chunk"), "-")
-	if !strings.HasSuffix(name, ".chunk") || len(parts) != 2 || len(parts[0]) != 64 || len(parts[1]) != 64 {
-		return "", "", errors.New("unexpected file in media cache")
-	}
-	if _, err = hex.DecodeString(parts[0] + parts[1]); err != nil {
-		return "", "", err
-	}
-	return parts[0], parts[1], nil
-}
-
 // Close refuses to release cache ownership while a reader or writer is active.
 func (s *Store) Close() error {
 	s.mu.Lock()
@@ -173,61 +111,4 @@ func (s *Store) Resize(limit int64) error {
 		return e
 	}
 	return nil
-}
-
-// reserve is called with mu held, except during construction.
-func (s *Store) reserve(n int64) error {
-	for s.used > s.limit || n > s.limit-s.used {
-		if err := s.evictOne(); err != nil {
-			return err
-		}
-	}
-	s.used += n
-	return nil
-}
-
-// Called with mu held. Active readers and unfinished writes are never victims.
-func (s *Store) evictOne() error {
-	var key string
-	var oldest *entry
-	for k, e := range s.items {
-		if e.pins == 0 && e.done == nil && (oldest == nil || e.used.Before(oldest.used)) {
-			key, oldest = k, e
-		}
-	}
-	if oldest == nil {
-		return ErrFull
-	}
-	if err := os.Remove(oldest.path); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	delete(s.items, key)
-	s.used -= oldest.allocation
-	return nil
-}
-
-// Reserve both the configured budget and physical capacity before fetch. Count
-// all unfinished reservations conservatively, including partially written files.
-// Leave up to 64 MiB (1% on small volumes) for filesystem and durable state writes.
-func (s *Store) reserveFetch(n int64) error {
-	for {
-		free, total, err := s.space()
-		if err != nil {
-			return err
-		}
-		pending := int64(0)
-		for _, e := range s.items {
-			if e.done != nil {
-				pending += e.allocation
-			}
-		}
-		headroom := min(int64(64<<20), max(int64(4096), total/100))
-		if s.used <= s.limit && n <= s.limit-s.used && pending <= math.MaxInt64-n-headroom && free >= n+pending+headroom {
-			s.used += n
-			return nil
-		}
-		if err = s.evictOne(); err != nil {
-			return err
-		}
-	}
 }
