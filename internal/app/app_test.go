@@ -47,9 +47,12 @@ func TestFailedRefreshRetainsCompleteCatalogue(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer db.Close()
+	defer closeTest(t, db)
 	ch := source.Channel{ID: id, Title: "Original", Entries: []source.Entry{{ID: "aqz-KE-bpKQ"}, {ID: "k0ILMhbWHNQ"}}}
-	if e = db.CommitSnapshot(ctx, ch, nil, 50); e != nil {
+	if e = db.EnsureChannel(ctx, ch.ID, ch.Title); e != nil {
+		t.Fatal(e)
+	}
+	if e = db.Discover(ctx, ch.ID, ch.Entries); e != nil {
 		t.Fatal(e)
 	}
 	before, _ := db.Videos(ctx)

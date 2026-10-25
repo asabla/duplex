@@ -15,8 +15,7 @@ func lockDirectory(dir string) (*os.File, error) {
 		return nil, err
 	}
 	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		return nil, errors.New("media cache is owned by another process")
+		return nil, errors.Join(errors.New("media cache is owned by another process"), f.Close())
 	}
 	return f, nil
 }

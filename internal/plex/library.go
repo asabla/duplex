@@ -8,11 +8,14 @@ import (
 	"strings"
 )
 
+// Binding identifies a Plex item without tying its key to a filesystem path.
 type Binding struct {
 	Key   string `xml:"ratingKey,attr" json:"key"`
 	GUID  string `xml:"guid,attr" json:"guid"`
 	Title string `xml:"title,attr" json:"title"`
 }
+
+// PlexAdapter defines the library integration contract used by duplex.
 type PlexAdapter interface {
 	Check(context.Context) (Capabilities, error)
 	Scan(context.Context, string) error
@@ -21,6 +24,8 @@ type PlexAdapter interface {
 }
 
 func validSection(section string) bool { n, e := strconv.Atoi(section); return e == nil && n > 0 }
+
+// Scan requests a refresh of the configured library section.
 func (c *Client) Scan(ctx context.Context, section string) error {
 	if !validSection(section) {
 		return errors.New("invalid Plex library section")
@@ -28,6 +33,7 @@ func (c *Client) Scan(ctx context.Context, section string) error {
 	return c.get(ctx, "/library/sections/"+section+"/refresh", nil)
 }
 
+// Bindings reads the episode identifiers exposed by one library section.
 func (c *Client) Bindings(ctx context.Context, section string) ([]Binding, error) {
 	if !validSection(section) {
 		return nil, errors.New("invalid Plex library section")
@@ -102,6 +108,7 @@ func (c *Client) LibraryHealth(ctx context.Context, section string) error {
 	return errors.New("dedicated Plex library does not exist")
 }
 
+// SourceID extracts the canonical video ID from a year episode NFO GUID.
 func SourceID(guid string) string {
 	u, e := url.Parse(guid)
 	if e != nil || u.Scheme != "tv.plex.agents.nfo.series" || u.Host != "episode" {

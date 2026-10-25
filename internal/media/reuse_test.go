@@ -54,7 +54,7 @@ func TestYouTubeVerifiedIndexReuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer closeTest(t, store)
 	client := &http.Client{Timeout: 30 * time.Second}
 	open := func(m source.Metadata, format string) *HTTPSource {
 		f := find(m, format)

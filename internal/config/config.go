@@ -19,8 +19,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ErrConflict means the file changed after the caller read its revision.
 var ErrConflict = errors.New("configuration changed; reload before saving")
 
+// Channel stores following, collection selection, and artwork policies by stable ID.
 type Channel struct {
 	ID        string          `yaml:"id" json:"id"`
 	URL       string          `yaml:"url" json:"url"`
@@ -31,11 +33,15 @@ type Channel struct {
 	Playlists *PlaylistPolicy `yaml:"playlists,omitempty" json:"playlists,omitempty"`
 	Artwork   Artwork         `yaml:"artwork,omitempty" json:"artwork,omitempty"`
 }
+
+// Plex identifies the dedicated library and an external protected token file.
 type Plex struct {
 	URL       string `yaml:"url" json:"url"`
 	Section   string `yaml:"section" json:"section"`
 	TokenFile string `yaml:"token_file" json:"token_file"`
 }
+
+// Config is the authoritative YAML schema for one installation.
 type Config struct {
 	Version        int       `yaml:"version" json:"version"`
 	Listen         string    `yaml:"listen" json:"listen"`
@@ -51,6 +57,7 @@ type Config struct {
 	Channels       []Channel `yaml:"channels" json:"channels"`
 }
 
+// Default returns household settings using separate durable and evictable directories.
 func Default(base string) Config {
 	return Config{Version: 1, Listen: "127.0.0.1:8765", DataDir: filepath.Join(base, "data"), CacheDir: filepath.Join(base, "media"), IndexDir: filepath.Join(base, "indexes"), Mountpoint: filepath.Join(base, "library", "media"), CacheGiB: 50, RefreshMinutes: 30, Workers: 2, MaxHeight: 2160, Channels: []Channel{}}
 }
@@ -126,6 +133,7 @@ func validID(s string) bool {
 	return true
 }
 
+// ChannelURL validates and canonicalizes a supported public YouTube channel URL.
 func ChannelURL(raw string) (string, error) {
 	u, e := url.Parse(raw)
 	if e != nil || u.User != nil || u.Scheme != "https" || u.Port() != "" || u.RawQuery != "" || u.Fragment != "" {
@@ -155,6 +163,7 @@ func ChannelURL(raw string) (string, error) {
 	return "https://www.youtube.com/" + p, nil
 }
 
+// Decode reads exactly one YAML configuration and validates all settings.
 func Decode(b []byte) (Config, error) {
 	var c Config
 	d := yaml.NewDecoder(bytes.NewReader(b))
@@ -170,18 +179,22 @@ func Decode(b []byte) (Config, error) {
 }
 func revision(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
 
+// Snapshot pairs cloned settings with the file revision used for a stale-save check.
 type Snapshot struct {
 	Config   Config    `json:"config"`
 	Revision string    `json:"revision"`
 	Error    string    `json:"error,omitempty"`
 	LoadedAt time.Time `json:"loaded_at"`
 }
+
+// Manager serializes valid YAML edits and retains the last valid external configuration.
 type Manager struct {
 	mu      sync.Mutex
 	path    string
 	current Snapshot
 }
 
+// Open loads an existing valid YAML file.
 func Open(path string) (*Manager, error) {
 	b, e := os.ReadFile(path)
 	if e != nil {
@@ -194,6 +207,7 @@ func Open(path string) (*Manager, error) {
 	return &Manager{path: path, current: Snapshot{Config: c, Revision: revision(b), LoadedAt: time.Now().UTC()}}, nil
 }
 
+// Snapshot pairs cloned settings with the file revision used for a stale-save check.
 func (m *Manager) Snapshot() Snapshot {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -222,6 +236,7 @@ func clone(c Config) Config {
 	return s
 }
 
+// Reload applies a valid external edit and records an error for an invalid edit.
 func (m *Manager) Reload() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -247,6 +262,7 @@ func (m *Manager) Reload() bool {
 	return true
 }
 
+// Save validates settings and atomically replaces the expected file revision.
 func (m *Manager) Save(c Config, expected string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -271,6 +287,7 @@ func (m *Manager) Save(c Config, expected string) error {
 	return nil
 }
 
+// AtomicWrite publishes a synced temporary file and then syncs its parent directory.
 func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 	f, e := os.CreateTemp(filepath.Dir(path), ".duplex-write-*")
 	if e != nil {
@@ -308,6 +325,7 @@ func AtomicWrite(path string, b []byte, mode os.FileMode) error {
 	return d.Sync()
 }
 
+// Create writes initial settings without replacing an existing configuration.
 func Create(path, base string) error {
 	if _, e := os.Lstat(path); e == nil {
 		return fmt.Errorf("configuration already exists")

@@ -69,7 +69,7 @@ func TestExclusiveOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
+	defer closeTest(t, s)
 }
 
 func TestConcurrentFetchDeduplication(t *testing.T) {
@@ -119,7 +119,7 @@ func TestDefaultFiftyGiBLimitCountsUnfinishedReservations(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	defer store.Close()
+	defer closeTest(t, store)
 	// This case tests the logical 50 GiB counter without allocating large data.
 	store.space = func() (int64, int64, error) { return 1 << 50, 1 << 50, nil }
 	started, finish, done := make(chan struct{}), make(chan struct{}), make(chan error, 1)

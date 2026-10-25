@@ -1,3 +1,4 @@
+// Package admin serves the authenticated administration panel and JSON API.
 package admin
 
 import (
@@ -58,6 +59,7 @@ func (s *Server) saveSettings(r *http.Request) error {
 }
 
 func (s *Server) artworkUpload(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20+64<<10)
 	if err := r.ParseMultipartForm(1 << 20); err != nil {
 		s.result(w, r, errors.New("invalid upload or artwork exceeds 10 MiB"), "")
 		return

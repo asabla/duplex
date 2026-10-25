@@ -189,7 +189,7 @@ func TestPartialMembershipWindowDoesNotDeleteUnseenIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int
-	if err := s.DB.QueryRow(`SELECT count(*) FROM playlist_members`).Scan(&count); err != nil || count != 2 {
+	if err := s.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM playlist_members`).Scan(&count); err != nil || count != 2 {
 		t.Fatal(count, err)
 	}
 	v := Visibility{PlaylistChannels: []string{"owner"}}
@@ -219,7 +219,7 @@ func TestPartialMembershipWindowDoesNotDeleteUnseenIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stored []byte
-	if err = s.DB.QueryRow(`SELECT metadata FROM metadata_revisions LIMIT 1`).Scan(&stored); err != nil {
+	if err = s.DB.QueryRowContext(t.Context(), `SELECT metadata FROM metadata_revisions LIMIT 1`).Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(stored), "videoplayback") {

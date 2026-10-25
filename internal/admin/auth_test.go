@@ -20,11 +20,11 @@ func TestSessionCSRFAndSignOut(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	get := httptest.NewRequest("GET", "http://duplex.test/login", nil)
+	get := httptest.NewRequestWithContext(t.Context(), "GET", "http://duplex.test/login", nil)
 	w := httptest.NewRecorder()
 	csrf := auth.LoginCSRF(w, get)
 	cookie := w.Result().Cookies()[0]
-	login := httptest.NewRequest("POST", "http://duplex.test/login", nil)
+	login := httptest.NewRequestWithContext(t.Context(), "POST", "http://duplex.test/login", nil)
 	login.AddCookie(cookie)
 	login.Header.Set("Origin", "http://duplex.test")
 	w = httptest.NewRecorder()
@@ -35,7 +35,7 @@ func TestSessionCSRFAndSignOut(t *testing.T) {
 	if !sessionCookie.HttpOnly || sessionCookie.SameSite != http.SameSiteStrictMode {
 		t.Fatal("insecure session cookie")
 	}
-	post := httptest.NewRequest("POST", "http://duplex.test/actions/config", nil)
+	post := httptest.NewRequestWithContext(t.Context(), "POST", "http://duplex.test/actions/config", nil)
 	post.AddCookie(sessionCookie)
 	if _, e = auth.Authorize(post); e == nil {
 		t.Fatal("CSRF bypass")

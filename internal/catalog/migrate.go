@@ -1,16 +1,17 @@
 package catalog
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"strings"
 )
 
-func (s *Store) migrate(version int) error {
+func (s *Store) migrate(ctx context.Context, version int) error {
 	if version == 2 {
 		return nil
 	}
-	tx, err := s.DB.Begin()
+	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -41,20 +42,20 @@ func (s *Store) migrate(version int) error {
 		`PRAGMA user_version=2`,
 	}
 	for _, statement := range statements {
-		if _, err = tx.Exec(statement); err != nil {
+		if _, err = tx.ExecContext(ctx, statement); err != nil {
 			return errors.Join(err, tx.Rollback())
 		}
 	}
-	if err = backfillSearch(tx); err != nil {
+	if err = backfillSearch(ctx, tx); err != nil {
 		return errors.Join(err, tx.Rollback())
 	}
 	return tx.Commit()
 }
 
-func backfillSearch(tx *sql.Tx) error {
+func backfillSearch(ctx context.Context, tx *sql.Tx) error {
 	last := ""
 	for {
-		rows, err := tx.Query(`SELECT id,title FROM videos WHERE id>? ORDER BY id LIMIT 250`, last)
+		rows, err := tx.QueryContext(ctx, `SELECT id,title FROM videos WHERE id>? ORDER BY id LIMIT 250`, last)
 		if err != nil {
 			return err
 		}
@@ -74,7 +75,7 @@ func backfillSearch(tx *sql.Tx) error {
 		}
 		closeRows(rows)
 		for _, t := range batch {
-			if _, err = tx.Exec(`UPDATE videos SET search_title=? WHERE id=?`, strings.ToLower(t.text), t.id); err != nil {
+			if _, err = tx.ExecContext(ctx, `UPDATE videos SET search_title=? WHERE id=?`, strings.ToLower(t.text), t.id); err != nil {
 				return err
 			}
 		}

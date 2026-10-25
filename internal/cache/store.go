@@ -14,9 +14,10 @@ import (
 	"time"
 )
 
+// ErrFull means reservations cannot be satisfied without evicting pinned data.
 var ErrFull = errors.New("media cache full: all reclaimable space is in use")
 
-// ChunkStore.Get reserves space before fetch, deduplicates concurrent fetches,
+// ChunkStore reserves space before fetch, deduplicates concurrent fetches,
 // publishes atomically, and pins the returned bytes until release. Eviction is
 // permitted only for unpinned published chunks.
 type ChunkStore interface {
@@ -36,6 +37,7 @@ type entry struct {
 	err        error
 }
 
+// Store accounts for published chunks, active pins, and unfinished write reservations.
 type Store struct {
 	mu          sync.Mutex
 	dir         string
@@ -46,6 +48,7 @@ type Store struct {
 	space       func() (free, total int64, err error)
 }
 
+// Stats reports physical allocation and the configured cache limit.
 type Stats struct {
 	Limit     int64 `json:"limit_bytes"`
 	Allocated int64 `json:"allocated_bytes"`
@@ -134,12 +137,14 @@ func (s *Store) Close() error {
 	return unlockDirectory(s.lock)
 }
 
+// Stats reports physical allocation and the configured cache limit.
 func (s *Store) Stats() Stats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return Stats{Limit: s.limit, Allocated: s.used, Chunks: len(s.items)}
 }
 
+// Resize applies a new limit only when enough unpinned data can be reclaimed.
 func (s *Store) Resize(limit int64) error {
 	if limit < 4096 {
 		return errors.New("invalid cache limit")

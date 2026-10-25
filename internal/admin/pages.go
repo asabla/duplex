@@ -12,7 +12,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func number(r *http.Request, key string) int { n, _ := strconv.Atoi(r.URL.Query().Get(key)); return n }
+func number(r *http.Request, key string) int {
+	n, err := strconv.Atoi(r.URL.Query().Get(key))
+	if err != nil {
+		return 0
+	}
+	return n
+}
 
 func videoFilter(r *http.Request) catalog.VideoFilter {
 	q := r.URL.Query()

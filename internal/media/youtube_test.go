@@ -81,7 +81,7 @@ func testRecordedSource(t *testing.T, path, videoFormat string, height int, repl
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer closeTest(t, store)
 	client := &http.Client{Timeout: 30 * time.Second}
 	if os.Getenv("DUPLEX_SOURCE_HTTP1") == "1" {
 		transport := http.DefaultTransport.(*http.Transport).Clone()

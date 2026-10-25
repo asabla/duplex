@@ -139,18 +139,18 @@ func (a *App) PrepareNow(ctx context.Context, id string) error {
 	return a.queuePreparation(ctx, id, 1000)
 }
 
-func (a *App) preparationWorker() {
+func (a *App) preparationWorker(ctx context.Context) {
 	defer a.wg.Done()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		if err := a.ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return
 		}
-		id, err := a.Catalog.ClaimPreparation(a.ctx)
+		id, err := a.Catalog.ClaimPreparation(ctx)
 		if errors.Is(err, sql.ErrNoRows) {
 			select {
-			case <-a.ctx.Done():
+			case <-ctx.Done():
 				return
 			case <-a.prepareWake:
 			case <-ticker.C:
@@ -160,18 +160,18 @@ func (a *App) preparationWorker() {
 		if err != nil {
 			a.operationFailure("preparation queue", err)
 			select {
-			case <-a.ctx.Done():
+			case <-ctx.Done():
 				return
 			case <-ticker.C:
 			}
 			continue
 		}
-		ctx, cancel := context.WithTimeout(a.ctx, 15*time.Minute)
-		err = a.prepareRecording(ctx, id)
+		workCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+		err = a.prepareRecording(workCtx, id)
 		cancel()
 		if err != nil {
 			a.operationFailure("recording preparation", err)
-			cleanup, stop := context.WithTimeout(context.WithoutCancel(a.ctx), 5*time.Second)
+			cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 			if stateErr := a.Catalog.SetPreparation(cleanup, id, "failed", fallbackReason(err)); stateErr != nil {
 				a.operationFailure("preparation result", stateErr)
 			}
@@ -258,14 +258,14 @@ func (a *App) requestScan() {
 	}
 }
 
-func (a *App) scanWorker() {
+func (a *App) scanWorker(ctx context.Context) {
 	defer a.wg.Done()
 	timer := time.NewTicker(time.Second)
 	defer timer.Stop()
 	var last time.Time
 	for {
 		select {
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-a.scanWake:
 		case <-timer.C:
@@ -279,7 +279,7 @@ func (a *App) scanWorker() {
 		if !scan {
 			continue
 		}
-		ctx, stop := context.WithTimeout(a.ctx, 20*time.Second)
+		ctx, stop := context.WithTimeout(ctx, 20*time.Second)
 		err := a.Scan(ctx)
 		stop()
 		a.operationFailure("Plex scan", err)
@@ -287,17 +287,17 @@ func (a *App) scanWorker() {
 	}
 }
 
-func (a *App) assetWorker() {
+func (a *App) assetWorker(ctx context.Context) {
 	defer a.wg.Done()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
-		id, err := a.Catalog.NextAsset(a.ctx)
+		id, err := a.Catalog.NextAsset(ctx)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
@@ -305,14 +305,14 @@ func (a *App) assetWorker() {
 			a.operationFailure("asset queue", err)
 			continue
 		}
-		ctx, stop := context.WithTimeout(a.ctx, time.Minute)
-		m, err := a.playbackMetadata(ctx, id)
+		workCtx, stop := context.WithTimeout(ctx, time.Minute)
+		m, err := a.playbackMetadata(workCtx, id)
 		if err == nil {
 			candidates := source.Candidates(m, a.Config.Snapshot().Config.MaxHeight)
 			if len(candidates) == 0 {
 				err = errors.New("no supported asset language")
 			} else {
-				assets := a.acquireAssets(ctx, m, candidates[0])
+				assets := a.acquireAssets(workCtx, m, candidates[0])
 				if len(assets) > 0 {
 					a.mu.Lock()
 					a.assets[id] = assets
@@ -323,7 +323,7 @@ func (a *App) assetWorker() {
 		}
 		stop()
 		a.operationFailure("optional assets", err)
-		if finishErr := a.Catalog.FinishAsset(a.ctx, id, err); finishErr != nil {
+		if finishErr := a.Catalog.FinishAsset(ctx, id, err); finishErr != nil {
 			a.operationFailure("asset result", finishErr)
 		}
 	}

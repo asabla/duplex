@@ -24,6 +24,7 @@ const (
 	DenoVersion  = "2.9.8"
 )
 
+// ErrUnavailable identifies content which cannot be accessed without credentials.
 var ErrUnavailable = errors.New("video is unavailable without credentials")
 
 // ErrMissingCollection is an explicitly absent channel tab, not a failed refresh.
@@ -31,6 +32,7 @@ var ErrMissingCollection = errors.New("channel collection does not exist")
 
 var videoID = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 
+// Entry is a lightweight collection identity with source ordering and optional timestamps.
 type Entry struct {
 	Group            int     `json:"-"`
 	Position         int     `json:"playlist_index"`
@@ -40,6 +42,8 @@ type Entry struct {
 	ReleaseTimestamp float64 `json:"release_timestamp"`
 	LiveStatus       string  `json:"live_status"`
 }
+
+// Channel identifies the collection owner and its public branding.
 type Channel struct {
 	ID     string
 	Title  string
@@ -48,6 +52,8 @@ type Channel struct {
 	// Entries are complete and newest first within each channel tab (Group).
 	Entries []Entry
 }
+
+// Format describes a finite source candidate and transient playback locator.
 type Format struct {
 	ID                 string  `json:"format_id"`
 	URL                string  `json:"url"`
@@ -64,10 +70,14 @@ type Format struct {
 	Revision           string  `json:"-"`
 	VerifiedSize       int64   `json:"-"`
 }
+
+// Subtitle is a transient locator for an available sidecar caption format.
 type Subtitle struct {
 	URL string `json:"url"`
 	Ext string `json:"ext"`
 }
+
+// Metadata retrieves video lifecycle and publication data through the resolver.
 type Metadata struct {
 	ID                string                `json:"id"`
 	ChannelID         string                `json:"channel_id"`
@@ -86,6 +96,7 @@ type Metadata struct {
 	AutomaticCaptions map[string][]Subtitle `json:"automatic_captions"`
 }
 
+// State separates completed recordings from active, processing, and inaccessible content.
 func (m Metadata) State() string {
 	switch m.LiveStatus {
 	case "is_upcoming":
@@ -107,6 +118,7 @@ func (m Metadata) State() string {
 	return "unavailable"
 }
 
+// Date uses publication time when available and falls back to the source upload date.
 func (m Metadata) Date() time.Time {
 	if m.Timestamp > 0 {
 		return time.Unix(int64(m.Timestamp), 0).UTC()
@@ -117,12 +129,15 @@ func (m Metadata) Date() time.Time {
 	return time.Time{}
 }
 
+// SourceAdapter separates discovery metadata from playback-source resolution.
 type SourceAdapter interface {
 	ResolveChannel(context.Context, string) (Channel, error)
 	Enumerate(context.Context, string) (Channel, error)
 	Metadata(context.Context, string) (Metadata, error)
 	Resolve(context.Context, string) (Metadata, error)
 }
+
+// YouTube runs the pinned resolver with separate bounded listing and metadata slots.
 type YouTube struct {
 	Executable    string
 	Deno          string
@@ -162,6 +177,7 @@ func (y *YouTube) run(ctx context.Context, args ...string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
+// Check verifies the resolver, EJS component, and JavaScript runtime contract.
 func (y *YouTube) Check(ctx context.Context) error {
 	binary := y.Executable
 	if binary == "" {
@@ -268,6 +284,7 @@ func decodeChannel(b []byte) (Channel, error) {
 	return result, nil
 }
 
+// ResolveChannel converts a supported channel URL to its stable owner identity.
 func (y *YouTube) ResolveChannel(ctx context.Context, raw string) (Channel, error) {
 	u, e := config.ChannelURL(raw)
 	if e != nil {
@@ -280,6 +297,7 @@ func (y *YouTube) ResolveChannel(ctx context.Context, raw string) (Channel, erro
 	return decodeChannel(b)
 }
 
+// Enumerate reads a complete channel snapshot for compatibility adapters.
 func (y *YouTube) Enumerate(ctx context.Context, id string) (Channel, error) {
 	u, e := config.ChannelURL("https://www.youtube.com/channel/" + id)
 	if e != nil {
@@ -292,10 +310,12 @@ func (y *YouTube) Enumerate(ctx context.Context, id string) (Channel, error) {
 	return decodeChannel(b)
 }
 
+// Metadata retrieves video lifecycle and publication data through the resolver.
 func (y *YouTube) Metadata(ctx context.Context, id string) (Metadata, error) {
 	return y.Resolve(ctx, id)
 }
 
+// Resolve retrieves and validates fresh playback-source candidates.
 func (y *YouTube) Resolve(ctx context.Context, id string) (Metadata, error) {
 	if !videoID.MatchString(id) {
 		return Metadata{}, errors.New("invalid video ID")
@@ -320,6 +340,7 @@ func DecodeMetadata(b []byte, id string) (Metadata, error) {
 	return m, nil
 }
 
+// Candidate pairs a supported video track with original-language audio, or a combined file.
 type Candidate struct {
 	Video    Format
 	Audio    *Format
@@ -400,6 +421,7 @@ func AllowedURL(raw string) bool {
 	return false
 }
 
+// HTTPClient permits only supported source hosts and checks redirects against the same rules.
 func HTTPClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if len(via) > 5 || !AllowedURL(r.URL.String()) {

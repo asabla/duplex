@@ -32,7 +32,7 @@ linters:
     cyclop:
       max-complexity: 15
     gocognit:
-      min-complexity: 21
+      min-complexity: 20
     errcheck:
       check-type-assertions: true
       check-blank: true
@@ -53,3 +53,7 @@ formatters:
       module-path: duplex
     goimports:
       local-prefixes: [duplex]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

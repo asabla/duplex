@@ -15,13 +15,17 @@ import (
 	"time"
 )
 
+// ErrMissingNFO means the actual server does not advertise an NFO series agent.
 var ErrMissingNFO = errors.New("Plex server does not expose an NFO series provider; metadata acceptance gate failed")
 
+// Client sends authenticated requests to one configured Plex origin without redirects.
 type Client struct {
 	base  *url.URL
 	token string
 	http  *http.Client
 }
+
+// Capabilities records observed server features rather than inferred version support.
 type Capabilities struct {
 	Version   string `json:"version"`
 	Claimed   bool   `json:"claimed"`
@@ -29,6 +33,7 @@ type Capabilities struct {
 	Provider  string `json:"provider,omitempty"`
 }
 
+// New validates a Plex origin and keeps its token out of URLs and diagnostics.
 func New(base, token string) (*Client, error) {
 	u, err := url.Parse(base)
 	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") || u.User != nil || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
@@ -77,6 +82,7 @@ func (c *Client) request(ctx context.Context, method, path string, result any) e
 	return nil
 }
 
+// Check verifies the minimum server version and the advertised NFO series agent.
 func (c *Client) Check(ctx context.Context) (Capabilities, error) {
 	var identity struct {
 		Version string `xml:"version,attr"`

@@ -19,6 +19,7 @@ import (
 
 const ChunkSize = 1024 * 1024
 
+// HTTPSource binds reads to one exact-size upstream object and cache namespace.
 type HTTPSource struct {
 	client             *http.Client
 	url                string
@@ -118,7 +119,10 @@ func (s *HTTPSource) namespace(ctx context.Context, version SourceVersion) (stri
 	return "provider-v1:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func (s *HTTPSource) ID() string  { return s.id }
+// ID returns the immutable namespace verified when the source was opened.
+func (s *HTTPSource) ID() string { return s.id }
+
+// Size returns the exact length established by an upstream range response.
 func (s *HTTPSource) Size() int64 { return s.size }
 
 func (s *HTTPSource) request(ctx context.Context, offset int64, length int) (*http.Response, error) {
@@ -187,6 +191,7 @@ func (s *HTTPSource) fetch(ctx context.Context, offset int64, length int) ([]byt
 	return b, nil
 }
 
+// ReadAt reads only requested ranges and pins cache chunks until the copy completes.
 func (s *HTTPSource) ReadAt(ctx context.Context, p []byte, offset int64) (int, error) {
 	if offset < 0 {
 		return 0, errors.New("negative offset")

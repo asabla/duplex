@@ -64,7 +64,7 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer closeTest(t, db)
 	for i, ch := range snap.Config.Channels {
 		if err = db.EnsureChannel(ctx, ch.ID, fmt.Sprintf("Channel %02d", i)); err != nil {
 			t.Fatal(err)
@@ -93,7 +93,7 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer closeTest(t, c)
 	s, err := New(&app.App{Config: m, Catalog: db, Cache: c}, &Auth{})
 	if err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 	get := func(path string) string {
 		t.Helper()
 		w := httptest.NewRecorder()
-		s.route(w, httptest.NewRequest("GET", path, nil))
+		s.route(w, httptest.NewRequestWithContext(t.Context(), "GET", path, nil))
 		if w.Code != 200 {
 			t.Fatalf("%s: %d %s", path, w.Code, w.Body.String())
 		}

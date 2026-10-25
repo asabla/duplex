@@ -1,12 +1,14 @@
 package admin
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
 	"html/template"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +24,7 @@ import (
 //go:embed templates/*.html static/*
 var content embed.FS
 
+// Server serves the authenticated HTML and versioned JSON administration interfaces.
 type Server struct {
 	App       *app.App
 	Auth      *Auth
@@ -48,6 +51,7 @@ type page struct {
 	Seasons         map[string]int
 }
 
+// New parses the embedded templates and binds the shared application services.
 func New(a *app.App, auth *Auth) (*Server, error) {
 	t, e := template.New("duplex").Funcs(template.FuncMap{"states": func(values ...string) []string { return values }, "heights": func(values ...int) []int { return values }, "sortlink": sortLink, "gib": func(n int64) string { return strconv.FormatFloat(float64(n)/(1<<30), 'f', 2, 64) }, "day": func(n int64) string {
 		if n == 0 {
@@ -86,13 +90,17 @@ func New(a *app.App, auth *Auth) (*Server, error) {
 	return &Server{App: a, Auth: auth, templates: t}, nil
 }
 
+// Handler adds routing, authentication, request limits, and browser security headers.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	assets, _ := fs.Sub(content, "static")
+	assets, err := fs.Sub(content, "static")
+	if err != nil {
+		panic("embedded static assets are missing")
+	}
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
-		w.Write([]byte("ok\n"))
+		writeText(w, "ok\n")
 	})
 	mux.HandleFunc("GET /mountz", func(w http.ResponseWriter, r *http.Request) {
 		v, _, e := s.App.Summary(r.Context())
@@ -100,7 +108,7 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "mount not ready", 503)
 			return
 		}
-		w.Write([]byte("mount ready\n"))
+		writeText(w, "mount ready\n")
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
 		v, _, e := s.App.Summary(r.Context())
@@ -108,7 +116,7 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "not ready", 503)
 			return
 		}
-		w.Write([]byte("ready\n"))
+		writeText(w, "ready\n")
 	})
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
@@ -204,13 +212,23 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) render(w http.ResponseWriter, name string, v page) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_ = s.templates.ExecuteTemplate(w, name, v)
+	var rendered bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&rendered, name, v); err != nil {
+		slog.Error("page rendering failed")
+		http.Error(w, "page unavailable", http.StatusInternalServerError)
+		return
+	}
+	if _, err := rendered.WriteTo(w); err != nil {
+		slog.Error("page response write failed")
+	}
 }
 
 func reply(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		slog.Error("JSON response write failed")
+	}
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -402,4 +420,10 @@ func (p page) ChannelName(id string) string {
 		}
 	}
 	return id
+}
+
+func writeText(w http.ResponseWriter, text string) {
+	if _, err := io.WriteString(w, text); err != nil {
+		slog.Error("text response write failed")
+	}
 }

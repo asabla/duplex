@@ -12,12 +12,8 @@ import (
 // changing lease URL. The HTTP adapter must also verify size and fresh ranges
 // before using it as a reusable namespace. Missing evidence disables reuse.
 func assetVersion(raw, format string) (string, int64) {
-	u, err := url.Parse(raw)
-	if err != nil || !AllowedURL(raw) || !strings.HasSuffix(strings.ToLower(u.Hostname()), ".googlevideo.com") || u.Path != "/videoplayback" {
-		return "", 0
-	}
-	q := u.Query()
-	if q.Get("sig") == "" && q.Get("signature") == "" {
+	q, valid := assetLeaseValues(raw)
+	if !valid {
 		return "", 0
 	}
 	signed := map[string]bool{}
@@ -43,4 +39,16 @@ func assetVersion(raw, format string) (string, int64) {
 	data := strings.Join([]string{format, q.Get("clen"), q.Get("lmt"), q.Get("mime"), q.Get("dur")}, "\x00")
 	h := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(h[:]), size
+}
+
+func assetLeaseValues(raw string) (url.Values, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || !AllowedURL(raw) || !strings.HasSuffix(strings.ToLower(u.Hostname()), ".googlevideo.com") || u.Path != "/videoplayback" {
+		return nil, false
+	}
+	values := u.Query()
+	if values.Get("sig") == "" && values.Get("signature") == "" {
+		return nil, false
+	}
+	return values, true
 }

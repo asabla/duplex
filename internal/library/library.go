@@ -1,3 +1,4 @@
+// Package library projects verified episodes and local assets into a read-only filesystem.
 package library
 
 import (
@@ -17,11 +18,14 @@ import (
 
 var safeID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
 
+// Entry maps a stable mounted path to immutable bytes and a modification time.
 type Entry struct {
 	Path     string
 	Media    media.Representation
 	Modified int64
 }
+
+// Episode is one channel-season occurrence of a verified media representation.
 type Episode struct {
 	ChannelID, ChannelTitle, VideoID, Title, Description string
 	Season, Number                                       int
@@ -103,6 +107,7 @@ func Entries(episodes []Episode) ([]Entry, error) {
 	return entries, nil
 }
 
+// Inode derives a stable inode number from an independent path or occurrence identity.
 func Inode(identity string) uint64 {
 	h := sha256.Sum256([]byte(identity))
 	return binary.BigEndian.Uint64(h[:8]) | 1<<63

@@ -219,7 +219,7 @@ func TestInterruptedPlaylistKeepsMembershipAndSkipsPolicy(t *testing.T) {
 		t.Fatal("partial collection committed")
 	}
 	var old int
-	if err := a.Catalog.DB.QueryRow(`SELECT count(*) FROM playlist_members WHERE playlist_id=? AND selected=1 AND video_id IN ('video000001','video000002')`, id).Scan(&old); err != nil || old != 2 {
+	if err := a.Catalog.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM playlist_members WHERE playlist_id=? AND selected=1 AND video_id IN ('video000001','video000002')`, id).Scan(&old); err != nil || old != 2 {
 		t.Fatal(old, err)
 	}
 	snap := a.Config.Snapshot()

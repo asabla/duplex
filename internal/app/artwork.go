@@ -321,7 +321,7 @@ func (a *App) refreshArtwork(ctx context.Context, channel string) error {
 	return nil
 }
 
-func (a *App) artworkWorker() {
+func (a *App) artworkWorker(ctx context.Context) {
 	defer a.wg.Done()
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
@@ -330,7 +330,7 @@ func (a *App) artworkWorker() {
 	versions := map[string]string{}
 	for {
 		select {
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
@@ -344,7 +344,7 @@ func (a *App) artworkWorker() {
 			if !ch.Enabled {
 				continue
 			}
-			ctx, stop := context.WithTimeout(a.ctx, 90*time.Second)
+			ctx, stop := context.WithTimeout(ctx, 90*time.Second)
 			if time.Since(brandingAt[ch.ID]) >= 6*time.Hour {
 				brandingAt[ch.ID] = time.Now()
 				channel, err := a.Source.ResolveChannel(ctx, ch.URL)

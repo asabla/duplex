@@ -9,6 +9,7 @@ import (
 	"io"
 )
 
+// VerifyRanges checks beginning, middle, and end reads plus exact end-of-file behavior.
 func VerifyRanges(ctx context.Context, r Representation) error {
 	if r.Size() <= 0 {
 		return ErrUnsupported
@@ -32,27 +33,34 @@ func VerifyRanges(ctx context.Context, r Representation) error {
 			return ErrChanged
 		}
 	}
+	if n, err := r.ReadAt(ctx, make([]byte, 1), r.Size()); n != 0 || !errors.Is(err, io.EOF) {
+		return ErrUnsupported
+	}
 	return nil
 }
 
+// Representation errors distinguish changed content, expired leases, and unsupported containers.
 var (
 	ErrChanged     = errors.New("source representation changed")
 	ErrExpired     = errors.New("source locator expired; open a new representation")
 	ErrUnsupported = errors.New("unsupported media representation")
 )
 
+// Representation is an immutable, exact-size object with context-aware offset reads.
 type Representation interface {
 	ID() string
 	Size() int64
 	ReadAt(context.Context, []byte, int64) (int, error)
 }
 
-// MediaRepresentation adds verified container details to the byte-range source
+// Inspected adds verified container details to the byte-range source
 // contract. Metadata files use Representation without media codec information.
-type MediaRepresentation interface {
+type Inspected interface {
 	Representation
 	Details() Details
 }
+
+// Details contains the verified codec and container properties.
 type Details struct {
 	Container       string  `json:"container"`
 	VideoCodec      string  `json:"video_codec"`
@@ -61,11 +69,14 @@ type Details struct {
 	Height          int     `json:"height"`
 	DurationSeconds float64 `json:"duration_seconds"`
 }
+
+// Described attaches inspected media properties to an underlying byte representation.
 type Described struct {
 	Representation
 	Info Details
 }
 
+// Details returns the verified codec and container properties.
 func (r Described) Details() Details { return r.Info }
 
 // Seeker is private to each parser or HTTP request. It does not share a cursor.
@@ -81,6 +92,7 @@ func (s *Seeker) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// Seek applies standard stream-relative offsets within an immutable representation.
 func (s *Seeker) Seek(offset int64, whence int) (int64, error) {
 	var base int64
 	switch whence {

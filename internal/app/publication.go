@@ -5,40 +5,29 @@ import (
 	"path"
 
 	"duplex/internal/catalog"
+	"duplex/internal/config"
 	"duplex/internal/library"
 )
 
-func (a *App) publishedEpisodes(rows []catalog.Episode) []library.Episode {
-	c := a.Config.Snapshot().Config
-	channels := map[string]bool{}
-	playlists := map[string]bool{}
+func enabledChannels(c config.Config) map[string]config.Channel {
+	result := map[string]config.Channel{}
 	for _, ch := range c.Channels {
-		if !ch.Enabled {
-			continue
-		}
-		channels[ch.ID] = true
-		if ch.Playlists != nil && ch.Playlists.Enabled {
-			playlists[ch.ID] = true
+		if ch.Enabled {
+			result[ch.ID] = ch
 		}
 	}
+	return result
+}
+
+func (a *App) publishedEpisodes(rows []catalog.Episode) []library.Episode {
+	channels := enabledChannels(a.Config.Snapshot().Config)
 	out := []library.Episode{}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	for _, v := range rows {
-		if !channels[v.OwnerID] || (v.PlaylistID != "" && !playlists[v.OwnerID]) {
+		ch, enabled := channels[v.OwnerID]
+		if !enabled || (v.PlaylistID != "" && ch.PlaylistSelection(v.PlaylistID).Mode == "skip") {
 			continue
-		}
-		if v.PlaylistID != "" {
-			skip := false
-			for _, ch := range c.Channels {
-				if ch.ID == v.OwnerID && ch.PlaylistSelection(v.PlaylistID).Mode == "skip" {
-					skip = true
-					break
-				}
-			}
-			if skip {
-				continue
-			}
 		}
 		rep := a.reps[v.Revision]
 		if rep == nil {

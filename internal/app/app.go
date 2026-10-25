@@ -5,9 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -24,7 +24,9 @@ import (
 	"duplex/internal/source"
 )
 
+// App coordinates catalogue discovery, media preparation, publication, and integration.
 type App struct {
+	httpClient      *http.Client
 	metadata        map[string]metadataLease
 	leases          map[string]time.Time
 	prepareWake     chan struct{}
@@ -56,6 +58,8 @@ type App struct {
 	applied         config.Config
 	cacheError      string
 }
+
+// Status is the compatibility diagnostic snapshot; Summary is intended for polling.
 type Status struct {
 	Ready           bool                      `json:"ready"`
 	MountReady      bool                      `json:"mount_ready"`
@@ -73,6 +77,7 @@ type Status struct {
 	Measurements    []diagnostics.Measurement `json:"measurements,omitempty"`
 }
 
+// Open initializes storage and starts bounded workers under the supplied context.
 func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, noMount bool) (*App, error) {
 	c := m.Snapshot().Config
 	for _, p := range []string{c.DataDir, c.IndexDir} {
@@ -80,14 +85,13 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 			return nil, e
 		}
 	}
-	db, e := catalog.Open(filepath.Join(c.DataDir, "catalogue.sqlite"))
+	db, e := catalog.OpenContext(ctx, filepath.Join(c.DataDir, "catalogue.sqlite"))
 	if e != nil {
 		return nil, e
 	}
 	store, e := cache.New(c.CacheDir, int64(c.CacheGiB)<<30)
 	if e != nil {
-		db.Close()
-		return nil, e
+		return nil, errors.Join(e, db.Close())
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	a := &App{Measurements: &diagnostics.Recorder{}, Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, assets: map[string][]library.Entry{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1), metadata: map[string]metadataLease{}, leases: map[string]time.Time{}, ctx: ctx, cancel: cancel, original: c}
@@ -103,38 +107,37 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	if !noMount {
 		a.mount, e = library.MountReadOnly(c.Mountpoint, nil)
 		if e != nil {
-			a.Close()
-			return nil, e
+			return nil, errors.Join(e, a.Close())
 		}
 	} else {
 		a.mountError = "mount disabled; administration test mode"
 	}
 	if e = a.Publish(); e != nil {
-		a.Close()
-		return nil, e
+		return nil, errors.Join(e, a.Close())
 	}
 	if e = a.Catalog.ResetPreparations(ctx, visibility(c)); e != nil {
 		return nil, errors.Join(e, a.Close())
 	}
 	for range 2 {
 		a.wg.Add(1)
-		go a.preparationWorker()
+		go a.preparationWorker(ctx)
 	}
 	a.wg.Add(1)
-	go a.scanWorker()
+	go a.scanWorker(ctx)
 	a.wg.Add(1)
-	go a.assetWorker()
+	go a.assetWorker(ctx)
 	a.wg.Add(1)
-	go a.artworkWorker()
+	go a.artworkWorker(ctx)
 	for i := 0; i < c.Workers; i++ {
 		a.wg.Add(1)
-		go a.worker()
+		go a.worker(ctx)
 	}
 	a.wg.Add(1)
-	go a.schedule()
+	go a.schedule(ctx)
 	return a, nil
 }
 
+// Close cancels workers before closing the mount, cache, and catalogue.
 func (a *App) Close() error {
 	a.cancel()
 	a.wg.Wait()
@@ -147,6 +150,7 @@ func (a *App) Close() error {
 	return errors.Join(mountErr, e, e2)
 }
 
+// Queue schedules one enabled channel and deduplicates pending refreshes.
 func (a *App) Queue(id string) error {
 	c := a.Config.Snapshot().Config
 	found := false
@@ -172,23 +176,23 @@ func (a *App) Queue(id string) error {
 	}
 }
 
-func (a *App) schedule() {
+func (a *App) schedule(ctx context.Context) {
 	defer a.wg.Done()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-	a.reconcile()
+	a.reconcile(ctx)
 	for {
 		select {
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			a.Config.Reload()
-			a.reconcile()
+			a.reconcile(ctx)
 		}
 	}
 }
 
-func (a *App) reconcile() {
+func (a *App) reconcile(ctx context.Context) {
 	snap := a.Config.Snapshot()
 	c := snap.Config
 	a.mu.Lock()
@@ -210,6 +214,19 @@ func (a *App) reconcile() {
 		a.cacheError = "Cache limit could not be applied; check local media storage"
 	}
 	a.mu.Unlock()
+	a.scheduleChannels(c, previous, changed)
+	if changed {
+		a.operationFailure("publication", a.Publish())
+	}
+	if changed || time.Since(a.lastIntegration) >= time.Minute {
+		a.lastIntegration = time.Now()
+		ctx, stop := context.WithTimeout(ctx, 20*time.Second)
+		a.operationFailure("integration health", a.integration(ctx, false))
+		stop()
+	}
+}
+
+func (a *App) scheduleChannels(c, previous config.Config, changed bool) {
 	priorChannels := map[string]config.Channel{}
 	for _, ch := range previous.Channels {
 		priorChannels[ch.ID] = ch
@@ -226,41 +243,32 @@ func (a *App) reconcile() {
 			a.operationFailure("queue refresh", a.Queue(ch.ID))
 		}
 	}
-	if changed {
-		a.operationFailure("publication", a.Publish())
-	}
-	if changed || time.Since(a.lastIntegration) >= time.Minute {
-		a.lastIntegration = time.Now()
-		ctx, stop := context.WithTimeout(a.ctx, 20*time.Second)
-		a.operationFailure("integration health", a.integration(ctx, false))
-		stop()
-	}
 }
 
-func (a *App) worker() {
+func (a *App) worker(ctx context.Context) {
 	defer a.wg.Done()
 	for {
 		select {
-		case <-a.ctx.Done():
+		case <-ctx.Done():
 			return
 		case id := <-a.jobs:
 			a.mu.Lock()
 			a.attempted[id] = time.Now()
 			a.mu.Unlock()
-			ctx, cancel := context.WithTimeout(a.ctx, 2*time.Hour)
-			err := a.Sync(ctx, id)
+			jobCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+			err := a.Sync(jobCtx, id)
 			cancel()
 			a.operationFailure("channel discovery", err)
 			a.mu.Lock()
 			delete(a.queued, id)
 			a.mu.Unlock()
-			a.prune()
+			a.prune(ctx)
 		}
 	}
 }
 
-func (a *App) prune() {
-	videos, e := a.Catalog.Episodes(a.ctx)
+func (a *App) prune(ctx context.Context) {
+	videos, e := a.Catalog.Episodes(ctx)
 	if e != nil {
 		return
 	}
@@ -328,6 +336,7 @@ func (a *App) Follow(ctx context.Context, raw string, selection config.Selection
 	return a.Queue(ch.ID)
 }
 
+// RemoveChannel updates YAML and removes the channel from the published library.
 func (a *App) RemoveChannel(id, expected string) error {
 	s := a.Config.Snapshot()
 	channels := []config.Channel{}
@@ -349,112 +358,6 @@ func (a *App) RemoveChannel(id, expected string) error {
 	return a.Publish()
 }
 
-func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (catalog.Prepared, error) {
-	defer a.Measurements.Begin("prepare")()
-	if m.Date().IsZero() {
-		return catalog.Prepared{}, errors.New("source publication date is unavailable")
-	}
-	candidates := source.Candidates(m, maxHeight)
-	client := source.HTTPClient()
-	failure := ""
-	attempts := 0
-	for _, candidate := range candidates {
-		// Bound candidate work without dropping the finite combined fallback.
-		if !candidate.Combined && attempts >= 6 {
-			continue
-		}
-		attempts++
-		buildCtx, stop := context.WithTimeout(ctx, 5*time.Minute)
-		v, e := diagnostics.Measure(a.Measurements, "media.probe", func() (*media.HTTPSource, error) {
-			return media.OpenVersionedHTTP(buildCtx, client, candidate.Video.URL, m.ID+":"+candidate.Video.ID, a.Cache, media.SourceVersion{Key: candidate.Video.Revision, Size: candidate.Video.VerifiedSize})
-		})
-		var rep media.Representation
-		indexPath := ""
-		if e == nil {
-			if candidate.Combined {
-				var details media.Details
-				details, e = media.InspectCombined(buildCtx, v)
-				rep = media.Described{Representation: v, Info: details}
-			} else {
-				var au *media.HTTPSource
-				au, e = diagnostics.Measure(a.Measurements, "media.probe", func() (*media.HTTPSource, error) {
-					return media.OpenVersionedHTTP(buildCtx, client, candidate.Audio.URL, m.ID+":"+candidate.Audio.ID, a.Cache, media.SourceVersion{Key: candidate.Audio.Revision, Size: candidate.Audio.VerifiedSize})
-				})
-				if e == nil {
-					var mux *media.VirtualMP4
-					h := sha256.Sum256([]byte(m.ID + ":" + candidate.Video.ID + ":" + candidate.Audio.ID))
-					indexPath = filepath.Join(a.original.IndexDir, hex.EncodeToString(h[:])+".json")
-					mux, e = diagnostics.Measure(a.Measurements, "media.index.load", func() (*media.VirtualMP4, error) {
-						return media.LoadIndex(indexPath, map[string]media.Representation{v.ID(): v, au.ID(): au})
-					})
-					if e != nil || mux.Details().Height == 0 {
-						mux, e = diagnostics.Measure(a.Measurements, "media.index.build", func() (*media.VirtualMP4, error) { return media.Mux(buildCtx, v, au) })
-					}
-					if e == nil {
-						rep = mux
-					}
-				}
-			}
-		}
-		if e == nil {
-			e = diagnostics.Run(a.Measurements, "media.verify", func() error { return media.VerifyRanges(buildCtx, rep) })
-		}
-		stop()
-		if e == nil {
-			if described, ok := rep.(media.MediaRepresentation); !ok || described.Details().Height <= 0 || described.Details().Height > maxHeight {
-				e = media.ErrUnsupported
-			} else {
-				candidate.Height = described.Details().Height
-			}
-		}
-		if e != nil {
-			if failure == "" {
-				failure = fallbackReason(e)
-			}
-			continue
-		}
-		if indexed, ok := rep.(*media.VirtualMP4); ok {
-			if e = indexed.SaveIndex(filepath.Join(a.original.IndexDir, rep.ID()+".mp4-index.json")); e == nil {
-				e = indexed.SaveIndex(indexPath)
-			}
-			if e != nil {
-				if failure == "" {
-					failure = fallbackReason(e)
-				}
-				continue
-			}
-		}
-		described := rep.(media.MediaRepresentation)
-		audioFormat := ""
-		if candidate.Audio != nil {
-			audioFormat = candidate.Audio.ID
-		}
-		descriptor := struct {
-			VideoID, Revision, VideoFormat, AudioFormat string
-			Size                                        int64
-			Media                                       media.Details
-		}{m.ID, rep.ID(), candidate.Video.ID, audioFormat, rep.Size(), described.Details()}
-		blob, _ := json.Marshal(descriptor)
-		if e = config.AtomicWrite(filepath.Join(a.original.IndexDir, rep.ID()+".description.json"), blob, 0o600); e != nil {
-			if failure == "" {
-				failure = fallbackReason(e)
-			}
-			continue
-		}
-		a.mu.Lock()
-		a.reps[rep.ID()] = rep
-		a.mu.Unlock()
-		a.mu.Lock()
-		if a.leases == nil {
-			a.leases = map[string]time.Time{}
-		}
-		a.leases[rep.ID()] = leaseExpiry(m)
-		a.mu.Unlock()
-		return catalog.Prepared{Metadata: m, Revision: rep.ID(), Height: candidate.Height, Fallback: failure, Size: rep.Size()}, nil
-	}
-	return catalog.Prepared{}, errors.New("no verified supported representation")
-}
-
 func fallbackReason(e error) string {
 	var pathError *os.PathError
 	switch {
@@ -473,6 +376,7 @@ func fallbackReason(e error) string {
 	}
 }
 
+// Publish atomically replaces the mounted snapshot using verified runtime media.
 func (a *App) Publish() error {
 	defer a.Measurements.Begin("publish")()
 	a.publishMu.Lock()
@@ -510,6 +414,7 @@ func (a *App) plexClient() (*plex.Client, error) {
 	return plex.New(p.URL, token)
 }
 
+// Scan checks the mount and Plex prerequisites before requesting library discovery.
 func (a *App) Scan(ctx context.Context) error {
 	defer a.Measurements.Begin("plex.scan")()
 	return a.integration(ctx, true)
@@ -569,6 +474,7 @@ func (a *App) setPlexError(e error) {
 	}
 }
 
+// Status is the compatibility diagnostic snapshot; Summary is intended for polling.
 func (a *App) Status(ctx context.Context) (Status, error) {
 	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot()}
 	var e error

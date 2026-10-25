@@ -14,9 +14,15 @@ type pagination struct {
 }
 
 func paginate(values url.Values, path, label string, total int) pagination {
-	number, _ := strconv.Atoi(values.Get("page"))
+	number, err := strconv.Atoi(values.Get("page"))
+	if err != nil {
+		number = 1
+	}
 	number = max(1, number)
-	size, _ := strconv.Atoi(values.Get("per_page"))
+	size, err := strconv.Atoi(values.Get("per_page"))
+	if err != nil {
+		size = 25
+	}
 	if size != 25 && size != 50 && size != 100 {
 		size = 25
 	}

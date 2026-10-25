@@ -29,6 +29,7 @@ type (
 	}
 )
 
+// Sync records one discovery job and reconciles only successfully enumerated windows.
 func (a *App) Sync(ctx context.Context, id string) error {
 	defer a.Measurements.Begin("sync")()
 	ch, err := a.followed(id)

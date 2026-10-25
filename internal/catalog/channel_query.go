@@ -8,11 +8,13 @@ import (
 )
 
 type (
+	// ChannelFilter restricts one channel page to identities permitted by YAML.
 	ChannelFilter struct {
 		IDs                  []string
 		Query, Failure, Sort string
 		Page, PerPage        int
 	}
+	// ChannelPage contains a bounded set of channels and the matching count.
 	ChannelPage struct {
 		Items                []Channel `json:"items"`
 		Page, PerPage, Total int

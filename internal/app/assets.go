@@ -10,7 +10,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/jpeg"
-	_ "image/png"
+	_ "image/png" // Register PNG decoding for public source artwork.
 	"net/http"
 	"os"
 	"path/filepath"
@@ -153,6 +153,7 @@ var (
 	cueMarkup = regexp.MustCompile(`<[^>]*>`)
 )
 
+// VTTtoSRT converts bounded WebVTT cues to numbered SubRip text.
 func VTTtoSRT(raw []byte) []byte {
 	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
 	var out strings.Builder

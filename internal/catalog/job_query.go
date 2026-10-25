@@ -7,10 +7,12 @@ import (
 )
 
 type (
+	// JobFilter restricts discovery history by channel and result.
 	JobFilter struct {
 		Channel, State, Sort string
 		Page, PerPage        int
 	}
+	// JobPage contains one bounded history page and its matching count.
 	JobPage struct {
 		Items                []Job `json:"items"`
 		Page, PerPage, Total int
