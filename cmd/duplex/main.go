@@ -3,31 +3,13 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
-
-	"duplex/internal/plex"
 )
-
-type local struct {
-	f    *os.File
-	size int64
-	id   string
-}
-
-func (l *local) ID() string  { return l.id }
-func (l *local) Size() int64 { return l.size }
-func (l *local) ReadAt(ctx context.Context, p []byte, o int64) (int, error) {
-	if err := ctx.Err(); err != nil {
-		return 0, err
-	}
-	return l.f.ReadAt(p, o)
-}
 
 func main() {
 	if err := run(); err != nil {
@@ -67,30 +49,4 @@ func execute(ctx context.Context, args []string) error {
 	default:
 		return errors.New("unknown command; use duplex init|serve|backup|check-plex|health|gate")
 	}
-}
-
-func checkPlex(ctx context.Context, args []string) error {
-	f := flag.NewFlagSet("check-plex", flag.ContinueOnError)
-	base := f.String("url", "http://127.0.0.1:32400", "Plex origin")
-	tokenFile := f.String("token-file", "", "file containing Plex token (optional for isolated local test server)")
-	if err := f.Parse(args); err != nil {
-		return err
-	}
-	token := ""
-	if *tokenFile != "" {
-		b, err := os.ReadFile(*tokenFile)
-		if err != nil {
-			return errors.New("cannot read Plex token file")
-		}
-		token = string(b)
-	}
-	c, err := plex.New(*base, token)
-	if err != nil {
-		return err
-	}
-	result, err := c.Check(ctx)
-	if er := json.NewEncoder(os.Stdout).Encode(result); er != nil {
-		return er
-	}
-	return err
 }

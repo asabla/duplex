@@ -93,3 +93,20 @@ func (w *countingWriter) Write(p []byte) (int, error) {
 	w.count.Add(int64(n))
 	return n, e
 }
+
+type local struct {
+	f    *os.File
+	size int64
+	id   string
+}
+
+func (l *local) ID() string { return l.id }
+
+func (l *local) Size() int64 { return l.size }
+
+func (l *local) ReadAt(ctx context.Context, p []byte, o int64) (int, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	return l.f.ReadAt(p, o)
+}
