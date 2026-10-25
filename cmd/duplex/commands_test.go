@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -259,7 +260,8 @@ func TestHTTPServerStopsOnContextCancellation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(5 * time.Second):
+	// Allow the server's graceful shutdown bound, then resource cleanup.
+	case <-time.After(httpShutdownTimeout + 2*time.Second):
 		t.Fatal("server did not stop")
 	}
 	if err = notifyReady(t.Context(), ""); err != nil {
@@ -330,8 +332,13 @@ func stopTestCommand(t *testing.T, cancel context.CancelFunc, result <-chan erro
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("command did not stop")
+	// Allow the server's graceful shutdown bound, then resource cleanup.
+	case <-time.After(httpShutdownTimeout + 2*time.Second):
+		var dump bytes.Buffer
+		if err := pprof.Lookup("goroutine").WriteTo(&dump, 2); err != nil {
+			t.Fatal(err)
+		}
+		t.Fatal("command did not stop", dump.String())
 	}
 }
 

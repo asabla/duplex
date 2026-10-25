@@ -24,6 +24,8 @@ func writeJSON(w http.ResponseWriter, value any) {
 	}
 }
 
+const httpShutdownTimeout = 10 * time.Second
+
 func serveHTTP(ctx context.Context, listener net.Listener, handler http.Handler) error {
 	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: time.Minute}
 	done := make(chan struct{})
@@ -35,7 +37,7 @@ func serveHTTP(ctx context.Context, listener net.Listener, handler http.Handler)
 			return
 		case <-ctx.Done():
 		}
-		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), httpShutdownTimeout)
 		defer cancel()
 		err := server.Shutdown(shutdown)
 		if err != nil {

@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"context"
+	"errors"
 	"testing"
 )
 
@@ -63,5 +65,31 @@ func TestChannelAndJobReadPages(t *testing.T) {
 	}
 	if _, err = s.FilterJobs(ctx, JobFilter{Sort: "injection"}); err == nil {
 		t.Fatal("invalid sort")
+	}
+}
+
+func TestLegacyJobsPageRetainsOldHistoryWithBoundedRows(t *testing.T) {
+	s := collectionStore(t)
+	for range 105 {
+		id, err := s.StartJob(t.Context(), "owner")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = s.FinishJob(t.Context(), id, "owner", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	jobs, total, err := s.JobsPage(t.Context(), 999, 25)
+	if err != nil || total != 105 || len(jobs) != 5 || jobs[0].ID != 5 || jobs[4].ID != 1 {
+		t.Fatal(total, jobs, err)
+	}
+	jobs, total, err = s.JobsPage(t.Context(), -1, 999)
+	if err != nil || total != 105 || len(jobs) != 100 || jobs[0].ID != 105 || jobs[99].ID != 6 {
+		t.Fatal(total, len(jobs), err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, _, err = s.JobsPage(ctx, 1, 25); !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
 	}
 }
