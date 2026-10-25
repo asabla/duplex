@@ -228,5 +228,12 @@ func readChunkFile(path string, length int) (data []byte, err error) {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, file.Close()) }()
-	return io.ReadAll(io.LimitReader(file, int64(length)+1))
+	// The chunk length is bounded by Get. Keep one extra byte to detect a
+	// corrupted oversized file without growing and copying a read buffer.
+	data = make([]byte, length+1)
+	count, failure := io.ReadFull(file, data)
+	if errors.Is(failure, io.EOF) || errors.Is(failure, io.ErrUnexpectedEOF) {
+		failure = nil
+	}
+	return data[:count], failure
 }
