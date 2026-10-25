@@ -111,3 +111,44 @@ func TestStorageAliasesCannotOverlapDurableAndEvictableData(t *testing.T) {
 		t.Fatal("dedicated future directory was rejected", err)
 	}
 }
+
+func TestConcurrentSavesKeepRevisionConflict(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := Create(file, filepath.Join(t.TempDir(), "state")); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := Open(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := manager.Snapshot()
+	results := make(chan error, 2)
+	for _, limit := range []int{12, 13} {
+		go func() {
+			settings := original.Config
+			settings.CacheGiB = limit
+			results <- manager.Save(settings, original.Revision)
+		}()
+	}
+	successes, conflicts := 0, 0
+	for range 2 {
+		switch failure := <-results; {
+		case failure == nil:
+			successes++
+		case errors.Is(failure, ErrConflict):
+			conflicts++
+		default:
+			t.Fatal(failure)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatal("concurrent stale save accepted", successes, conflicts)
+	}
+	if manager.Reload() {
+		t.Fatal("saved file and snapshot disagree")
+	}
+	settings := manager.Snapshot()
+	if settings.Config.CacheGiB != 12 && settings.Config.CacheGiB != 13 {
+		t.Fatal(settings.Config.CacheGiB)
+	}
+}
