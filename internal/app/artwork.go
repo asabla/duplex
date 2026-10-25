@@ -294,10 +294,9 @@ func (a *App) artworkWorker(ctx context.Context) {
 			return
 		case <-ticker.C:
 		}
-		a.mu.RLock()
-		hasMedia := len(a.reps) > 0
-		a.mu.RUnlock()
-		if !hasMedia {
+		hasMedia, err := a.Catalog.HasPublished(ctx, visibility(a.Config.Snapshot().Config))
+		a.operationFailure("artwork readiness", err)
+		if err != nil || !hasMedia {
 			continue
 		}
 		for _, ch := range a.Config.Snapshot().Config.Channels {

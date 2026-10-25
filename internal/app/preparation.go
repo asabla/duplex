@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"duplex/internal/catalog"
@@ -176,7 +177,7 @@ func (a *App) preparationWorker(ctx context.Context) {
 		if err != nil {
 			a.operationFailure("recording preparation", err)
 			cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-			if stateErr := a.Catalog.SetPreparation(cleanup, id, "failed", fallbackReason(err)); stateErr != nil {
+			if stateErr := a.Catalog.SetPreparation(cleanup, id, "failed", preparationReason(err)); stateErr != nil {
 				a.operationFailure("preparation result", stateErr)
 			}
 			stop()
@@ -351,4 +352,8 @@ func (a *App) unavailableRecording(ctx context.Context, id string) error {
 		return err
 	}
 	return a.Publish()
+}
+
+func preparationReason(err error) string {
+	return strings.Replace(fallbackReason(err), "A higher-quality ", "The recording ", 1)
 }

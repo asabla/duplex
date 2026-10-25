@@ -207,3 +207,37 @@ func TestCatalogueFilesystemPlaylistPoliciesAndIndependentOccurrenceIDs(t *testi
 		t.Fatal(string(data))
 	}
 }
+
+func TestFailedBindingIsVisibleAndDoesNotDiscardTheVerifiedRevision(t *testing.T) {
+	adapter := fixtureCollection(0)
+	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "all"}), adapter)
+	prepared := projectionVideo(t, a, "video000001", 1)
+	provider := catalogueFS{app: a}
+	name := fmt.Sprintf("Channel-%s/Season 2026/Channel-%s - S2026E0001.mp4", testOwner, testOwner)
+	if _, _, err := provider.Open(t.Context(), name); err == nil {
+		t.Fatal("missing source became a successful handle")
+	}
+	stored, err := a.Catalog.Video(t.Context(), prepared.Metadata.ID)
+	if err != nil || stored.Revision != prepared.Revision || stored.Preparation != "failed" || stored.PreparationError == "" || strings.Contains(stored.PreparationError, "higher-quality") {
+		t.Fatal(stored, err)
+	}
+	// A manual refresh can retry a failed bind even when a prior revision exists.
+	if err = a.queuePreparation(t.Context(), prepared.Metadata.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+	queued, err := a.Catalog.PendingPreparations(t.Context())
+	if err != nil || queued != 1 {
+		t.Fatal(queued, err)
+	}
+	adapter.unavailable = map[string]bool{prepared.Metadata.ID: true}
+	if _, _, err = provider.Open(t.Context(), name); !errors.Is(err, source.ErrUnavailable) {
+		t.Fatal(err)
+	}
+	stored, err = a.Catalog.Video(t.Context(), prepared.Metadata.ID)
+	if err != nil || stored.Revision != prepared.Revision || stored.State != "unavailable" || stored.ChannelID != testOwner {
+		t.Fatal(stored, err)
+	}
+	if _, err = provider.Stat(t.Context(), name); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("unavailable recording remained exposed", err)
+	}
+}

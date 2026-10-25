@@ -182,3 +182,27 @@ func closeTestStore(t *testing.T, s *Store) {
 		t.Error(err)
 	}
 }
+
+func TestPublishedReadinessDoesNotRequireRuntimeIndexes(t *testing.T) {
+	s := collectionStore(t)
+	preparedVideo(t, s, "a", "A")
+	visible := Visibility{Channels: []string{"uploader"}}
+	ready, err := s.HasPublished(t.Context(), visible)
+	if err != nil || ready {
+		t.Fatal(ready, err)
+	}
+	if err = s.ExposePrepared(t.Context(), "a"); err != nil {
+		t.Fatal(err)
+	}
+	ready, err = s.HasPublished(t.Context(), visible)
+	if err != nil || !ready {
+		t.Fatal("durable verified media absent from readiness", ready, err)
+	}
+	if err = s.MarkUnavailable(t.Context(), "a"); err != nil {
+		t.Fatal(err)
+	}
+	ready, err = s.HasPublished(t.Context(), visible)
+	if err != nil || ready {
+		t.Fatal("unavailable media reported ready", ready, err)
+	}
+}

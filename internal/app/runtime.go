@@ -8,6 +8,7 @@ import (
 
 	"duplex/internal/catalog"
 	"duplex/internal/media"
+	"duplex/internal/source"
 )
 
 const (
@@ -103,6 +104,9 @@ func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.R
 	a.bindings[episode.Revision] = call
 	a.mu.Unlock()
 	call.rep, call.err = a.bindUncachedEpisode(ctx, episode)
+	if call.err != nil {
+		call.err = errors.Join(call.err, a.recordBindingFailure(ctx, episode, call.err))
+	}
 	a.mu.Lock()
 	delete(a.bindings, episode.Revision)
 	close(call.done)
@@ -165,4 +169,31 @@ func (a *App) runtimeIndexCost() int64 {
 		}
 	}
 	return total
+}
+
+func (a *App) recordBindingFailure(ctx context.Context, episode catalog.Episode, failure error) error {
+	if ctx.Err() != nil {
+		return nil
+	}
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+	defer cancel()
+	if errors.Is(failure, source.ErrUnavailable) {
+		if err := a.Catalog.MarkUnavailable(cleanup, episode.VideoID); err != nil {
+			return err
+		}
+	}
+	revision, state, err := a.Catalog.RepresentationState(cleanup, episode.VideoID)
+	if err != nil {
+		return err
+	}
+	// A changed source may already have published a new verified revision. The
+	// failed request for an old revision must not mark that new file as failed.
+	if revision != episode.Revision {
+		return nil
+	}
+	a.operationFailure("playback source binding", failure)
+	if state != "recorded" && state != "replay-ready" {
+		return a.Catalog.SetPreparation(cleanup, episode.VideoID, "waiting", "Waiting for an available completed recording")
+	}
+	return a.Catalog.SetPreparation(cleanup, episode.VideoID, "failed", preparationReason(failure))
 }

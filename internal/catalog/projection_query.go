@@ -121,3 +121,11 @@ func readProjectionSeasons(rows *sql.Rows) ([]ProjectionSeason, error) {
 	}
 	return result, rows.Err()
 }
+
+// HasPublished checks for one visible verified recording without loading a list.
+func (s *Store) HasPublished(ctx context.Context, visible Visibility) (bool, error) {
+	cte, args := projectionCTE(visible)
+	var ready bool
+	err := s.DB.QueryRowContext(ctx, cte+`SELECT EXISTS(SELECT 1 FROM episodes)`, args...).Scan(&ready)
+	return ready, err
+}

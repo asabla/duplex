@@ -151,6 +151,6 @@ func (s *Store) FinishAsset(ctx context.Context, id string, failure error) error
 // PreparedForHeight allows durable verified entries to remain unloaded until use.
 func (s *Store) PreparedForHeight(ctx context.Context, id string, height int) (bool, error) {
 	var ready bool
-	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM videos WHERE id=? AND revision<>'' AND requested_height=? AND state IN ('recorded','replay-ready'))`, id, height).Scan(&ready)
+	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM videos WHERE id=? AND revision<>'' AND requested_height=? AND preparation='ready' AND state IN ('recorded','replay-ready'))`, id, height).Scan(&ready)
 	return ready, err
 }
