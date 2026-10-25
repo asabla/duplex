@@ -8,6 +8,15 @@ import (
 	"duplex/internal/catalog"
 )
 
+// preparationState shares capacity between foreground bindings and background jobs.
+// App.mu protects its counters, run map, and channel initialization.
+type preparationState struct {
+	prepareSlots chan struct{}
+	preparations map[string]*preparationRun
+	foreground   int
+	prepareWake  chan struct{}
+}
+
 var errPlaybackPriority = errors.New("background preparation yielded to requested playback")
 
 type preparationRun struct {

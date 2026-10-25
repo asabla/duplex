@@ -11,6 +11,18 @@ import (
 	"duplex/internal/source"
 )
 
+// representationState keeps immutable bindings and expiring locators together.
+// App.mu protects its maps; an open handle retains its representation after eviction.
+type representationState struct {
+	runtimeVideos map[string]string
+	renewAfter    map[string]time.Time
+	runtimeUsed   map[string]time.Time
+	bindings      map[string]*representationBinding
+	metadata      map[string]metadataLease
+	leases        map[string]time.Time
+	reps          map[string]media.Representation
+}
+
 const (
 	runtimeRepresentations = 128
 	runtimeIndexBytes      = int64(64 << 20)

@@ -11,6 +11,16 @@ import (
 	"duplex/internal/plex"
 )
 
+// libraryState serializes Plex updates and bounded hint publication.
+// App.mu protects bookkeeping; the slot channels serialize external operations.
+type libraryState struct {
+	hintWriters    chan struct{}
+	libraryUpdates chan struct{}
+	hints          map[string]cachedHints
+	scanWake       chan struct{}
+	scanPending    bool
+}
+
 func (a *App) plexClientFor(p config.Plex) (*plex.Client, error) {
 	if p.URL == "" {
 		return nil, errors.New("plex connection is not configured")

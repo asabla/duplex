@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"time"
 
@@ -25,33 +24,19 @@ import (
 
 // App coordinates catalogue discovery, media preparation, publication, and integration.
 type App struct {
-	hintWriters      chan struct{}
-	libraryUpdates   chan struct{}
-	hints            map[string]cachedHints
-	runtimeVideos    map[string]string
-	renewAfter       map[string]time.Time
-	runtimeUsed      map[string]time.Time
-	prepareSlots     chan struct{}
-	preparations     map[string]*preparationRun
-	foreground       int
-	bindings         map[string]*representationBinding
+	schedulerState
+	preparationState
+	representationState
+	libraryState
+
 	httpClient       *http.Client
-	metadata         map[string]metadataLease
-	leases           map[string]time.Time
-	prepareWake      chan struct{}
-	scanWake         chan struct{}
-	scanPending      bool
 	Measurements     *diagnostics.Recorder
 	Config           *config.Manager
 	Catalog          *catalog.Store
 	Cache            *cache.Store
 	Source           source.SourceAdapter
 	mount            *library.Mount
-	mu               sync.RWMutex
-	reps             map[string]media.Representation
-	queued           map[string]bool
-	attempted        map[string]time.Time
-	jobs             chan string
+	mu               sync.RWMutex // Retained across state groups to preserve cross-operation atomicity.
 	ctx              context.Context
 	cancel           context.CancelFunc
 	wg               sync.WaitGroup
@@ -61,9 +46,6 @@ type App struct {
 	plexError        string
 	plexBindingError string
 	restart          bool
-	appliedRevision  string
-	lastIntegration  time.Time
-	applied          config.Config
 	cacheError       string
 }
 
@@ -86,216 +68,6 @@ type Status struct {
 	Config          config.Snapshot           `json:"configuration"`
 	Measurements    []diagnostics.Measurement `json:"measurements,omitempty"`
 	Counters        []diagnostics.Counter     `json:"counters,omitempty"`
-}
-
-// Open initializes storage and starts bounded workers under the supplied context.
-func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, noMount bool) (*App, error) {
-	c := m.Snapshot().Config
-	for _, p := range []string{c.DataDir, c.IndexDir} {
-		if e := os.MkdirAll(p, 0o700); e != nil {
-			return nil, e
-		}
-	}
-	store, e := cache.New(c.CacheDir, int64(c.CacheGiB)<<30)
-	if e != nil {
-		return nil, e
-	}
-	db, e := catalog.OpenContext(ctx, filepath.Join(c.DataDir, "catalogue.sqlite"))
-	if e != nil {
-		return nil, errors.Join(e, store.Close())
-	}
-	ctx, cancel := context.WithCancel(ctx)
-	a := &App{Measurements: &diagnostics.Recorder{}, Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1), metadata: map[string]metadataLease{}, leases: map[string]time.Time{}, ctx: ctx, cancel: cancel, original: c}
-	if checker, ok := adapter.(interface{ Check(context.Context) error }); ok {
-		checkCtx, stop := context.WithTimeout(ctx, 15*time.Second)
-		e = checker.Check(checkCtx)
-		stop()
-		if e != nil {
-			a.toolError = e.Error()
-		}
-	}
-	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add}
-	if !noMount {
-		a.mount, e = library.MountProvider(c.Mountpoint, catalogueFS{app: a})
-		if e != nil {
-			return nil, errors.Join(e, a.Close())
-		}
-	} else {
-		a.mountError = "mount disabled; administration test mode"
-	}
-	if e = a.Publish(); e != nil {
-		return nil, errors.Join(e, a.Close())
-	}
-	if e = a.Catalog.ResetPreparations(ctx, visibility(c)); e != nil {
-		return nil, errors.Join(e, a.Close())
-	}
-	for range 2 {
-		a.wg.Add(1)
-		go a.preparationWorker(ctx)
-	}
-	a.wg.Add(1)
-	go a.scanWorker(ctx)
-	a.wg.Add(1)
-	go a.assetWorker(ctx)
-	a.wg.Add(1)
-	go a.artworkWorker(ctx)
-	a.wg.Add(1)
-	go a.metadataWorker(ctx)
-	for i := 0; i < c.Workers; i++ {
-		a.wg.Add(1)
-		go a.worker(ctx)
-	}
-	a.wg.Add(1)
-	go a.schedule(ctx)
-	return a, nil
-}
-
-// Close cancels workers before closing the mount, cache, and catalogue.
-func (a *App) Close() error {
-	a.cancel()
-	a.wg.Wait()
-	var mountErr error
-	if a.mount != nil {
-		mountErr = a.mount.Close()
-	}
-	e := a.Cache.Close()
-	e2 := a.Catalog.Close()
-	return errors.Join(mountErr, e, e2)
-}
-
-// Queue schedules one enabled channel and deduplicates pending refreshes.
-func (a *App) Queue(id string) error {
-	c := a.Config.Snapshot().Config
-	found := false
-	for _, ch := range c.Channels {
-		if ch.ID == id && ch.Enabled {
-			found = true
-		}
-	}
-	if !found {
-		return errors.New("channel is not followed or enabled")
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.queued[id] {
-		return nil
-	}
-	select {
-	case a.jobs <- id:
-		a.queued[id] = true
-		return nil
-	default:
-		return errors.New("sync queue is full")
-	}
-}
-
-func (a *App) schedule(ctx context.Context) {
-	defer a.wg.Done()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	a.reconcile(ctx)
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			a.Config.Reload()
-			a.reconcile(ctx)
-			a.renewCachedSources(ctx)
-		}
-	}
-}
-
-func (a *App) reconcile(ctx context.Context) {
-	snap := a.Config.Snapshot()
-	c := snap.Config
-	a.mu.Lock()
-	changed := snap.Revision != a.appliedRevision
-	previous := a.applied
-	if changed && previous.MaxHeight != c.MaxHeight {
-		for revision := range a.leases {
-			a.leases[revision] = time.Time{}
-		}
-	}
-	a.applied = c
-	a.appliedRevision = snap.Revision
-	a.restart = c.Listen != a.original.Listen || c.DataDir != a.original.DataDir || c.CacheDir != a.original.CacheDir || c.IndexDir != a.original.IndexDir || c.Mountpoint != a.original.Mountpoint || c.Workers != a.original.Workers
-	a.mu.Unlock()
-	resizeErr := a.Cache.Resize(int64(c.CacheGiB) << 30)
-	a.mu.Lock()
-	a.cacheError = ""
-	if resizeErr != nil {
-		a.cacheError = "Cache limit could not be applied; check local media storage"
-	}
-	a.mu.Unlock()
-	a.scheduleChannels(c, previous, changed)
-	if changed {
-		a.operationFailure("publication", a.Publish())
-	}
-	if changed || time.Since(a.lastIntegration) >= time.Minute {
-		a.lastIntegration = time.Now()
-		ctx, stop := context.WithTimeout(ctx, 20*time.Second)
-		a.operationFailure("integration health", a.integration(ctx, integrationHealth))
-		stop()
-	}
-}
-
-func (a *App) scheduleChannels(c, previous config.Config, changed bool) {
-	priorChannels := map[string]config.Channel{}
-	for _, ch := range previous.Channels {
-		priorChannels[ch.ID] = ch
-	}
-	for _, ch := range c.Channels {
-		if !ch.Enabled {
-			continue
-		}
-		a.mu.RLock()
-		last := a.attempted[ch.ID]
-		a.mu.RUnlock()
-		settingsChanged := changed && (!reflect.DeepEqual(priorChannels[ch.ID], ch) || previous.MaxHeight != c.MaxHeight)
-		if settingsChanged || last.IsZero() || time.Since(last) >= time.Duration(c.RefreshMinutes)*time.Minute {
-			a.operationFailure("queue refresh", a.Queue(ch.ID))
-		}
-	}
-}
-
-func (a *App) worker(ctx context.Context) {
-	defer a.wg.Done()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case id := <-a.jobs:
-			before := a.Config.Snapshot().Config
-			a.mu.Lock()
-			a.attempted[id] = time.Now()
-			a.mu.Unlock()
-			jobCtx, cancel := context.WithCancel(ctx)
-			err := a.Sync(jobCtx, id)
-			cancel()
-			a.operationFailure("channel discovery", err)
-			a.mu.Lock()
-			delete(a.queued, id)
-			a.attempted[id] = time.Now()
-			a.mu.Unlock()
-			if ctx.Err() == nil && a.discoverySettingsChanged(before, id) {
-				a.operationFailure("updated discovery settings", a.Queue(id))
-			}
-		}
-	}
-}
-
-func (a *App) discoverySettingsChanged(before config.Config, id string) bool {
-	current, err := a.followed(id)
-	if err != nil {
-		return false
-	}
-	for _, previous := range before.Channels {
-		if previous.ID == id {
-			return !reflect.DeepEqual(previous, current) || before.MaxHeight != a.Config.Snapshot().Config.MaxHeight
-		}
-	}
-	return true
 }
 
 // AddChannel preserves the original numeric-limit API. New clients can use Follow.

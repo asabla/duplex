@@ -40,6 +40,12 @@ This permits FUSE callbacks to request data without importing `app`. The
 `media.Representation` contract keeps identity, exact size, and offset reads
 separate from the application that publishes them. Preserve these boundaries.
 
+Administration server assembly and routing remain in `server.go`. Template
+formatting and rendering live in `templates.go`, with the page model in `view.go`.
+Request protection, session endpoints, and response handling have separate code
+locations. The HTML templates and transport contracts are unchanged by this
+responsibility extraction.
+
 ## Current state and resource ownership
 
 | Owner | State and synchronization | Lifetime and persistence |
@@ -59,6 +65,15 @@ moving it, inspect all readers and writers, the channel or lock that serializes
 them, cancellation paths, and startup failure cleanup. Preserve acquisition and
 release order. Keep each SQLite transaction's commit, rollback, row closure, and
 restart boundary visible when extracting operations.
+
+The application now groups mutable state by responsibility: `schedulerState`
+owns discovery queue bookkeeping and applied configuration, `preparationState`
+owns preparation capacity and active runs, `representationState` owns runtime
+bindings and leases, and `libraryState` owns scan and hint publication bookkeeping.
+They remain inside `App` and use the existing shared mutex; transitions across
+these groups retain their original atomicity. The scheduler alone uses its
+`lastIntegration` timestamp. Lifecycle code owns acquisition, worker startup, and
+cancel/wait/close ordering. No additional mutex or lock order is introduced.
 
 ## Intended direction for later refactors
 
