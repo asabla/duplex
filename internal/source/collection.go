@@ -6,9 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os/exec"
-	"strings"
-	"time"
 
 	"duplex/internal/config"
 )
@@ -98,41 +95,6 @@ func (y *YouTube) streamEntries(ctx context.Context, args []string, s Scope, con
 		return Listing{Complete: true}, nil
 	}
 	return Listing{Count: count, Complete: err == nil && (s.Count == 0 || count < s.Count)}, err
-}
-
-func (y *YouTube) scanProcess(ctx context.Context, args []string, consume func(context.Context, *bufio.Scanner) (int, error)) (int, error) {
-	release, err := y.acquire(ctx, true)
-	if err != nil {
-		return 0, err
-	}
-	defer release()
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	command, err := y.command(ctx, args, false)
-	if err != nil {
-		return 0, err
-	}
-	stderr := &cappedBuffer{limit: 64 << 10}
-	command.Stderr = stderr
-	pipe, err := command.StdoutPipe()
-	if err != nil {
-		return 0, err
-	}
-	if err = command.Start(); err != nil {
-		return 0, errors.Join(err, pipe.Close())
-	}
-	count, readErr := consume(ctx, bufio.NewScanner(pipe))
-	if readErr != nil {
-		cancel()
-	}
-	waitErr := command.Wait()
-	if readErr != nil {
-		return count, readErr
-	}
-	if waitErr != nil {
-		return count, resolverError(ctx, stderr.String())
-	}
-	return count, nil
 }
 
 func consumeEntries(ctx context.Context, scanner *bufio.Scanner, s Scope, consume func([]Entry) error) (Listing, error) {
@@ -238,82 +200,4 @@ func decodePlaylist(raw []byte, owner string) (Playlist, error) {
 		return Playlist{}, errors.New("incomplete playlist listing")
 	}
 	return Playlist{ID: p.ID, ChannelID: owner, Title: p.Title, Description: p.Description, Thumbnail: largestImage(p.Thumbnails)}, nil
-}
-
-func (y *YouTube) command(ctx context.Context, args []string, single bool) (*exec.Cmd, error) {
-	binary := y.Executable
-	if binary == "" {
-		binary = "yt-dlp"
-	}
-	deno := y.Deno
-	if deno == "" {
-		deno = "deno"
-	}
-	path, err := exec.LookPath(deno)
-	if err != nil {
-		return nil, errors.New("deno is unavailable")
-	}
-	base := []string{"--ignore-config", "--no-warnings", "--no-progress", "--ignore-no-formats-error", "--no-remote-components", "--no-js-runtimes", "--js-runtimes", "deno:" + path, "--socket-timeout", "20", "--retries", "1", "--extractor-retries", "1", "--skip-download", "--abort-on-error"}
-	if single {
-		base = append(base, "--dump-single-json")
-	}
-	command := exec.CommandContext(ctx, binary, append(base, args...)...) //nolint:gosec // G204: The operator selects the pinned executable; source URLs are validated and passed as arguments without a shell.
-	command.WaitDelay = 5 * time.Second
-	return command, nil
-}
-
-func resolverError(ctx context.Context, stderr string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	message := strings.ToLower(stderr)
-	for _, tab := range []string{"videos", "streams", "shorts", "playlists"} {
-		if strings.Contains(message, "does not have a "+tab+" tab") || strings.Contains(message, "doesn't have a "+tab+" tab") {
-			return ErrMissingCollection
-		}
-	}
-	for _, marker := range []string{"private video", "members-only", "video unavailable", "video is not available"} {
-		if strings.Contains(message, marker) {
-			return ErrUnavailable
-		}
-	}
-	return errors.New("YouTube source request failed")
-}
-
-func (y *YouTube) acquire(ctx context.Context, listing bool) (func(), error) {
-	y.init.Do(func() { y.metadataSlots = make(chan struct{}, 4); y.listingSlots = make(chan struct{}, 2) })
-	slots := y.metadataSlots
-	if listing {
-		slots = y.listingSlots
-	}
-	select {
-	case slots <- struct{}{}:
-		return func() { <-slots }, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	}
-}
-
-// ArtworkImage describes a public channel or playlist image candidate.
-type ArtworkImage struct {
-	ID     string `json:"id"`
-	URL    string `json:"url"`
-	Width  int    `json:"width"`
-	Height int    `json:"height"`
-}
-
-func largestImage(images []ArtworkImage) string {
-	best := ""
-	area := int64(-1)
-	for _, image := range images {
-		if !AllowedURL(image.URL) {
-			continue
-		}
-		n := int64(image.Width) * int64(image.Height)
-		if n >= area {
-			area = n
-			best = image.URL
-		}
-	}
-	return best
 }
