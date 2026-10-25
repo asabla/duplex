@@ -205,7 +205,9 @@
 {{end}}
 
 {{define "policy-summary"}}
-  <span id="selection-{{.ID}}" {{if .OOB}}hx-swap-oob="outerHTML"{{end}}
+  <span
+    id="selection-{{.ID}}"
+    {{if .OOB}}hx-swap-oob="outerHTML"{{end}}
     >{{.Summary}}</span
   >
   {{if and .OOB (eq .EffectiveMode "skip")}}

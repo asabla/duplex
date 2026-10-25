@@ -6,3 +6,4 @@
 /docs/installed-instance.md
 __pycache__/
 *.py[cod]
+/tools/readability/node_modules/

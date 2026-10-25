@@ -1,0 +1,14 @@
+{
+  "name": "duplex-readability-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": "26.7.0"
+  },
+  "devDependencies": {
+    "html-validate": "11.17.0",
+    "prettier": "3.9.10",
+    "prettier-plugin-go-template": "0.0.15"
+  }
+}

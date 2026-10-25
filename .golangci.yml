@@ -28,7 +28,15 @@ linters:
     - sqlclosecheck
     - staticcheck
     - unused
+    - wsl_v5
+    - funlen
   settings:
+    wsl_v5:
+      default: default
+      enable: [after-block]
+    funlen:
+      lines: -1
+      statements: 40
     cyclop:
       max-complexity: 15
     gocognit:
@@ -44,7 +52,7 @@ linters:
     rules:
       # Keep complete test scenarios together; production complexity is bounded.
       - path: _test\.go
-        linters: [cyclop, gocognit]
+        linters: [cyclop, gocognit, funlen]
 
 formatters:
   enable: [gofumpt, goimports]

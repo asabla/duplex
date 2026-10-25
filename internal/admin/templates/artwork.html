@@ -41,7 +41,9 @@
       <label
         >Edit poster for
         <select name="scope">
-          <option value="show" {{if eq .Artwork.Scope "show"}}selected{{end}}
+          <option
+            value="show"
+            {{if eq .Artwork.Scope "show"}}selected{{end}}
             >Channel show</option
           >
           {{if and (ne .Artwork.Scope "show") (not .CurrentSeasonOnPage)}}
@@ -54,7 +56,8 @@
               value="{{.Scope}}"
               {{if eq .Scope $.Artwork.Scope}}selected{{end}}
               >{{.Title}}{{if eq .Kind "playlist"}}
-                · Season {{.Number}}
+                · Season
+                {{.Number}}
               {{end}}</option
             >
           {{end}}
@@ -121,7 +124,9 @@
         <input type="hidden" name="revision" value="{{.Revision}}" />
         <input type="hidden" name="id" value="{{.Artwork.ChannelID}}" />
         <input type="hidden" name="scope" value="{{.Artwork.Scope}}" />
-        <button class="secondary" {{if not .Artwork.Override}}disabled{{end}}
+        <button
+          class="secondary"
+          {{if not .Artwork.Override}}disabled{{end}}
           >Reset to automatic</button
         >
       </form>

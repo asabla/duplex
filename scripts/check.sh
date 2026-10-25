@@ -25,6 +25,7 @@ if test "$format_status" -ne 0; then
   printf 'Formatting check failed with status %s.\n' "$format_status" >&2
   exit "$format_status"
 fi
+./scripts/check-readability.sh
 golangci-lint run ./...
 gitleaks dir --redact=100 --no-banner .
 gitleaks git --redact=100 --no-banner .

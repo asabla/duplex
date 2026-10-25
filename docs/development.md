@@ -2,7 +2,7 @@
 
 Read the root [repository instructions](../AGENTS.md) before changes. The
 [code standards](code-standards.md) define readability rules, manual review, and
-existing and planned automated checks. [Architecture](architecture.md) defines
+automated checks and their limits. [Architecture](architecture.md) defines
 package responsibilities and runtime boundaries. This document owns tool setup,
 commands, and verification procedures.
 
@@ -14,12 +14,26 @@ Use the versions in [`.tool-versions`](../.tool-versions) and [go.mod](../go.mod
 - golangci-lint 2.15.0, with formatting and imports enforced.
 - gitleaks 8.30.1.
 - govulncheck 1.9.0.
+- Node.js 26.7.0, shfmt 3.14.1, and Ruff 0.17.2 for development checks.
+- Prettier 3.9.10, prettier-plugin-go-template 0.0.15, and html-validate 11.17.0,
+  pinned in the development-only `tools/readability/package-lock.json`.
+- Python 3 for the existing scripts and their controlled behavioral tests.
 - FFmpeg and ffprobe for controlled media comparisons. The retained local evidence uses 9.0.2.
 
 Install the pinned tools through the existing mise configuration or make those
 exact versions available on PATH. Check their versions before running the gate.
 The gate checks the Go toolchain and analysis tools; it needs FFmpeg and ffprobe
 on PATH but does not enforce the retained FFmpeg evidence version.
+
+Install the development-only Node packages from the repository root:
+
+```sh
+npm ci --ignore-scripts --prefix tools/readability
+```
+
+The quality gate does not install tools or dependencies. CI installs the same
+locked packages before it calls `make check`. Node.js is not required to build or
+run the application.
 
 `make` prints the four supported targets. It performs no setup or downloads.
 
@@ -33,7 +47,9 @@ make check
 `make check` checks formatting without rewriting files, runs strict lint, scans
 working files and Git history for secrets, checks Go vulnerabilities, runs race
 and controlled media tests, enforces package coverage, and builds Linux amd64
-and arm64 binaries. The gate is defined in [`scripts/check.sh`](../scripts/check.sh).
+and arm64 binaries. It also checks the handwritten templates, CSS, JavaScript,
+shell, and Python files without rewriting them, runs script behavioral tests, and
+validates controlled rendered pages and HTMX fragments. The gate is defined in [`scripts/check.sh`](../scripts/check.sh).
 [`CI`](../.github/workflows/ci.yml) calls `make check` and also validates production
 Compose configuration. Use `golangci-lint fmt` only for an authorized formatting
 change, then review the diff. It can rewrite Go files across the checkout; keep
@@ -65,9 +81,36 @@ A skipped test is not evidence that a release requirement passed.
 - Record exactly what passed, failed, or was skipped. Keep local checks, CI,
   live qualification, and release acceptance distinct.
 
-Templates, CSS, JavaScript, and HTMX are embedded in the binary. There is no npm
-installation or frontend build. See Code standards for their manual review rules
-and the status of proposed formatters and validators.
+Templates, CSS, JavaScript, and HTMX are embedded in the binary. There is no
+frontend build. The npm installation above supplies development checks only.
+Third-party HTMX, generated notices, licenses, and retained evidence are outside
+source formatting scope.
+
+For an authorized layout change, limit writes to the affected files. For example:
+
+```sh
+golangci-lint fmt ./internal/admin
+shfmt -w -i 2 -ln posix scripts/check.sh
+ruff format scripts/profile-playback.py
+tools/readability/node_modules/.bin/prettier \
+  --config tools/readability/prettier.json \
+  --plugin "$PWD/tools/readability/node_modules/prettier-plugin-go-template/lib/index.js" \
+  --parser go-template --write internal/admin/templates/settings.html
+```
+
+Run the template formatter again if its first expansion changes layout, then
+confirm that a further check makes no changes. Keep the narrow picker text
+exception described in Code standards. For CSS, JavaScript, and development
+`.mjs` files, use the same Prettier command with the appropriate file path and
+omit `--parser go-template`.
+
+`./scripts/check-readability.sh` runs the non-Go checks separately. It creates 24
+controlled pages and fragments in `.cache/markup` through
+`DUPLEX_MARKUP_TEST=1 go test -race -count=1 -run '^TestRenderedMarkupFixtures$' ./internal/admin`.
+The fixture adapter uses no external source or Plex service. The HTML validator
+checks labels and native elements, and writes `.cache/markup/markup-validation.json`.
+CI retains this summary. Do not upload the raw HTML, session values, or local
+fixture configuration. These checks complement the Browser and keyboard review.
 
 ## Refactor baseline status
 
@@ -77,9 +120,8 @@ prerequisite check because `govulncheck` was missing from PATH. The documentatio
 preparation also found concurrent source changes. These observations do not
 establish a stable or passing refactor baseline.
 
-Before enabling the planned checks, make the pinned tools available, identify a
-stable source revision and any local changes, and run the existing gate. Record
-failures and environmental blockers separately from proposed-rule findings.
+This planning blocker was resolved before source work. The stable baseline and
+separate proposed-rule findings were recorded before activation.
 The later integrated-source baseline at `b7e3415` passed the complete existing
 gate, including Linux/FUSE tests, both architecture builds, and at least 80%
 statement coverage in every package. The pinned vulnerability scanner was
@@ -87,6 +129,8 @@ available in the existing local tool cache and was added to the command's PATH.
 See the [baseline record](evidence/structure-baseline.json) for versions, source
 fingerprint, coverage, and the separate proposed-rule findings. The isolated live
 Plex qualification test remained skipped; this is not a release acceptance claim.
+The later repository refactor and activated-check results are tracked in the
+[refactor work list](structure-refactor.md) and its completion evidence.
 
 ## Tests and evidence
 

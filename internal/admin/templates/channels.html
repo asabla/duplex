@@ -132,7 +132,8 @@
               >
               <td
                 >{{if eq $selection.Mode "latest"}}
-                  Latest {{$selection.Limit}}
+                  Latest
+                  {{$selection.Limit}}
                 {{else}}
                   All videos
                 {{end}}<small
@@ -475,17 +476,25 @@
         Upload selection
       {{end}}<select id="{{.ID}}-mode" name="mode" data-policy>
         {{if .PlaylistID}}
-          <option value="inherit" {{if .Inherited}}selected{{end}}
+          <option
+            value="inherit"
+            {{if .Inherited}}selected{{end}}
             >Inherit channel selection</option
           >
         {{end}}
-        <option value="latest" {{if eq .Mode "latest"}}selected{{end}}
+        <option
+          value="latest"
+          {{if eq .Mode "latest"}}selected{{end}}
           >Latest videos</option
         >
-        <option value="all" {{if eq .Mode "all"}}selected{{end}}
+        <option
+          value="all"
+          {{if eq .Mode "all"}}selected{{end}}
           >All videos</option
         >{{if .PlaylistID}}
-          <option value="skip" {{if eq .Mode "skip"}}selected{{end}}
+          <option
+            value="skip"
+            {{if eq .Mode "skip"}}selected{{end}}
             >Skip playlist</option
           >
         {{end}}

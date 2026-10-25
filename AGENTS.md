@@ -12,7 +12,7 @@
 ## Read before changes
 
 1. Read [Code standards](docs/code-standards.md) for readability, manual review,
-   and the distinction between existing and planned checks.
+   and the limits of automated checks.
 2. Read [Development](docs/development.md) for tools, commands, and verification.
 3. Read [Architecture](docs/architecture.md) for package responsibilities,
    state ownership, dependencies, and runtime invariants.
@@ -58,8 +58,9 @@ and skipped checks. Do not treat historical evidence as a passing current result
 - Improve responsibilities within existing packages first. Add a package only
   for a concrete responsibility or dependency boundary.
 - Preserve complete test scenarios. Do not split code only to reduce a metric.
-- Proposed readability checks are not yet enforced. Documentation preparation
-  does not authorize enabling checks, applying automatic fixes, or refactoring.
+- The readability checks in Code standards are enforced locally and in CI.
+  They do not replace responsibility review. Preserve the documented test
+  exemptions and narrow template whitespace exception.
 - Keep existing quality gates and release requirements. Read the
   [validation register](docs/validation.md) before making acceptance claims.
 - Never commit credentials, signed source URLs, raw profiles, or local

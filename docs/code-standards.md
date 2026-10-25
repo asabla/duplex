@@ -1,13 +1,13 @@
 # Code standards
 
 This document adapts the supplied general readability instructions and their Go
-and proposed HTML policies to duplex. It is the authority for source readability
+and HTML policies to duplex. It is the authority for source readability
 and manual review rules. [Development](development.md) owns tool setup and check
 commands. [Architecture](architecture.md) owns package and runtime boundaries.
 
-The existing checks remain active. The planned checks below are documentation
-only; they have not been added to the quality gate. These rules do not establish
-that the current source complies with the proposed policy.
+The shared local and CI quality gate enforces the automated checks below. Manual
+review still determines whether a group or function has one clear responsibility.
+Passing automated checks does not establish release acceptance.
 
 ## Applicability and preservation
 
@@ -27,29 +27,36 @@ formats. Check resource lifetime, cancellation, lock scope, and transaction scop
 when moving statements or extracting functions. Keep mechanical layout changes
 separate from responsibility changes so each diff can be reviewed.
 
-## Existing automated checks
+## Automated checks
 
 The repository configuration and scripts determine actual enforcement:
 
 | Area | Current check |
 | --- | --- |
 | Go layout and imports | `gofumpt` and `goimports`, through golangci-lint. |
+| Go statement groups | `wsl_v5`, default checks plus `after-block`, including tests. |
+| Production Go function size | `funlen`, at most 40 statements; physical-line checks disabled (`lines: -1`). |
 | Production control-flow paths | `cyclop`, with `max-complexity: 15`. |
 | Production nesting and control flow | `gocognit`, with `min-complexity: 20`. This is the tool's reporting threshold; retain its exact boundary. |
 | Errors and resource use | Checks include `errcheck`, `bodyclose`, `rowserrcheck`, `sqlclosecheck`, and context checks. |
 | Static analysis and security | Checks include `govet`, `staticcheck`, `gosec`, secret scans, and vulnerability checks. |
 | Suppression syntax | `nolintlint` requires a named check and an explanation. |
+| Templates, CSS, and JavaScript | Prettier 3.9.10; Go templates use `prettier-plugin-go-template` 0.0.15 with strict whitespace handling. |
+| Rendered HTML | `html-validate` 11.17.0 checks `input-missing-label` and `prefer-native-element` on controlled pages and HTMX fragments. |
+| Shell and Python | shfmt 3.14.1 with POSIX syntax and two-space indentation; `sh -n`; Ruff 0.17.2 formatting. Script behavior has controlled tests. |
 | Behavior and coverage | The quality gate runs race and controlled media tests, Linux-specific tests, coverage checks, and both Linux architecture builds. |
 
 The full enabled Go rule list is in [`.golangci.yml`](../.golangci.yml).
 [`scripts/check.sh`](../scripts/check.sh) defines the local gate; CI calls the
-same gate. The complexity exemption for `_test.go` applies only to `cyclop` and
-`gocognit`. Other enabled checks still apply to tests.
+same gate, including [`scripts/check-readability.sh`](../scripts/check-readability.sh).
+The `_test.go` exemption applies only to `cyclop`, `gocognit`, and `funlen`. Other
+enabled checks, including statement spacing, still apply to tests.
 
-[`.editorconfig`](../.editorconfig) supplies editor layout conventions. The gate
-has no configured formatter or validator for templates, HTML, CSS, JavaScript,
-shell, Python, or AWK. Manual review is required for those files. Go handler and
-template tests check selected behavior; they do not prove rendered accessibility.
+[`.editorconfig`](../.editorconfig) supplies editor layout conventions. AWK and
+configuration layout remain subject to manual review. The coverage harness checks
+AWK merge and failure behavior. The rendered HTML rules check specific markup
+properties; they do not prove complete accessibility. Browser and keyboard checks
+remain required for affected interface behavior.
 
 ## Manual review rules
 
@@ -113,37 +120,46 @@ patterns as interaction references. No component library is required.
 - Keep script inputs, outputs, and file writes clear. Separate collection,
   transformation, and publication when they are distinct responsibilities.
 - Preserve Make recipe tabs, configuration keys, and schema meaning. Follow
-  `.editorconfig` and existing conventions; no new language tools are selected.
+  `.editorconfig` and existing conventions. Do not apply source formatters to
+  generated profiles, dependency notices, or third-party assets.
 
-## Planned automated checks
+## Check configuration and limits
 
-These settings require a separate implementation task and a stable source
-baseline before activation. Keep the pinned tools and verify each setting against
-their supported configuration. The [golangci-lint settings reference](https://golangci-lint.run/docs/linters/configuration/)
-describes the available options; the pinned version is the authority.
+The [golangci-lint settings reference](https://golangci-lint.run/docs/linters/configuration/)
+describes supported options; the pinned version and repository configuration are
+the authority. Keep existing complexity thresholds unchanged. The 40-statement
+production function limit is a responsibility review boundary. It has no physical
+line limit, so readable multiline expressions do not incur an extra size penalty.
 
-| Planned check | Policy and reason |
-| --- | --- |
-| Go statement spacing | `wsl_v5`, default checks plus `after-block`. This checks supported layout patterns; reviewers still check the purpose of each group. |
-| Production Go function size | `funlen`, 40 statements, physical-line check disabled (`lines: -1`). The supplied limit is a review boundary for coherent operations, without penalizing readable multiline layout. |
-| Complexity | Keep existing `cyclop` and `gocognit` settings and their current reporting boundaries. They already constrain paths and nesting; do not raise them to hide findings. |
-| Template formatting and HTML validation | First verify Go-template support and significant whitespace. Assess accessible-name and native-element rules against rendered pages and fragments before selecting tools. |
+Preserve complete scenarios and fixtures in `_test.go`; do not split tests only to
+reduce a metric. Shared test helpers still need meaningful responsibilities.
 
-The planned function-size gate applies to production Go files. Preserve complete
-scenarios and fixtures in `_test.go`; keep the current test complexity exemption.
-Readability and planned spacing rules apply to tests. Shared test helpers still
-need meaningful responsibilities. Do not split tests only to reduce a metric.
+Template checks select the Go-template parser explicitly. Use strict HTML
+whitespace handling and keep `goTemplateBracketSpacing` disabled. The plugin can
+need a second formatting pass after compact template code is expanded. Check the
+result again; the accepted source must be stable. Preserve rendered text, native
+option labels, and any text read by JavaScript. Check significant whitespace with
+controlled fixtures and the Browser before changing formatter versions.
 
-Before adding a tool, identify the gap, check compatibility with the existing
-formatter, and pin it through the repository's dependency mechanism. Run the same
-checks locally and in CI. Do not add blanket exclusions, hide existing findings
-with change-only reporting, or increase limits to make a check pass.
+Tool versions are pinned in `.tool-versions` and the development-only lockfile in
+`tools/readability`. There is no application frontend build or Node.js runtime
+requirement. Use Development for setup and exact commands. The gate checks full
+source and does not rewrite files or install dependencies.
+
+Before adding or changing a tool, identify the gap, verify compatibility and
+formatter stability, and pin the version. Run the same checks locally and in CI.
+Do not add blanket exclusions, use change-only reporting, or increase limits to
+hide findings.
 
 ## Exceptions and review evidence
 
 Keep a necessary exception as narrow as the tool permits. Name the check and
 explain the reason at the relevant code. Record broader policy exceptions here;
-the test metric exemptions above are deliberate policy decisions. Existing
+the test metric exemptions above are deliberate policy decisions. One
+`prettier-ignore` applies to the playlist option in
+[`videos.html`](../internal/admin/templates/videos.html): the enhanced picker reads
+its exact `textContent`, so the label must remain on one line. A behavioral test
+checks that exact text. The rest of the template remains checked. Existing
 suppressions remain subject to review when their code changes.
 
 For a readability change, report the automated checks that ran, the manual review
