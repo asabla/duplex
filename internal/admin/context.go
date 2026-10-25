@@ -15,6 +15,7 @@ func localPageURL(raw, fallback string) string {
 	if err != nil || u.IsAbs() || u.Host != "" || u.User != nil || u.Fragment != "" || len(raw) > 8192 {
 		return fallback
 	}
+
 	switch u.Path {
 	case "/channels", "/channel", "/catalogue", "/playlists", "/jobs", "/artwork", "/settings", "/diagnostics":
 		return u.RequestURI()
@@ -37,6 +38,7 @@ func (p page) Filtered() bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -44,14 +46,17 @@ func (p page) ClearURL() string {
 	if p.Channel.ID != "" {
 		return p.ChannelLink(strings.TrimPrefix(p.Page, "/fragments"))
 	}
+
 	return strings.TrimPrefix(p.Page, "/fragments")
 }
 
 func (p *page) channelContext(r *http.Request) {
 	p.CurrentURL = strings.TrimPrefix(r.URL.RequestURI(), "/fragments")
+
 	p.BackURL = localPageURL(r.URL.Query().Get("back"), "/channels")
 	if r.URL.Path == "/video" {
 		p.VideoBackURL = localPageURL(r.URL.Query().Get("back"), "/catalogue")
+
 		parent, err := url.Parse(p.VideoBackURL)
 		if err == nil {
 			p.BackURL = localPageURL(parent.Query().Get("back"), "/channels")
@@ -59,12 +64,14 @@ func (p *page) channelContext(r *http.Request) {
 			p.BackURL = "/channels"
 		}
 	}
+
 	for _, ch := range p.Status.Config.Config.Channels {
 		if ch.ID == r.URL.Query().Get("channel") {
 			p.Channel = ch
 			break
 		}
 	}
+
 	for _, ch := range p.Status.Channels {
 		if ch.ID == p.Channel.ID {
 			p.ChannelInfo = ch
@@ -88,6 +95,7 @@ type policyForm struct {
 func (p page) PolicyForm(channel, playlist string) policyForm {
 	ch := p.ChannelSettings[channel]
 	selection := ch.Selection()
+
 	f := policyForm{CSRF: p.CSRF, Revision: p.Revision, ID: policyFormID(channel, playlist), ChannelID: channel, PlaylistID: playlist, Mode: selection.Mode, Limit: selection.Limit, Inherited: playlist != ""}
 	if ch.Playlists != nil {
 		f.Include = ch.Playlists.Enabled
@@ -97,7 +105,9 @@ func (p page) PolicyForm(channel, playlist string) policyForm {
 			f.Inherited = false
 		}
 	}
+
 	f.EffectiveMode = f.Mode
+
 	f.Summary = selectionText(f.Mode, f.Limit)
 	if playlist != "" {
 		if f.Inherited {
@@ -105,17 +115,21 @@ func (p page) PolicyForm(channel, playlist string) policyForm {
 		} else {
 			f.Summary = "Override: " + f.Summary
 		}
+
 		if !f.Include {
 			f.Summary = "Skipped by channel"
 			f.EffectiveMode = "skip"
 		}
 	}
+
 	if f.Inherited {
 		f.Mode = "inherit"
 	}
+
 	if f.Limit == 0 {
 		f.Limit = 50
 	}
+
 	return f
 }
 
@@ -128,23 +142,30 @@ func playback(v catalog.Video) playbackState {
 	if !v.Exposed {
 		return playbackState{Label: "Excluded", Tone: "neutral", Detail: "Outside the current library selection"}
 	}
+
 	if v.State == "upcoming" || v.State == "active" || v.State == "processing" {
 		return playbackState{Label: "Waiting for recording", Tone: "neutral", Detail: "Available after the broadcast has completed processing"}
 	}
+
 	if v.State == "unavailable" {
 		return playbackState{Label: "Source unavailable", Tone: "danger", Detail: "The source cannot currently provide this recording"}
 	}
+
 	if v.Preparation == "ready" && v.Revision != "" && v.Size > 0 {
 		return playbackState{Label: "Prepared", Tone: "success", Detail: "Media file prepared; Plex discovery and playback are separate checks"}
 	}
+
 	if v.Preparation == "failed" {
 		return playbackState{Label: "Needs attention", Tone: "danger", Detail: v.PreparationError, Retry: true}
 	}
+
 	labels := map[string]string{"queued": "Queued", "resolving": "Checking source", "preparing": "Preparing media", "waiting": "Waiting for source", "skipped": "Skipped"}
+
 	label := labels[v.Preparation]
 	if label == "" {
 		label = "Awaiting preparation"
 	}
+
 	return playbackState{Label: label, Tone: "info", Detail: "The recording is not ready for playback", Retry: v.Preparation == "discovered" || v.Preparation == ""}
 }
 
@@ -153,6 +174,7 @@ func stageLabel(value string) string {
 	if label, ok := labels[value]; ok {
 		return label
 	}
+
 	return strings.ReplaceAll(value, "-", " ")
 }
 
@@ -161,6 +183,7 @@ func (p page) VideoLink(id string) string {
 	if p.Channel.ID != "" {
 		q.Set("channel", p.Channel.ID)
 	}
+
 	return "/video?" + q.Encode()
 }
 

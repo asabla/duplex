@@ -46,7 +46,9 @@ func (workflowSource) Entries(ctx context.Context, scope source.Scope, consume f
 	if scope.Tab != "videos" && scope.PlaylistID == "" {
 		return source.Listing{Complete: true}, ctx.Err()
 	}
+
 	err := consume([]source.Entry{{ID: "aqz-KE-bpKQ", Title: "Controlled recording", Position: 1}})
+
 	return source.Listing{Count: 1, Complete: true}, err
 }
 
@@ -66,93 +68,120 @@ type workflowFixture struct {
 func newWorkflowFixture(t *testing.T) *workflowFixture {
 	t.Helper()
 	root := t.TempDir()
+
 	file := filepath.Join(root, "config.yaml")
 	if err := config.Create(file, filepath.Join(root, "state")); err != nil {
 		t.Fatal(err)
 	}
+
 	manager, err := config.Open(file)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	settings := manager.Snapshot().Config
+
 	passwordFile, err := InitCredentials(filepath.Join(settings.DataDir, "secrets"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	password, err := os.ReadFile(passwordFile) //nolint:gosec // G304: This reads only credentials generated inside this test's temporary state.
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	auth, err := OpenAuth(filepath.Join(settings.DataDir, "secrets", "admin.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	application, err := app.Open(t.Context(), manager, workflowSource{}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() { closeTest(t, application) })
+
 	admin, err := New(application, auth)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	server := httptest.NewServer(admin.Handler())
 	t.Cleanup(server.Close)
+
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
+
 	return &workflowFixture{app: application, server: server, client: client, password: strings.TrimSpace(string(password))}
 }
 
 func (f *workflowFixture) request(t *testing.T, method, path, contentType string, body io.Reader, status int) ([]byte, http.Header) {
 	t.Helper()
+
 	r, err := http.NewRequestWithContext(t.Context(), method, f.server.URL+path, body)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	r.Header.Set("Origin", f.server.URL)
+
 	if f.hx {
 		r.Header.Set("HX-Request", "true")
 	}
+
 	if f.csrf != "" {
 		r.Header.Set("X-CSRF-Token", f.csrf)
 	}
+
 	if contentType != "" {
 		r.Header.Set("Content-Type", contentType)
 	}
+
 	response, err := f.client.Do(r)
 	if err != nil {
 		t.Fatal(method, path, err)
 	}
 	defer closeTest(t, response.Body)
+
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if response.StatusCode != status {
 		t.Fatalf("%s %s: HTTP %d, want %d", method, path, response.StatusCode, status)
 	}
+
 	if response.Header.Get("Cache-Control") != "no-store" || response.Header.Get("X-Content-Type-Options") != "nosniff" {
 		t.Fatal("administration security headers missing")
 	}
+
 	return data, response.Header
 }
 
 func (f *workflowFixture) json(t *testing.T, method, path string, value any, status int) []byte {
 	t.Helper()
+
 	data, err := json.Marshal(value)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	result, _ := f.request(t, method, path, "application/json", bytes.NewReader(data), status)
+
 	return result
 }
 
 func (f *workflowFixture) signIn(t *testing.T) {
 	t.Helper()
 	data, _ := f.request(t, http.MethodGet, "/api/v1/session", "", nil, http.StatusOK)
+
 	var session struct {
 		Authenticated bool   `json:"authenticated"`
 		CSRF          string `json:"csrf"`
@@ -160,30 +189,38 @@ func (f *workflowFixture) signIn(t *testing.T) {
 	if err := json.Unmarshal(data, &session); err != nil || session.Authenticated || session.CSRF == "" {
 		t.Fatal("login session is invalid")
 	}
+
 	f.csrf = session.CSRF
 	f.json(t, http.MethodPost, "/api/v1/login", map[string]string{"username": "admin", "password": "wrong"}, http.StatusUnauthorized)
 	f.json(t, http.MethodPost, "/api/v1/login", map[string]string{"username": "admin", "password": f.password}, http.StatusOK)
+
 	data, _ = f.request(t, http.MethodGet, "/api/v1/session", "", nil, http.StatusOK)
 	if err := json.Unmarshal(data, &session); err != nil || !session.Authenticated || session.CSRF == "" {
 		t.Fatal("authenticated session is invalid")
 	}
+
 	f.csrf = session.CSRF
 }
 
 func (f *workflowFixture) waitDiscovery(t *testing.T) {
 	t.Helper()
+
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
+
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
+
 	for {
 		jobs, err := f.app.Catalog.Jobs(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if len(jobs) > 0 && jobs[0].State == "complete" {
 			return
 		}
+
 		select {
 		case <-ctx.Done():
 			t.Fatal("controlled channel discovery did not finish")
@@ -203,15 +240,19 @@ func TestAuthenticatedAdministrationWorkflow(t *testing.T) {
 	f.signIn(t)
 	f.json(t, http.MethodPost, "/api/v1/channels", map[string]any{"url": "https://www.youtube.com/@controlled", "limit": 50, "revision": f.app.Config.Snapshot().Revision}, http.StatusOK)
 	f.waitDiscovery(t)
+
 	for _, path := range []string{"/", "/channels", "/catalogue", "/jobs", "/settings", "/diagnostics", "/fragments/channels", "/fragments/status", "/fragments/jobs", "/static/app.css", "/static/app.js", "/static/htmx.min.js", "/api/v1/config", "/api/v1/channels", "/api/v1/jobs", "/api/v1/jobs/page", "/api/v1/diagnostics", "/api/v1/status", "/api/v1/summary", "/api/v1/videos", "/api/v1/playlists"} {
 		f.request(t, http.MethodGet, path, "", nil, http.StatusOK)
 	}
+
 	for _, path := range []string{"/missing", "/api/v1/missing", "/assets/artwork?channel=" + workflowChannel + "&scope=show"} {
 		f.request(t, http.MethodGet, path, "", nil, http.StatusNotFound)
 	}
+
 	for _, path := range []string{"/catalogue?sort=invalid", "/catalogue?q=" + strings.Repeat("a", 201), "/channels?sort=invalid", "/artwork", "/artwork?channel=" + workflowChannel + "&scope=year:2026"} {
 		f.request(t, http.MethodGet, path, "", nil, http.StatusBadRequest)
 	}
+
 	f.request(t, http.MethodPut, "/channels", "", nil, http.StatusMethodNotAllowed)
 	f.json(t, http.MethodPost, "/api/v1/unsupported", nil, http.StatusMethodNotAllowed)
 	f.json(t, http.MethodPost, "/api/v1/videos/aqz-KE-bpKQ/prepare", nil, http.StatusOK)
@@ -232,23 +273,29 @@ func TestAuthenticatedAdministrationWorkflow(t *testing.T) {
 func (f *workflowFixture) exercisePolicyAndArtwork(t *testing.T) {
 	t.Helper()
 	f.json(t, http.MethodPut, "/api/v1/policy", map[string]any{"channel_id": workflowChannel, "revision": f.app.Config.Snapshot().Revision, "selection": config.Selection{Mode: "all"}, "include_playlists": true}, http.StatusOK)
+
 	if err := f.app.Sync(t.Context(), workflowChannel); err != nil {
 		t.Fatal(err)
 	}
+
 	f.request(t, http.MethodGet, "/playlists", "", nil, http.StatusOK)
 	f.request(t, http.MethodGet, "/artwork?channel="+workflowChannel+"&scope=playlist:PLfixture0001", "", nil, http.StatusOK)
+
 	var poster bytes.Buffer
 	if err := png.Encode(&poster, image.NewRGBA(image.Rect(0, 0, 20, 30))); err != nil {
 		t.Fatal(err)
 	}
+
 	query := url.Values{"channel": {workflowChannel}, "scope": {"show"}, "revision": {f.app.Config.Snapshot().Revision}}
 	f.request(t, http.MethodPost, "/api/v1/artwork?"+query.Encode(), "image/png", bytes.NewReader(poster.Bytes()), http.StatusOK)
 	f.request(t, http.MethodGet, "/api/v1/artwork?channel="+workflowChannel+"&scope=show", "", nil, http.StatusOK)
 	data, _ := f.request(t, http.MethodGet, "/assets/artwork?channel="+workflowChannel+"&scope=show", "", nil, http.StatusOK)
+
 	size, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil || size.Width != 1000 || size.Height != 1500 {
 		t.Fatal("saved poster dimensions are invalid", size, err)
 	}
+
 	f.request(t, http.MethodPost, "/api/v1/artwork?"+query.Encode(), "image/png", bytes.NewReader(poster.Bytes()), http.StatusConflict)
 	query.Set("revision", f.app.Config.Snapshot().Revision)
 	f.request(t, http.MethodDelete, "/api/v1/artwork?"+query.Encode(), "", nil, http.StatusOK)

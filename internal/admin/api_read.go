@@ -12,8 +12,12 @@ func (s *Server) readAPI(w http.ResponseWriter, r *http.Request) bool {
 	if r.Method != "GET" {
 		return false
 	}
-	var result any
-	var err error
+
+	var (
+		result any
+		err    error
+	)
+
 	switch r.URL.Path {
 	case "/api/v1/videos":
 		result, err = s.App.Videos(r.Context(), videoFilter(r))
@@ -35,11 +39,14 @@ func (s *Server) readAPI(w http.ResponseWriter, r *http.Request) bool {
 	default:
 		return false
 	}
+
 	if err != nil {
 		reply(w, 400, map[string]string{"error": "invalid filters or unavailable catalogue"})
 		return true
 	}
+
 	reply(w, 200, result)
+
 	return true
 }
 
@@ -51,6 +58,7 @@ func (s *Server) mutateAPI(w http.ResponseWriter, r *http.Request) bool {
 			reply(w, http.StatusBadRequest, map[string]string{"error": "invalid recording identity"})
 			return true
 		}
+
 		s.result(w, r, s.App.PrepareNow(r.Context(), id), "Recording moved to the front of the preparation queue")
 	case r.URL.Path == "/api/v1/policy" && r.Method == "PUT":
 		var value struct {
@@ -63,6 +71,7 @@ func (s *Server) mutateAPI(w http.ResponseWriter, r *http.Request) bool {
 		if !decode(w, r, &value) {
 			return true
 		}
+
 		s.result(w, r, s.App.UpdatePolicy(value.ChannelID, value.PlaylistID, value.Revision, value.Selection, value.IncludePlaylists), "Policy saved")
 	case r.URL.Path == "/api/v1/artwork" && r.Method == "POST":
 		q := r.URL.Query()
@@ -73,5 +82,6 @@ func (s *Server) mutateAPI(w http.ResponseWriter, r *http.Request) bool {
 	default:
 		return false
 	}
+
 	return true
 }

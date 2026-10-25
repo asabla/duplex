@@ -26,16 +26,19 @@ func New(a *app.App, auth *Auth) (*Server, error) {
 	if e != nil {
 		return nil, e
 	}
+
 	return &Server{App: a, Auth: auth, templates: t}, nil
 }
 
 // Handler adds routing, authentication, request limits, and browser security headers.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+
 	assets, err := fs.Sub(content, "static")
 	if err != nil {
 		panic("embedded static assets are missing")
 	}
+
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(assets)))
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/plain")
@@ -47,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "mount not ready", http.StatusServiceUnavailable)
 			return
 		}
+
 		writeText(w, "mount ready\n")
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +59,7 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
+
 		writeText(w, "ready\n")
 	})
 	mux.HandleFunc("GET /login", s.loginPage)
@@ -62,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/session", s.session)
 	mux.HandleFunc("POST /api/v1/login", s.login)
 	mux.Handle("/", s.protected(http.HandlerFunc(s.route)))
+
 	return secureHandler(mux)
 }
 
@@ -70,22 +76,28 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	if p == "/logout" && r.Method == "POST" {
 		s.Auth.Logout(w, r)
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
+
 		return
 	}
+
 	if strings.HasPrefix(p, "/api/v1/") {
 		s.api(w, r)
 		return
 	}
+
 	if r.Method == http.MethodPost && s.legacyAction(w, r) {
 		return
 	}
+
 	if s.actions(w, r) {
 		return
 	}
+
 	if r.Method != "GET" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	s.readPage(w, r)
 }
 
@@ -93,12 +105,15 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 	if s.readAPI(w, r) || s.mutateAPI(w, r) {
 		return
 	}
+
 	if r.Method == http.MethodGet {
 		s.compatibilityReadAPI(w, r)
 		return
 	}
+
 	if s.compatibilityMutateAPI(w, r) || s.channelAPI(w, r) {
 		return
 	}
+
 	reply(w, http.StatusMethodNotAllowed, map[string]string{"error": "unsupported endpoint or method"})
 }

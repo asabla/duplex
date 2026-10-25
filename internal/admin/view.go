@@ -48,5 +48,6 @@ func (p page) ChannelName(id string) string {
 			return ch.Title
 		}
 	}
+
 	return id
 }

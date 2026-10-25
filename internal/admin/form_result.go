@@ -24,17 +24,21 @@ func wholeNumber(r *http.Request, name string, minValue, maxValue int) (int, err
 		if name == "limit" {
 			return 0, fieldFailure{name, "Enter a positive whole number of videos."}
 		}
+
 		return 0, fieldFailure{name, fmt.Sprintf("Enter a whole number from %d to %d.", minValue, maxValue)}
 	}
+
 	return n, nil
 }
 
 func errorField(r *http.Request, err error) string {
 	var failure fieldFailure
+
 	form := r.FormValue("_form")
 	if !errors.As(err, &failure) || form == "" || len(form) > 80 || strings.Trim(form, "abcdefghijklmnopqrstuvwxyz0123456789-") != "" {
 		return ""
 	}
+
 	return form + "-" + failure.field
 }
 
@@ -42,23 +46,29 @@ func (s *Server) savedForm(w http.ResponseWriter, r *http.Request) {
 	if s.App == nil || s.Auth == nil {
 		return
 	}
+
 	session, ok := s.Auth.Session(r)
 	if !ok {
 		return
 	}
+
 	snap := s.App.Config.Snapshot()
+
 	v := page{CSRF: session.CSRF, Status: app.Status{Config: snap}, Revision: snap.Revision, ChannelSettings: map[string]config.Channel{}, OOB: true}
 	for _, ch := range snap.Config.Channels {
 		v.ChannelSettings[ch.ID] = ch
 	}
+
 	switch r.URL.Path {
 	case "/actions/policy":
 		form := v.PolicyForm(r.FormValue("id"), r.FormValue("playlist"))
 		if r.FormValue("_form") != form.ID {
 			return
 		}
+
 		form.OOB = true
 		s.render(w, "policy-form", form)
+
 		if form.PlaylistID != "" {
 			s.render(w, "policy-summary", form)
 		}
@@ -72,6 +82,7 @@ func (s *Server) savedForm(w http.ResponseWriter, r *http.Request) {
 			slog.Error("saved configuration form could not be rendered")
 			return
 		}
+
 		v.YAML = string(data)
 		if r.FormValue("_form") == "yaml-form" {
 			s.render(w, "yaml-form", v)

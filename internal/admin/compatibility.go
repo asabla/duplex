@@ -18,25 +18,33 @@ func (s *Server) legacyAction(w http.ResponseWriter, r *http.Request) bool {
 	if p == "/actions/sync" && r.Method == "POST" {
 		e := s.App.Queue(r.FormValue("id"))
 		s.result(w, r, e, "Channel refresh queued.")
+
 		return true
 	}
+
 	if p == "/actions/remove" && r.Method == "POST" {
 		e := s.App.RemoveChannel(r.FormValue("id"), r.FormValue("revision"))
 		if e == nil && r.Header.Get("HX-Request") == "true" {
 			w.Header().Set("HX-Redirect", "/channels")
 		}
+
 		s.result(w, r, e, "Channel removed from the library. Its identity records are retained.")
+
 		return true
 	}
+
 	if p == "/actions/config" && r.Method == "POST" {
 		c, e := config.Decode([]byte(r.FormValue("yaml")))
 		if e == nil {
 			e = s.App.Config.Save(c, r.FormValue("revision"))
 		}
+
 		if e != nil && !errors.Is(e, config.ErrConflict) {
 			e = fieldFailure{"yaml", safeError(e)}
 		}
+
 		s.result(w, r, e, "Configuration saved.")
+
 		return true
 	}
 
@@ -48,13 +56,17 @@ func (s *Server) followAction(w http.ResponseWriter, r *http.Request) {
 	if mode == "" {
 		mode = "latest"
 	}
+
 	limit := 0
+
 	var err error
 	if mode == "latest" {
 		limit, err = wholeNumber(r, "limit", 1, int(^uint(0)>>1))
 	}
+
 	if err == nil {
 		var id string
+
 		id, err = s.App.FollowChannel(r.Context(), r.FormValue("url"), config.Selection{Mode: mode, Limit: limit}, r.FormValue("include_playlists") == "on", r.FormValue("revision"))
 		if err == nil && r.FormValue("_form") == "follow-form" {
 			location := channelLink("/channel", id, "/channels")
@@ -62,9 +74,11 @@ func (s *Server) followAction(w http.ResponseWriter, r *http.Request) {
 				http.Redirect(w, r, location, http.StatusSeeOther)
 				return
 			}
+
 			w.Header().Set("HX-Redirect", location)
 		}
 	}
+
 	s.result(w, r, err, "Channel followed. A refresh is queued.")
 }
 
@@ -78,6 +92,7 @@ func (s *Server) compatibilityReadAPI(w http.ResponseWriter, r *http.Request) {
 			reply(w, 503, map[string]string{"error": "catalogue unavailable"})
 			return
 		}
+
 		reply(w, 200, map[string]any{"settings": s.App.Config.Snapshot().Config.Channels, "channels": v})
 	case "/api/v1/jobs":
 		v, e := s.App.Catalog.Jobs(r.Context())
@@ -85,6 +100,7 @@ func (s *Server) compatibilityReadAPI(w http.ResponseWriter, r *http.Request) {
 			reply(w, 503, map[string]string{"error": "jobs unavailable"})
 			return
 		}
+
 		reply(w, 200, v)
 	case "/api/v1/diagnostics":
 		v, _, e := s.App.Summary(r.Context())
@@ -92,6 +108,7 @@ func (s *Server) compatibilityReadAPI(w http.ResponseWriter, r *http.Request) {
 			reply(w, 503, map[string]string{"error": "diagnostics unavailable"})
 			return
 		}
+
 		reply(w, 200, v)
 	case "/api/v1/status":
 		v, e := s.App.Status(r.Context())
@@ -99,6 +116,7 @@ func (s *Server) compatibilityReadAPI(w http.ResponseWriter, r *http.Request) {
 			reply(w, 503, map[string]string{"error": "status unavailable"})
 			return
 		}
+
 		reply(w, 200, v)
 	default:
 		reply(w, 404, map[string]string{"error": "endpoint not found"})
@@ -115,9 +133,12 @@ func (s *Server) compatibilityMutateAPI(w http.ResponseWriter, r *http.Request) 
 		if !decode(w, r, &v) {
 			return true
 		}
+
 		s.result(w, r, s.App.Config.Save(v.Config, v.Revision), "Settings saved")
+
 		return true
 	}
+
 	if p == "/api/v1/channels" && r.Method == "POST" {
 		var v struct {
 			URL      string `json:"url"`
@@ -127,7 +148,9 @@ func (s *Server) compatibilityMutateAPI(w http.ResponseWriter, r *http.Request) 
 		if !decode(w, r, &v) {
 			return true
 		}
+
 		s.result(w, r, s.App.AddChannel(r.Context(), v.URL, v.Limit, v.Revision), "Channel followed")
+
 		return true
 	}
 
@@ -138,12 +161,14 @@ func (s *Server) channelAPI(w http.ResponseWriter, r *http.Request) bool {
 	if !strings.HasPrefix(r.URL.Path, "/api/v1/channels/") {
 		return false
 	}
+
 	{
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/channels/"), "/")
 		if len(parts) == 2 && parts[1] == "sync" && r.Method == "POST" {
 			s.result(w, r, s.App.Queue(parts[0]), "Refresh queued")
 			return true
 		}
+
 		if len(parts) == 1 && r.Method == "DELETE" {
 			var v struct {
 				Revision string `json:"revision"`
@@ -151,9 +176,12 @@ func (s *Server) channelAPI(w http.ResponseWriter, r *http.Request) bool {
 			if !decode(w, r, &v) {
 				return true
 			}
+
 			s.result(w, r, s.App.RemoveChannel(parts[0], v.Revision), "Channel removed")
+
 			return true
 		}
 	}
+
 	return false
 }
