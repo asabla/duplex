@@ -4,6 +4,84 @@ duplex separates source identity, collection selection, verified media, and Plex
 state. YouTube IDs do not depend on filenames or Plex rating keys. YAML controls
 settings; SQLite stores catalogue and work state; the media cache is evictable.
 
+## Current code organization
+
+The package map below describes production imports inspected on 2026-10-25,
+including platform-specific files. It does not describe test imports or a new
+package layout. Concurrent changes can alter the source; recheck affected
+boundaries before starting a refactor. [Code standards](code-standards.md) defines
+readability policy. This document owns responsibility and dependency boundaries.
+
+| Package | Current responsibility | Direct internal dependencies |
+| --- | --- | --- |
+| `cmd/duplex` | CLI dispatch, startup, HTTP service lifetime, backup, and qualification commands. | `admin`, `app`, `cache`, `catalog`, `config`, `diagnostics`, `library`, `media`, `plex`, `source`. |
+| `internal/admin` | HTTP routing, authentication, request parsing, HTML and JSON responses, embedded templates and assets. | `app`, `catalog`, `config`. |
+| `internal/app` | Coordinates discovery, preparation, publication, runtime bindings, Plex integration, artwork, and worker lifetime. | `artwork`, `cache`, `catalog`, `config`, `diagnostics`, `library`, `media`, `plex`, `source`. |
+| `internal/catalog` | SQLite schema, migrations, identities, selections, durable work, bounded queries, and projection state. | `source`. |
+| `internal/config` | YAML schema, policy validation, revision-checked saves, and reload snapshots. | None. |
+| `internal/source` | Resolver process adapter, collection enumeration, metadata, candidate selection, and transient source locators. | `config`. |
+| `internal/media` | HTTP range sources, verification, MP4 mapping, and representation indexes. | `cache`, `config`. |
+| `internal/cache` | Chunk storage, reservations, pins, eviction, exclusive ownership, and recovery. | None. |
+| `internal/library` | Read-only FUSE mechanics and the filesystem provider contract. | `media`. |
+| `internal/plex` | Plex protocol requests, library checks, observations, and metadata operations. | None. |
+| `internal/artwork` | Image composition, normalization, fonts, and output files. | `config`. |
+| `internal/diagnostics` | Bounded operation measurements, counters, and private profiling. | None. |
+
+Dependencies point from commands and HTTP handlers through application operations
+to storage and adapters. The current graph also contains direct command access
+for backup and qualification, admin use of catalogue/configuration types,
+catalogue use of source metadata, and media use of cache/configuration. These are
+existing dependencies to review; this map does not introduce a universal layer
+rule or require new packages.
+
+The `library.Provider` interface is defined by the filesystem consumer. The
+application implements it with bounded catalogue reads and representation binding.
+This permits FUSE callbacks to request data without importing `app`. The
+`media.Representation` contract keeps identity, exact size, and offset reads
+separate from the application that publishes them. Preserve these boundaries.
+
+## Current state and resource ownership
+
+| Owner | State and synchronization | Lifetime and persistence |
+| --- | --- | --- |
+| Service command | Configuration manager, authentication, application, listener, and profiling session. | Startup constructs them; HTTP serving returns before the deferred application close. |
+| `app.App` | Shared runtime maps and status fields use `mu`. It also owns queues, wake channels, preparation slots, library-update serialization, cancellation, and worker waiting. | `Open` acquires cache ownership, opens the catalogue, mounts the provider, and starts workers. `Close` cancels and waits, then closes the mount, cache, and catalogue. |
+| `config.Manager` | `fileMu` serializes file operations; `mu` protects the active snapshot. | YAML saves use expected revisions and atomic replacement. Invalid reloads keep the last valid snapshot. |
+| `catalog.Store` | Owns a SQLite connection pool limited to one open connection. Catalogue operations manage rows and transactions. | SQLite retains identities, selections, preparation work, and projection state through restart. Callers must close rows and finish transactions before another operation needs the connection. |
+| `cache.Store` | A mutex protects reservations, entries, pins, and close state; a directory lock enforces one process owner. | Chunk reads hold pins until release. Publication and recovery preserve accounting; the application closes the store. |
+| `library.Mount` and open handles | The mount owns the FUSE server and provider. Each handle retains one representation; static qualification snapshots use atomic replacement. | The application unmounts after its workers stop. Cache eviction or source renewal must not change an open handle's representation. |
+| Source adapter and diagnostics | The resolver bounds listing and metadata work with slots. The recorder protects its aggregates with a mutex. | Process calls have contexts and deadlines. Locators remain transient; measurements retain bounded operation data. |
+| `admin.Auth` | A mutex protects session and login-attempt state. | Protected files hold credentials; sessions and rate limits are process state. |
+
+`App.mu` is shared by several responsibilities; this table is not a complete lock
+ordering proof. Some state belongs to a single worker or the scheduler. Before
+moving it, inspect all readers and writers, the channel or lock that serializes
+them, cancellation paths, and startup failure cleanup. Preserve acquisition and
+release order. Keep each SQLite transaction's commit, rollback, row closure, and
+restart boundary visible when extracting operations.
+
+## Intended direction for later refactors
+
+These are design constraints for future work, not completed extractions:
+
+- Keep command startup and HTTP request/response handling separate from
+  application operations. HTML and JSON must use the same operation authority.
+- Keep `App` as the application entry point while separating coherent
+  responsibilities and their state within the package. Review discovery,
+  preparation/runtime binding, publication/Plex integration, and artwork/assets
+  independently. A file split alone does not establish ownership.
+- Keep SQL, migrations, durable work transitions, and bounded read queries in
+  `catalog`. Keep resolver processes and transient locators in `source`. Review
+  their shared types before considering any interface change.
+- Keep immutable byte mapping in `media`, chunk accounting in `cache`, FUSE
+  mechanics in `library`, and protocol requests in `plex`. Application code owns
+  the order in which these operations run.
+- Keep related types and operations together. Add a package or interface only
+  when a concrete dependency boundary needs it. Avoid generic utility packages.
+- Preserve interfaces, error behavior, worker limits, security, stored formats,
+  and all identity and playback invariants below. Implement structural work in
+  separately verified changes.
+
 ## Data and identities
 
 | Object | Durable identity | Role |

@@ -1,14 +1,14 @@
 # Development
 
-Go code follows the [Google Go Style Guide](https://google.github.io/styleguide/go/).
-Production functions must have cyclomatic complexity at most 15 and cognitive
-complexity at most 20. Use small stages with explicit inputs, outputs, cancellation,
-and errors. Suppressions must name one check, sit at the relevant line, and explain
-the established safety boundary.
+Read the root [repository instructions](../AGENTS.md) before changes. The
+[code standards](code-standards.md) define readability rules, manual review, and
+existing and planned automated checks. [Architecture](architecture.md) defines
+package responsibilities and runtime boundaries. This document owns tool setup,
+commands, and verification procedures.
 
 ## Tools
 
-Use the versions in `.tool-versions` and `go.mod`:
+Use the versions in [`.tool-versions`](../.tool-versions) and [go.mod](../go.mod):
 
 - Go 1.27.3.
 - golangci-lint 2.15.0, with formatting and imports enforced.
@@ -16,9 +16,15 @@ Use the versions in `.tool-versions` and `go.mod`:
 - govulncheck 1.9.0.
 - FFmpeg and ffprobe for controlled media comparisons. The retained local evidence uses 9.0.2.
 
+Install the pinned tools through the existing mise configuration or make those
+exact versions available on PATH. Check their versions before running the gate.
+The gate checks the Go toolchain and analysis tools; it needs FFmpeg and ffprobe
+on PATH but does not enforce the retained FFmpeg evidence version.
+
 `make` prints the four supported targets. It performs no setup or downloads.
 
 ```sh
+make
 make build
 make test
 make check
@@ -27,7 +33,11 @@ make check
 `make check` checks formatting without rewriting files, runs strict lint, scans
 working files and Git history for secrets, checks Go vulnerabilities, runs race
 and controlled media tests, enforces package coverage, and builds Linux amd64
-and arm64 binaries. Use `golangci-lint fmt` to apply formatting, then review the diff.
+and arm64 binaries. The gate is defined in [`scripts/check.sh`](../scripts/check.sh).
+[`CI`](../.github/workflows/ci.yml) calls `make check` and also validates production
+Compose configuration. Use `golangci-lint fmt` only for an authorized formatting
+change, then review the diff. It can rewrite Go files across the checkout; keep
+concurrent work outside its scope.
 
 Each production package needs at least 80% statement coverage. The gate merges
 unique statement blocks from the same source fingerprint across native and Linux
@@ -38,16 +48,39 @@ daemon; the script does not change the global Docker context. CI runs the same
 gate on Linux, including both architecture builds.
 A skipped test is not evidence that a release requirement passed.
 
-## Frontend
+## Verification by change
 
-Use readable Go templates, semantic HTML, native controls, compact CSS, embedded
-HTMX, and small amounts of plain JavaScript. There is no npm installation or
-frontend build. Protect unsaved forms and active controls before a background swap. Filters,
-sorting, and pagination belong in URLs and bounded database queries. Follow the
-[WAI table guidance](https://www.w3.org/WAI/tutorials/tables/) for table names and
-header relationships. Use the [GOV.UK table](https://design-system.service.gov.uk/components/table/)
-and [pagination](https://design-system.service.gov.uk/components/pagination/) conventions
-as interaction references; no component library is imported.
+- For prose-only changes, check local links, commands, policy consistency, and
+  source claims. Review each file's diff. Do not run the application quality gate
+  only to verify prose.
+- For code changes, run the affected behavioral tests and `make check`. Keep test
+  scenarios complete. Add behavioral coverage when the change creates a meaningful
+  risk; do not add formatting-only tests.
+- For rendered interface changes, run relevant Go handler and template tests,
+  inspect pages and fragments with the built-in Browser, and check keyboard
+  operation and focus. Follow the root instructions for browser tools.
+- For Linux filesystem, media, or cache changes, include the applicable Linux,
+  controlled media, and race checks. Use the validation register for additional
+  live-source and Plex requirements.
+- Record exactly what passed, failed, or was skipped. Keep local checks, CI,
+  live qualification, and release acceptance distinct.
+
+Templates, CSS, JavaScript, and HTMX are embedded in the binary. There is no npm
+installation or frontend build. See Code standards for their manual review rules
+and the status of proposed formatters and validators.
+
+## Refactor baseline status
+
+During planning on 2026-10-25, the installed golangci-lint 2.15.0 accepted the
+current configuration schema. An attempt to run `make check` stopped at its tool
+prerequisite check because `govulncheck` was missing from PATH. The documentation
+preparation also found concurrent source changes. These observations do not
+establish a stable or passing refactor baseline.
+
+Before enabling the planned checks, make the pinned tools available, identify a
+stable source revision and any local changes, and run the existing gate. Record
+failures and environmental blockers separately from proposed-rule findings.
+This documentation change does not rerun the application gate or qualify a build.
 
 ## Tests and evidence
 
