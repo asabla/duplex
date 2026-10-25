@@ -60,6 +60,7 @@ type workflowFixture struct {
 	client   *http.Client
 	password string
 	csrf     string
+	hx       bool
 }
 
 func newWorkflowFixture(t *testing.T) *workflowFixture {
@@ -112,6 +113,9 @@ func (f *workflowFixture) request(t *testing.T, method, path, contentType string
 		t.Fatal(err)
 	}
 	r.Header.Set("Origin", f.server.URL)
+	if f.hx {
+		r.Header.Set("HX-Request", "true")
+	}
 	if f.csrf != "" {
 		r.Header.Set("X-CSRF-Token", f.csrf)
 	}
