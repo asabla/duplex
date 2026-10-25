@@ -92,11 +92,39 @@ The compared fields were video and channel IDs, title, publication timestamp,
 upload date, duration, lifecycle, and availability. These are two samples, not a
 latency guarantee. The complete discovery-to-playback comparison remains open.
 
-## Remaining comparison
+## Matched cold comparison
 
-The incremental pipeline, SQL read pages, separate preparation workers, Plex
-publication, and complete playback workloads still require matched before/after
-measurements. No release acceptance is claimed by the results above.
+The same two public 4K uploads were followed with Latest 2 and playlists skipped.
+Both versions used the same documented yt-dlp media client. Test identifiers
+kept this workload separate from household history. The before version was
+`02b444b`; the after version was `74e9adb`.
+
+| Observation from follow | Before | After |
+| --- | ---: | ---: |
+| First catalogue entry | 111.848 s | 4.797 s |
+| First verified file and Plex discovery | 111.848 s | 25.944 s |
+| Both verified files | 111.848 s | 58.961 s |
+
+Plex discovery means its first library entry, before complete media analysis.
+The poll interval was 500 ms. This does not measure first rendered frame.
+
+Separate CPU, allocation, and blocking captures found a trade-off. Whole-container
+CPU, including resolver children, fell from 18.032 to 12.990 CPU seconds. Go CPU
+samples increased from 1.930 to 3.110 seconds. Container peak memory increased
+from 194,002,944 to 357,711,872 bytes; sampled Go allocation space increased from
+239.88 to 1,026.03 MiB. New artwork work contributes to the latter result.
+Summed goroutine blocking was 1,190.07 versus 1,902.05 seconds; this includes idle
+workers and is not elapsed latency. See the [scoped evidence](evidence/cleanup-performance.json).
+
+These profiles precede the cache read optimization. Its separate 100-iteration,
+three-run benchmark reduced a published chunk read from 28 to 4 allocations and
+about 2.23 MB to 1.06 MB allocated. It does not establish a new whole-application
+memory result.
+
+The matched restart check returned an incomplete initial mounted header read on
+both versions. A later direct mounted header read worked on the after version.
+Restart, unchanged refresh, and matched first-frame comparison remain incomplete.
+No release acceptance is claimed by the cold measurements.
 
 ## Current measurement fields
 

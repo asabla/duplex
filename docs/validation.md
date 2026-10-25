@@ -1,11 +1,20 @@
 # duplex household acceptance register
 
-The cleanup branch is not release-qualified or deployed. The results below
-describe the earlier household build. Current playlist tests found watch-state
-transfer during renumbering. Stable paths, file hints, and unlocked pre-scan
-index updates passed both controlled reorder directions, but production,
-pagination, removal, resume, and restart checks remain open. See the
-[playlist investigation](evidence/playlist-reorder-investigation.json).
+The cleanup branch is not release-qualified or deployed. The current strict
+quality gate passed, including at least 80% statement coverage in every production
+package. Production playlist reorder, removal and return, separate occurrence
+history, named seasons, and artwork checks passed in the isolated Plex server.
+See the [production playlist evidence](evidence/playlist-production-check.json)
+and [quality evidence](evidence/cleanup-quality-check.json).
+
+Current public-source checks rendered a 4K upload and completed replay in Plex
+Web, including long resume after remount and distant replay seeks. A subsequent
+four-decoder test through Plex media-part endpoints returned incomplete reads
+and a timeout. The matched restart comparison also returned incomplete initial
+header reads; it did not reach unchanged-refresh measurement. These failures
+are retained and block deployment. They have not been attributed to a specific
+layer. See the [mount diagnosis](research/plex-playback-stall.md) and
+[scoped performance comparison](evidence/cleanup-performance.json).
 
 Recorded 2026-10-25 for the earlier build. Its media and mount gates
 passed for the profiles below. Acceptance applies to this private household
@@ -42,7 +51,7 @@ The replay tests read the end and arbitrary offsets, repeat those reads, inspect
 the streams, and decode near 1 second and 17,270 seconds. They do not fetch a full
 source file. These measurements are observations, not performance promises.
 
-The final followed-channel catalogue contains 33 exposed recordings: 30 jackfrags
+The earlier qualified catalogue contained 33 exposed recordings: 30 jackfrags
 and 3 Blender videos, with 5,806 durable identity records retained. Twenty-five
 selected sources are 2160p. A 12,038,858,451-byte followed-channel recording also
 played and rendered after a seek to 53:24 in Plex Web.
