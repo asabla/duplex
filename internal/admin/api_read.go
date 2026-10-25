@@ -2,6 +2,7 @@ package admin
 
 import (
 	"net/http"
+	"strings"
 
 	"duplex/internal/config"
 )
@@ -41,6 +42,13 @@ func (s *Server) readAPI(w http.ResponseWriter, r *http.Request) bool {
 
 func (s *Server) mutateAPI(w http.ResponseWriter, r *http.Request) bool {
 	switch {
+	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/videos/") && strings.HasSuffix(r.URL.Path, "/prepare"):
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/videos/"), "/prepare")
+		if id == "" || strings.Contains(id, "/") {
+			reply(w, http.StatusBadRequest, map[string]string{"error": "invalid recording identity"})
+			return true
+		}
+		s.result(w, r, s.App.PrepareNow(r.Context(), id), "Recording moved to the front of the preparation queue")
 	case r.URL.Path == "/api/v1/policy" && r.Method == "PUT":
 		var value struct {
 			ChannelID        string           `json:"channel_id"`
