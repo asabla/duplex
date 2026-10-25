@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"duplex/internal/cache"
+	"duplex/internal/source"
 )
 
 // TestYouTube4KGate consumes a fresh resolver result from an explicit public
@@ -64,7 +65,14 @@ func testRecordedSource(t *testing.T, path, videoFormat string, height int, repl
 	}
 
 	combined := videoFormat == "18"
-	if urls[videoFormat] == "" || (!combined && urls["140"] == "") {
+	audioFormat := ""
+	if !combined {
+		audioFormat, err = recordedAudioFormat(b, info.ID, videoFormat, height)
+		if err != nil {
+			t.Fatal("recorded source has no supported original audio candidate", err)
+		}
+	}
+	if urls[videoFormat] == "" || (!combined && urls[audioFormat] == "") {
 		t.Fatal("test source lacks the required recorded-media formats")
 	}
 	budget := 90 * time.Second
@@ -103,7 +111,7 @@ func testRecordedSource(t *testing.T, path, videoFormat string, height int, repl
 	started := time.Now()
 	if !combined {
 		var a *HTTPSource
-		a, err = OpenHTTP(ctx, client, urls["140"], info.ID+":140", store)
+		a, err = OpenHTTP(ctx, client, urls[audioFormat], info.ID+":"+audioFormat, store)
 		if err != nil {
 			t.Fatal("audio probe:", err)
 		}
@@ -181,5 +189,20 @@ func testRecordedSource(t *testing.T, path, videoFormat string, height int, repl
 	if got > limit {
 		t.Fatalf("unexpected remote traffic: %d", got)
 	}
-	t.Logf("video_id=%s video_format=%s combined=%t height=%d live_status=%s source_bytes=%d output_bytes=%d upstream_bytes=%d", info.ID, videoFormat, combined, height, info.LiveStatus, size, virtual.Size(), got)
+	t.Logf("video_id=%s video_format=%s audio_format=%s combined=%t height=%d live_status=%s source_bytes=%d output_bytes=%d upstream_bytes=%d", info.ID, videoFormat, audioFormat, combined, height, info.LiveStatus, size, virtual.Size(), got)
+}
+
+// Audio format IDs can include language suffixes after YouTube adds dubbing.
+// Use the supported original-language candidate, not a fixed numeric ID.
+func recordedAudioFormat(data []byte, id, video string, height int) (string, error) {
+	metadata, err := source.DecodeMetadata(data, id)
+	if err != nil {
+		return "", err
+	}
+	for _, candidate := range source.Candidates(metadata, height) {
+		if candidate.Video.ID == video && candidate.Audio != nil {
+			return candidate.Audio.ID, nil
+		}
+	}
+	return "", ErrUnsupported
 }

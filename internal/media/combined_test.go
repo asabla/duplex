@@ -150,3 +150,16 @@ func TestBoxHeadersRejectImpossibleSizesBeforeAllocation(t *testing.T) {
 		}
 	}
 }
+
+func TestRecordedSourceGateAcceptsLanguageQualifiedAudioIDs(t *testing.T) {
+	data := []byte(`{"id":"video000000","channel_id":"UCaaaaaaaaaaaaaaaaaaaaaa","title":"Recorded","duration":60,"live_status":"not_live","formats":[{"format_id":"401","url":"https://r1.googlevideo.com/video","protocol":"https","ext":"mp4","vcodec":"av01","acodec":"none","height":2160},{"format_id":"140-0","url":"https://r1.googlevideo.com/dubbed","protocol":"https","ext":"m4a","vcodec":"none","acodec":"mp4a","language":"fr","format_note":"French dubbed"},{"format_id":"140-19","url":"https://r1.googlevideo.com/original","protocol":"https","ext":"m4a","vcodec":"none","acodec":"mp4a","language":"en-US","format_note":"English original"}]}`)
+	if id, err := recordedAudioFormat(data, "video000000", "401", 2160); err != nil || id != "140-19" {
+		t.Fatal(id, err)
+	}
+	if _, err := recordedAudioFormat(data, "video000000", "missing", 2160); !errors.Is(err, ErrUnsupported) {
+		t.Fatal(err)
+	}
+	if _, err := recordedAudioFormat([]byte("invalid"), "video000000", "401", 2160); err == nil {
+		t.Fatal("invalid metadata accepted")
+	}
+}
