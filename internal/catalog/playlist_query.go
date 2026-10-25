@@ -32,8 +32,10 @@ type (
 		Selected  int    `json:"selected"`
 	}
 	PlaylistPage struct {
-		Items                []PlaylistRow `json:"items"`
-		Page, PerPage, Total int
+		Items   []PlaylistRow `json:"items"`
+		Page    int           `json:"page"`
+		PerPage int           `json:"per_page"`
+		Total   int           `json:"total"`
 	}
 )
 

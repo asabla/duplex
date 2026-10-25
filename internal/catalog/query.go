@@ -164,6 +164,6 @@ func readVideos(rows *sql.Rows) ([]Video, error) {
 func (s *Store) Summary(ctx context.Context, v Visibility) (Counts, error) {
 	cte, args := selectedCTE(v)
 	var c Counts
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT count(*),COALESCE(sum(EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0),COALESCE(sum(v.preparation='ready' AND EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0),COALESCE(sum(v.preparation='failed' AND EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0) FROM videos v`, args...).Scan(&c.Discovered, &c.Selected, &c.Ready, &c.Failed)
+	err := s.DB.QueryRowContext(ctx, cte+`SELECT count(*),COALESCE(sum(EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0),COALESCE(sum(v.preparation='ready' AND v.state IN ('recorded','replay-ready') AND EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0),COALESCE(sum(v.preparation='failed' AND EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0) FROM videos v`, args...).Scan(&c.Discovered, &c.Selected, &c.Ready, &c.Failed)
 	return c, err
 }

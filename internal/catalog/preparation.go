@@ -156,3 +156,10 @@ func (s *Store) JobProgress(ctx context.Context, id int64, stage string, discove
 	_, err := s.DB.ExecContext(ctx, `UPDATE sync_jobs SET stage=?,discovered=?,prepared=? WHERE id=?`, stage, discovered, prepared, id)
 	return err
 }
+
+// MarkUnavailable records a source lifecycle failure without assigning an
+// inferred playlist owner as the video's established uploader.
+func (s *Store) MarkUnavailable(ctx context.Context, id string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE videos SET state='unavailable',updated=? WHERE id=?`, time.Now().Unix(), id)
+	return err
+}

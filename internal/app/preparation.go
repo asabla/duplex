@@ -99,13 +99,13 @@ func (a *App) playbackMetadata(ctx context.Context, id string) (source.Metadata,
 }
 
 func (a *App) usable(ctx context.Context, id string) (bool, error) {
-	revision, err := a.Catalog.ActiveRevision(ctx, id)
+	revision, state, err := a.Catalog.RepresentationState(ctx, id)
 	if err != nil {
 		return false, err
 	}
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	return a.reps[revision] != nil && time.Now().Before(a.leases[revision]), nil
+	return (state == "recorded" || state == "replay-ready") && a.reps[revision] != nil && time.Now().Before(a.leases[revision]), nil
 }
 
 func (a *App) queuePreparation(ctx context.Context, id string, priority int) error {
@@ -180,42 +180,53 @@ func (a *App) preparationWorker(ctx context.Context) {
 	}
 }
 
-func (a *App) prepareRecording(ctx context.Context, id string) error {
+func (a *App) resolveRecording(ctx context.Context, id string) (source.Metadata, bool, error) {
 	a.mu.RLock()
 	toolError := a.toolError
 	a.mu.RUnlock()
 	if toolError != "" {
-		return errors.New(toolError)
+		return source.Metadata{}, true, errors.New(toolError)
 	}
 	selected, err := a.Catalog.IsSelected(ctx, id, visibility(a.Config.Snapshot().Config))
 	if err != nil {
-		return err
+		return source.Metadata{}, true, err
 	}
 	if !selected {
-		return a.Catalog.SetPreparation(ctx, id, "skipped", "")
+		return source.Metadata{}, true, a.Catalog.SetPreparation(ctx, id, "skipped", "")
 	}
 	usable, err := a.usable(ctx, id)
 	if err != nil {
-		return err
+		return source.Metadata{}, true, err
 	}
 	if usable {
-		return a.Catalog.SetPreparation(ctx, id, "ready", "")
+		return source.Metadata{}, true, a.Catalog.SetPreparation(ctx, id, "ready", "")
 	}
 	if err = a.Catalog.SetPreparation(ctx, id, "resolving", ""); err != nil {
-		return err
+		return source.Metadata{}, true, err
 	}
 	m, err := a.playbackMetadata(ctx, id)
+	if errors.Is(err, source.ErrUnavailable) {
+		return source.Metadata{}, true, a.unavailableRecording(ctx, id)
+	}
 	if err != nil {
-		return err
+		return source.Metadata{}, true, err
 	}
 	if m.ID != id || m.ChannelID == "" {
-		return errors.New("source video identity changed")
+		return source.Metadata{}, true, errors.New("source video identity changed")
 	}
 	if err = a.Catalog.SaveMetadata(ctx, m); err != nil {
-		return err
+		return source.Metadata{}, true, err
 	}
 	if !recording(m) {
-		return a.Catalog.SetPreparation(ctx, id, "waiting", "Waiting for a completed recording")
+		return source.Metadata{}, true, a.Catalog.SetPreparation(ctx, id, "waiting", "Waiting for a completed recording")
+	}
+	return m, false, nil
+}
+
+func (a *App) prepareRecording(ctx context.Context, id string) error {
+	m, done, err := a.resolveRecording(ctx, id)
+	if done || err != nil {
+		return err
 	}
 	if err = a.Catalog.SetPreparation(ctx, id, "preparing", ""); err != nil {
 		return err
@@ -230,7 +241,7 @@ func (a *App) prepareRecording(ctx context.Context, id string) error {
 	if err = a.Catalog.QueueAsset(ctx, id); err != nil {
 		return err
 	}
-	if err = a.Publish(); err != nil {
+	if err = errors.Join(err, a.Publish()); err != nil {
 		return err
 	}
 	a.requestScan()
@@ -312,12 +323,13 @@ func (a *App) assetWorker(ctx context.Context) {
 			if len(candidates) == 0 {
 				err = errors.New("no supported asset language")
 			} else {
-				assets := a.acquireAssets(workCtx, m, candidates[0])
+				assets, assetErr := a.acquireAssets(workCtx, m, candidates[0])
+				err = assetErr
 				if len(assets) > 0 {
 					a.mu.Lock()
 					a.assets[id] = assets
 					a.mu.Unlock()
-					err = a.Publish()
+					err = errors.Join(err, a.Publish())
 				}
 			}
 		}
@@ -327,4 +339,14 @@ func (a *App) assetWorker(ctx context.Context) {
 			a.operationFailure("asset result", finishErr)
 		}
 	}
+}
+
+func (a *App) unavailableRecording(ctx context.Context, id string) error {
+	if err := a.Catalog.MarkUnavailable(ctx, id); err != nil {
+		return err
+	}
+	if err := a.Catalog.SetPreparation(ctx, id, "waiting", "Source is unavailable without credentials"); err != nil {
+		return err
+	}
+	return a.Publish()
 }

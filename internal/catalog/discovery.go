@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -62,14 +63,13 @@ func (s *Store) DiscoveryPosition(ctx context.Context, run int64, collection str
 	return n, err
 }
 
-// ActiveRevision returns the exact durable representation without its metadata.
-func (s *Store) ActiveRevision(ctx context.Context, id string) (string, error) {
-	var revision string
-	err := s.DB.QueryRowContext(ctx, `SELECT revision FROM videos WHERE id=?`, id).Scan(&revision)
-	if err == sql.ErrNoRows {
-		return "", nil
+// RepresentationState reads the durable revision and source lifecycle for a queue decision.
+func (s *Store) RepresentationState(ctx context.Context, id string) (revision, state string, err error) {
+	err = s.DB.QueryRowContext(ctx, `SELECT revision,state FROM videos WHERE id=?`, id).Scan(&revision, &state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
 	}
-	return revision, err
+	return revision, state, err
 }
 
 // ChooseDiscovery records a canonical selection once even across duplicate tabs.

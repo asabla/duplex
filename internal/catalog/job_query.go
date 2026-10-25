@@ -14,8 +14,10 @@ type (
 	}
 	// JobPage contains one bounded history page and its matching count.
 	JobPage struct {
-		Items                []Job `json:"items"`
-		Page, PerPage, Total int
+		Items   []Job `json:"items"`
+		Page    int   `json:"page"`
+		PerPage int   `json:"per_page"`
+		Total   int   `json:"total"`
 	}
 )
 

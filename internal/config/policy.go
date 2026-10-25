@@ -50,11 +50,11 @@ func (s Selection) validate(override bool) error {
 	switch s.Mode {
 	case "latest":
 		if s.Limit < 1 {
-			return errors.New("Latest N requires a positive video count")
+			return errors.New("latest mode requires a positive video count")
 		}
 	case "all":
 		if s.Limit != 0 {
-			return errors.New("All does not take a video count")
+			return errors.New("all mode does not take a video count")
 		}
 	case "skip", "inherit":
 		if !override || s.Limit != 0 {
@@ -109,3 +109,6 @@ func validSeasonScope(scope string) bool {
 	}
 	return strings.HasPrefix(scope, "playlist:") && ValidPlaylistID(strings.TrimPrefix(scope, "playlist:"))
 }
+
+// ValidateUploads checks a channel's finite or complete upload selection.
+func (s Selection) ValidateUploads() error { return s.validate(false) }

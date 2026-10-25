@@ -5,18 +5,21 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"html"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/jpeg"
-	_ "image/png" // Register PNG decoding for public source artwork.
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+
+	"duplex/internal/artwork"
 
 	"duplex/internal/config"
 	"duplex/internal/library"
@@ -27,95 +30,167 @@ func httpRequest(ctx context.Context, raw string) (*http.Request, error) {
 	return http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 }
 
-func (a *App) acquireAssets(ctx context.Context, m source.Metadata, c source.Candidate) []library.Entry {
-	out := []library.Entry{}
-	defer func() {
-		records := []assetRecord{}
-		for _, entry := range out {
-			if file, ok := entry.Media.(localAsset); ok {
-				records = append(records, assetRecord{Suffix: entry.Path, File: filepath.Base(file.file), Size: file.size})
-			}
-		}
-		b, _ := json.Marshal(records)
-		_ = config.AtomicWrite(filepath.Join(a.original.DataDir, "assets", m.ID+".json"), b, 0o600)
-	}()
-	var picture image.Image
-	if data, e := fetchAsset(ctx, m.Thumbnail); e == nil {
-		if info, _, e := image.DecodeConfig(bytes.NewReader(data)); e == nil && info.Width > 0 && info.Height > 0 && int64(info.Width)*int64(info.Height) < 24_000_000 {
-			picture, _, _ = image.Decode(bytes.NewReader(data))
-		}
+func (a *App) acquireAssets(ctx context.Context, m source.Metadata, c source.Candidate) ([]library.Entry, error) {
+	existing := a.loadAssets(m.ID)
+	assets := map[string]library.Entry{}
+	for _, entry := range existing {
+		assets[entry.Path] = entry
 	}
-	if picture == nil {
-		h := sha256.Sum256([]byte(m.ChannelID))
-		img := image.NewRGBA(image.Rect(0, 0, 480, 270))
-		draw.Draw(img, img.Bounds(), &image.Uniform{C: color.RGBA{h[0]/2 + 32, h[1]/2 + 32, h[2]/2 + 32, 255}}, image.Point{}, draw.Src)
-		picture = img
-	}
-	var b bytes.Buffer
-	if jpeg.Encode(&b, picture, &jpeg.Options{Quality: 85}) == nil {
-		if entry, e := a.saveAsset(m.ID, ".jpg", b.Bytes()); e == nil {
-			out = append(out, entry)
+	thumbnail, thumbnailErr := a.thumbnailAsset(ctx, m)
+	if thumbnailErr == nil {
+		assets[thumbnail.Path] = thumbnail
+	} else if assets[".jpg"].Media == nil {
+		fallback, err := a.fallbackThumbnail(m)
+		if err != nil {
+			return existing, errors.Join(thumbnailErr, err)
 		}
+		assets[fallback.Path] = fallback
 	}
-	language := m.Language
+	caption, captionErr := a.captionAsset(ctx, m, subtitleLanguage(m, c))
+	if caption.Media != nil {
+		assets[caption.Path] = caption
+	}
+	out := make([]library.Entry, 0, len(assets))
+	for _, entry := range assets {
+		out = append(out, entry)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	if err := a.saveAssetManifest(m.ID, out); err != nil {
+		return existing, errors.Join(thumbnailErr, captionErr, err)
+	}
+	return out, errors.Join(thumbnailErr, captionErr)
+}
+
+func (a *App) thumbnailAsset(ctx context.Context, m source.Metadata) (library.Entry, error) {
+	if m.Thumbnail == "" {
+		return library.Entry{}, errors.New("source thumbnail is missing")
+	}
+	data, err := fetchAsset(ctx, m.Thumbnail)
+	if err != nil {
+		return library.Entry{}, err
+	}
+	picture, err := artwork.DecodeSource(data)
+	if err != nil {
+		return library.Entry{}, err
+	}
+	return a.encodeThumbnail(m.ID, picture)
+}
+
+func (a *App) fallbackThumbnail(m source.Metadata) (library.Entry, error) {
+	hash := sha256.Sum256([]byte(m.ChannelID))
+	picture := image.NewRGBA(image.Rect(0, 0, 480, 270))
+	draw.Draw(picture, picture.Bounds(), &image.Uniform{C: color.RGBA{hash[0]/2 + 32, hash[1]/2 + 32, hash[2]/2 + 32, 255}}, image.Point{}, draw.Src)
+	return a.encodeThumbnail(m.ID, picture)
+}
+
+func (a *App) encodeThumbnail(id string, picture image.Image) (library.Entry, error) {
+	var data bytes.Buffer
+	if err := jpeg.Encode(&data, picture, &jpeg.Options{Quality: 85}); err != nil {
+		return library.Entry{}, err
+	}
+	return a.saveAsset(id, ".jpg", data.Bytes())
+}
+
+func (a *App) saveAssetManifest(id string, entries []library.Entry) error {
+	if !assetID.MatchString(id) {
+		return errors.New("invalid asset identity")
+	}
+	records := []assetRecord{}
+	for _, entry := range entries {
+		file, ok := entry.Media.(localAsset)
+		if !ok {
+			return errors.New("optional assets must use durable files")
+		}
+		records = append(records, assetRecord{Suffix: entry.Path, File: filepath.Base(file.file), Size: file.size})
+	}
+	data, err := json.Marshal(records)
+	if err != nil {
+		return err
+	}
+	return config.AtomicWrite(filepath.Join(a.original.DataDir, "assets", id+".json"), data, 0o600)
+}
+
+func subtitleLanguage(m source.Metadata, c source.Candidate) string {
 	if c.Audio != nil && c.Audio.Language != "" {
-		language = c.Audio.Language
+		return c.Audio.Language
 	}
-	if language == "" {
-		language = c.Video.Language
+	if m.Language != "" {
+		return m.Language
 	}
-	if language == "" {
-		for code := range m.AutomaticCaptions {
-			if strings.HasSuffix(code, "-orig") {
-				language = strings.TrimSuffix(code, "-orig")
-				break
-			}
+	if c.Video.Language != "" {
+		return c.Video.Language
+	}
+	original := []string{}
+	for code := range m.AutomaticCaptions {
+		if strings.HasSuffix(code, "-orig") {
+			original = append(original, strings.TrimSuffix(code, "-orig"))
 		}
 	}
+	sort.Strings(original)
+	if len(original) > 0 {
+		return original[0]
+	}
+	return ""
+}
+
+func subtitleTracks(m source.Metadata, language string) []source.Subtitle {
+	if tracks := m.Subtitles[language]; len(tracks) > 0 {
+		return tracks
+	}
+	keys := []string{}
+	for key := range m.Subtitles {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if strings.Split(key, "-")[0] == strings.Split(language, "-")[0] {
+			return m.Subtitles[key]
+		}
+	}
+	if tracks := m.AutomaticCaptions[language+"-orig"]; len(tracks) > 0 {
+		return tracks
+	}
+	return m.AutomaticCaptions[language]
+}
+
+var subtitleCode = regexp.MustCompile(`^[A-Za-z0-9-]{1,25}$`)
+
+func (a *App) captionAsset(ctx context.Context, m source.Metadata, language string) (library.Entry, error) {
 	if language == "" {
-		return out
+		return library.Entry{}, nil
 	}
-	validLang := regexp.MustCompile(`^[A-Za-z0-9-]{1,25}$`)
-	if !validLang.MatchString(language) {
-		return out
+	if !subtitleCode.MatchString(language) {
+		return library.Entry{}, errors.New("unsupported subtitle language code")
 	}
-	tracks := m.Subtitles[language]
-	if len(tracks) == 0 {
-		for key, items := range m.Subtitles {
-			if strings.Split(key, "-")[0] == strings.Split(language, "-")[0] {
-				tracks = items
-				break
-			}
-		}
-	}
-	if len(tracks) == 0 {
-		tracks = m.AutomaticCaptions[language+"-orig"]
-		if len(tracks) == 0 {
-			tracks = m.AutomaticCaptions[language]
-		}
-	}
+	tracks := subtitleTracks(m, language)
+	var failures []error
 	for _, ext := range []string{"srt", "vtt"} {
 		for _, track := range tracks {
 			if track.Ext != ext {
 				continue
 			}
-			data, e := fetchAsset(ctx, track.URL)
-			if e != nil {
-				continue
+			entry, err := a.fetchCaption(ctx, m.ID, language, track)
+			if err == nil {
+				return entry, nil
 			}
-			if ext == "vtt" {
-				data = VTTtoSRT(data)
-			}
-			if len(data) == 0 {
-				continue
-			}
-			if entry, e := a.saveAsset(m.ID, "."+language+".srt", data); e == nil {
-				out = append(out, entry)
-				return out
-			}
+			failures = append(failures, err)
 		}
 	}
-	return out
+	return library.Entry{}, errors.Join(failures...)
+}
+
+func (a *App) fetchCaption(ctx context.Context, id, language string, track source.Subtitle) (library.Entry, error) {
+	data, err := fetchAsset(ctx, track.URL)
+	if err != nil {
+		return library.Entry{}, err
+	}
+	if track.Ext == "vtt" {
+		data = VTTtoSRT(data)
+	}
+	if len(data) == 0 {
+		return library.Entry{}, errors.New("subtitle contains no supported cues")
+	}
+	return a.saveAsset(id, "."+language+".srt", data)
 }
 
 type assetRecord struct {
@@ -124,7 +199,12 @@ type assetRecord struct {
 	Size   int64  `json:"size"`
 }
 
+var assetID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
+
 func (a *App) loadAssets(id string) []library.Entry {
+	if !assetID.MatchString(id) {
+		return nil
+	}
 	dir := filepath.Join(a.original.DataDir, "assets")
 	b, e := os.ReadFile(filepath.Join(dir, id+".json"))
 	if e != nil || len(b) > 64<<10 {

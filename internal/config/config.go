@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -62,37 +63,62 @@ func Default(base string) Config {
 	return Config{Version: 1, Listen: "127.0.0.1:8765", DataDir: filepath.Join(base, "data"), CacheDir: filepath.Join(base, "media"), IndexDir: filepath.Join(base, "indexes"), Mountpoint: filepath.Join(base, "library", "media"), CacheGiB: 50, RefreshMinutes: 30, Workers: 2, MaxHeight: 2160, Channels: []Channel{}}
 }
 
+// Validate checks storage isolation, service limits, and channel policies.
 func (c Config) Validate() error {
 	if c.Version != 1 {
 		return errors.New("unsupported configuration version")
 	}
-	if _, _, e := net.SplitHostPort(c.Listen); e != nil {
+	if _, _, err := net.SplitHostPort(c.Listen); err != nil {
 		return errors.New("listen must contain host and port")
 	}
-	paths := []string{c.DataDir, c.CacheDir, c.IndexDir, c.Mountpoint}
-	for i, p := range paths {
-		if !filepath.IsAbs(p) || filepath.Clean(p) == "/" {
-			return errors.New("storage and mount paths must be absolute dedicated directories")
-		}
-		for j := 0; j < i; j++ {
-			rel, e := filepath.Rel(paths[j], p)
-			rev, _ := filepath.Rel(p, paths[j])
-			if e == nil && (rel == "." || !outside(rel) || !outside(rev)) {
-				return errors.New("storage and mount directories must be separate")
-			}
-		}
+	if err := validateStorage([]string{c.DataDir, c.CacheDir, c.IndexDir, c.Mountpoint}); err != nil {
+		return err
 	}
 	if c.CacheGiB < 1 || c.CacheGiB > 1048576 || c.RefreshMinutes < 1 || c.RefreshMinutes > 10080 || c.Workers < 1 || c.Workers > 4 || c.MaxHeight < 144 || c.MaxHeight > 2160 {
 		return errors.New("invalid cache, refresh, worker, or quality setting")
 	}
-	if c.Plex.URL != "" {
-		u, e := url.Parse(c.Plex.URL)
-		if e != nil || u.Host == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-			return errors.New("Plex URL must be an HTTP(S) origin")
+	if err := validatePlex(c.Plex); err != nil {
+		return err
+	}
+	return validateChannels(c.Channels)
+}
+
+func validateStorage(paths []string) error {
+	for i, path := range paths {
+		if !filepath.IsAbs(path) || filepath.Clean(path) == "/" {
+			return errors.New("storage and mount paths must be absolute dedicated directories")
+		}
+		for _, previous := range paths[:i] {
+			relative, err := filepath.Rel(previous, path)
+			if err != nil {
+				return err
+			}
+			reverse, err := filepath.Rel(path, previous)
+			if err != nil {
+				return err
+			}
+			if !outside(relative) || !outside(reverse) {
+				return errors.New("storage and mount directories must be separate")
+			}
 		}
 	}
+	return nil
+}
+
+func validatePlex(p Plex) error {
+	if p.URL == "" {
+		return nil
+	}
+	u, err := url.Parse(p.URL)
+	if err != nil || u.Host == "" || u.User != nil || (u.Scheme != "http" && u.Scheme != "https") || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
+		return errors.New("connection to Plex must use an HTTP(S) origin")
+	}
+	return nil
+}
+
+func validateChannels(channels []Channel) error {
 	seen := map[string]bool{}
-	for _, ch := range c.Channels {
+	for _, ch := range channels {
 		if !validID(ch.ID) || seen[ch.ID] {
 			return errors.New("invalid or duplicate channel settings")
 		}
@@ -101,20 +127,31 @@ func (c Config) Validate() error {
 		}
 		seen[ch.ID] = true
 		for _, id := range ch.Unlisted {
-			if len(id) != 11 {
+			if !validVideoID(id) {
 				return errors.New("unlisted video IDs must contain 11 URL-safe characters")
 			}
-			for _, r := range id {
-				if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
-					return errors.New("invalid unlisted video ID")
-				}
-			}
 		}
-		if _, e := ChannelURL(ch.URL); e != nil {
-			return e
+		if _, err := ChannelURL(ch.URL); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func validVideoID(id string) bool {
+	if len(id) != 11 {
+		return false
+	}
+	for _, r := range id {
+		if !urlCharacter(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func urlCharacter(r rune) bool {
+	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_'
 }
 
 func outside(p string) bool {
@@ -135,32 +172,56 @@ func validID(s string) bool {
 
 // ChannelURL validates and canonicalizes a supported public YouTube channel URL.
 func ChannelURL(raw string) (string, error) {
-	u, e := url.Parse(raw)
-	if e != nil || u.User != nil || u.Scheme != "https" || u.Port() != "" || u.RawQuery != "" || u.Fragment != "" {
+	u, err := url.Parse(raw)
+	if err != nil || !channelOrigin(u) {
 		return "", errors.New("enter an HTTPS YouTube channel URL")
 	}
-	if u.Hostname() != "www.youtube.com" && u.Hostname() != "youtube.com" {
-		return "", errors.New("enter an HTTPS YouTube channel URL")
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return "", errors.New("enter a channel URL")
 	}
-	parts := bytes.Split([]byte(u.Path), []byte("/"))
-	if len(parts) < 2 || len(parts) > 4 {
-		return "", errors.New("enter a channel URL, not a video or playlist")
+	if parts[0] == "channel" {
+		return channelIDURL(parts)
 	}
-	p := string(parts[1])
-	if p == "channel" {
-		if len(parts) < 3 || !validID(string(parts[2])) {
-			return "", errors.New("invalid channel ID")
-		}
-	} else if len(p) < 2 || p[0] != '@' {
+	return channelHandleURL(parts)
+}
+
+func channelOrigin(u *url.URL) bool {
+	if u.User != nil || u.Scheme != "https" || u.Port() != "" || u.RawQuery != "" || u.Fragment != "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "www.youtube.com" || host == "youtube.com"
+}
+
+func channelHandleURL(parts []string) (string, error) {
+	if len(parts[0]) < 2 || !strings.HasPrefix(parts[0], "@") {
 		return "", errors.New("use a channel ID or handle URL")
 	}
-	if p != "channel" && len(parts) > 2 && string(parts[2]) != "" && string(parts[2]) != "videos" && string(parts[2]) != "streams" {
+	if len(parts) > 2 || (len(parts) == 2 && !channelTab(parts[1])) {
 		return "", errors.New("unsupported channel URL")
 	}
-	if p == "channel" {
-		return "https://www.youtube.com/channel/" + string(parts[2]), nil
+	canonical := url.URL{Scheme: "https", Host: "www.youtube.com", Path: "/" + parts[0]}
+	return canonical.String(), nil
+}
+
+func channelIDURL(parts []string) (string, error) {
+	if len(parts) < 2 || !validID(parts[1]) {
+		return "", errors.New("invalid channel ID")
 	}
-	return "https://www.youtube.com/" + p, nil
+	if len(parts) > 3 || (len(parts) == 3 && !channelTab(parts[2])) {
+		return "", errors.New("unsupported channel URL")
+	}
+	return "https://www.youtube.com/channel/" + parts[1], nil
+}
+
+func channelTab(tab string) bool {
+	switch tab {
+	case "videos", "streams", "shorts", "playlists":
+		return true
+	default:
+		return false
+	}
 }
 
 // Decode reads exactly one YAML configuration and validates all settings.
@@ -172,7 +233,7 @@ func Decode(b []byte) (Config, error) {
 		return c, errors.New("invalid YAML configuration")
 	}
 	var extra any
-	if d.Decode(&extra) != io.EOF {
+	if err := d.Decode(&extra); !errors.Is(err, io.EOF) {
 		return c, errors.New("configuration must contain one YAML document")
 	}
 	return c, c.Validate()

@@ -6,9 +6,7 @@
   <fieldset><legend>Library</legend>
     <label>Media cache (GiB) <input type="number" name="cache_gib" min="1" max="1048576" value="{{.Status.Config.Config.CacheGiB}}" required></label>
     <label>Refresh interval (minutes) <input type="number" name="refresh_minutes" min="1" max="10080" value="{{.Status.Config.Config.RefreshMinutes}}" required></label>
-    <label>Maximum video height <select name="max_height">
-      {{range heights 360 480 720 1080 1440 2160}}<option value="{{.}}" {{if eq . $.Status.Config.Config.MaxHeight}}selected{{end}}>{{.}}p</option>{{end}}
-    </select></label>
+    <label>Maximum video height <input type="number" name="max_height" min="144" max="2160" value="{{.Status.Config.Config.MaxHeight}}" required></label>
   </fieldset>
   <fieldset><legend>Plex</legend>
     <label>Server URL <input type="url" name="plex_url" value="{{.Status.Config.Config.Plex.URL}}" placeholder="http://plex:32400"></label>

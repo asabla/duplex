@@ -21,13 +21,14 @@ const testOwner = "UCSMOQeBJ2RAnuFungnQOxLg"
 
 type collectionSource struct {
 	failingSource
-	mu       sync.Mutex
-	entries  map[string][]source.Entry
-	metadata map[string]source.Metadata
-	lists    []source.Playlist
-	calls    []source.Scope
-	resolved int
-	fail     string
+	mu          sync.Mutex
+	entries     map[string][]source.Entry
+	metadata    map[string]source.Metadata
+	lists       []source.Playlist
+	calls       []source.Scope
+	resolved    int
+	unavailable map[string]bool
+	fail        string
 }
 
 func (s *collectionSource) Entries(ctx context.Context, scope source.Scope, consume func([]source.Entry) error) (source.Listing, error) {
@@ -67,6 +68,9 @@ func (s *collectionSource) Metadata(ctx context.Context, id string) (source.Meta
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.resolved++
+	if s.unavailable[id] {
+		return source.Metadata{}, source.ErrUnavailable
+	}
 	m, ok := s.metadata[id]
 	if !ok {
 		return m, errors.New("missing metadata")
@@ -307,5 +311,31 @@ func TestPolicyMutationAndQueuedPriority(t *testing.T) {
 	}
 	if err := a.UpdatePolicy(ch.ID, "bad", current.Revision, config.DefaultSelection(), false); err == nil {
 		t.Fatal("invalid playlist ID accepted")
+	}
+}
+
+func TestUnavailableCuratedEntryCanAcquireItsActualUploader(t *testing.T) {
+	sourceAdapter := fixtureCollection(0)
+	playlist, id := "PLfixture0001", "curated00001"
+	sourceAdapter.lists = []source.Playlist{{ID: playlist, ChannelID: testOwner, Title: "Curated"}}
+	sourceAdapter.entries[playlist] = []source.Entry{{ID: id}}
+	sourceAdapter.unavailable = map[string]bool{id: true}
+	a := pipelineApp(t, pipelineChannel(config.DefaultSelection()), sourceAdapter)
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	missing, err := a.Catalog.Video(t.Context(), id)
+	if err != nil || missing.MetadataAt != 0 || missing.State != "unavailable" {
+		t.Fatal(missing, err)
+	}
+	delete(sourceAdapter.unavailable, id)
+	uploader := "UC0000000000000000000099"
+	sourceAdapter.metadata[id] = source.Metadata{ID: id, ChannelID: uploader, Channel: "Uploader", Title: "Now public", UploadDate: "20261025", Duration: 60}
+	if err = a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	current, err := a.Catalog.Video(t.Context(), id)
+	if err != nil || current.ChannelID != uploader || current.Preparation != "queued" {
+		t.Fatal(current, err)
 	}
 }

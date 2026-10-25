@@ -310,6 +310,9 @@ func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected st
 
 // Follow creates explicit upload and playlist defaults in the authoritative YAML.
 func (a *App) Follow(ctx context.Context, raw string, selection config.Selection, include bool, expected string) error {
+	if err := selection.ValidateUploads(); err != nil {
+		return err
+	}
 	ctx, stop := context.WithTimeout(ctx, 2*time.Minute)
 	defer stop()
 	ch, e := a.Source.ResolveChannel(ctx, raw)
@@ -420,49 +423,55 @@ func (a *App) Scan(ctx context.Context) error {
 	return a.integration(ctx, true)
 }
 
-func (a *App) integration(ctx context.Context, scan bool) error {
+func (a *App) integration(ctx context.Context, scan bool) (err error) {
 	if a.mount == nil {
 		return nil
 	}
+	defer func() { a.setPlexError(err) }()
 	if !a.mount.Ready() {
 		a.mu.Lock()
 		a.mountError = "Library mount is unavailable; scans are disabled"
 		a.mu.Unlock()
+		return errors.New("library mount is unavailable")
+	}
+	connection := a.Config.Snapshot().Config.Plex
+	client, err := a.plexClient()
+	if err != nil {
+		return err
+	}
+	if _, err = client.Check(ctx); err != nil {
+		return err
+	}
+	if err = client.LibraryHealth(ctx, connection.Section); err != nil {
+		return err
+	}
+	if !scan {
 		return nil
 	}
-	c, e := a.plexClient()
-	if e != nil {
-		a.setPlexError(e)
-		return nil
+	if err = client.Scan(ctx, connection.Section); err != nil {
+		return err
 	}
-	if _, e = c.Check(ctx); e == nil {
-		e = c.LibraryHealth(ctx, a.Config.Snapshot().Config.Plex.Section)
+	return a.bindPlex(ctx, client, connection)
+}
+
+func (a *App) bindPlex(ctx context.Context, client *plex.Client, connection config.Plex) error {
+	bindings, err := client.Bindings(ctx, connection.Section)
+	if err != nil {
+		return err
 	}
-	if e == nil && scan {
-		e = c.Scan(ctx, a.Config.Snapshot().Config.Plex.Section)
-	}
-	if e == nil && scan {
-		bindings, err := c.Bindings(ctx, a.Config.Snapshot().Config.Plex.Section)
-		if err != nil {
-			return err
+	for _, binding := range bindings {
+		if occurrence := plex.OccurrenceID(binding.GUID); occurrence != "" {
+			if err = a.Catalog.BindOccurrence(ctx, occurrence, connection.URL, binding.Key, binding.GUID); err != nil {
+				return err
+			}
 		}
-		if err == nil {
-			for _, binding := range bindings {
-				if occurrence := plex.OccurrenceID(binding.GUID); occurrence != "" {
-					if err = a.Catalog.BindOccurrence(ctx, occurrence, a.Config.Snapshot().Config.Plex.URL, binding.Key, binding.GUID); err != nil {
-						return err
-					}
-				}
-				if id := plex.SourceID(binding.GUID); id != "" {
-					if bindErr := a.Catalog.Bind(ctx, id, a.Config.Snapshot().Config.Plex.URL, binding.Key, binding.GUID); bindErr != nil {
-						return bindErr
-					}
-				}
+		if id := plex.SourceID(binding.GUID); id != "" {
+			if err = a.Catalog.Bind(ctx, id, connection.URL, binding.Key, binding.GUID); err != nil {
+				return err
 			}
 		}
 	}
-	a.setPlexError(e)
-	return e
+	return nil
 }
 
 func (a *App) setPlexError(e error) {
@@ -539,6 +548,9 @@ func (r localAsset) ReadAt(ctx context.Context, p []byte, o int64) (int, error) 
 }
 
 func (a *App) saveAsset(id, suffix string, b []byte) (library.Entry, error) {
+	if !assetID.MatchString(id) {
+		return library.Entry{}, errors.New("invalid asset identity")
+	}
 	dir := filepath.Join(a.original.DataDir, "assets")
 	if e := os.MkdirAll(dir, 0o700); e != nil {
 		return library.Entry{}, e
