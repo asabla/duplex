@@ -135,6 +135,41 @@ The [follow-up results](evidence/catalogue-profile-followup.json) include sample
 ranges, source hashes, and both rejected candidates. Private source copies and
 logs are in `.cache/profiling-followup/`. No running container was changed.
 
+## Repeated Linux directory measurements
+
+The [profiling runner](performance-tooling.md) compares committed sources with
+ten samples per workload and separate CPU and allocation captures. The final
+comparison used `bb897d5` and `dd4e2e3` on Linux arm64 in Colima, with two CPUs,
+1 GiB of memory, GOMAXPROCS=2, and an anonymous Linux Docker data volume.
+
+| Recordings | Before | After | Time reduction | Allocation reduction |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,000 | 2.764 ms | 1.429 ms | 48.31% | 67.30% |
+| 10,000 | 20.36 ms | 10.45 ms | 48.68% | 67.30% |
+
+The final allocation is about 83,632 bytes and 1,394 allocations per 128-entry
+page. `benchstat` reports p<0.001 with ten samples for each time and allocation
+comparison. These are query measurements inside a Linux VM.
+
+The CPU and allocation profiles identified work left after `f424d51`: a page
+still queried up to 129 episode rows, although every episode supplies an MP4
+and NFO. `dd4e2e3` reduces the query to the rows needed for the page, allows one
+extra row for a cursor inside an episode, and stops reading assets once enough
+entries are available. The filename-order tests cover page sizes 1, 2, 3, 25,
+128, and 256, with sidecars and the episode 9,999 boundary.
+
+The complete `make check` gate passed on isolated sources that match all
+committed Go and module files in `dd4e2e3`. This includes secret scans,
+vulnerability checks, race and controlled media tests, Linux qualification,
+coverage thresholds, lint, and both Linux architecture builds. The missing
+pinned vulnerability checker was installed in the private tool directory.
+
+The [Linux result record](evidence/catalogue-linux-profile.json) retains the
+statistical report, source identities, limits, and validation. Raw profiles are
+private in `.cache/catalogue-linux-final-20261025/`. SQLite filename formatting
+and sorting remain visible in CPU profiles. Playback start and seek latency
+through Plex, Duplex, and YouTube require separate end-to-end measurements.
+
 ## Baseline
 
 The original sequential pipeline indexed two jackfrags recordings. A cold sync
