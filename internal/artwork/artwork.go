@@ -2,7 +2,6 @@
 package artwork
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -11,21 +10,8 @@ import (
 	"image/color"
 	"image/draw"
 	"image/jpeg"
-	_ "image/png" // PNG is one of the two supported input formats.
-	"io"
-	"os"
-	"path/filepath"
-	"strings"
-
-	"duplex/internal/config"
 
 	xdraw "golang.org/x/image/draw"
-	"golang.org/x/image/font"
-	"golang.org/x/image/font/gofont/gobold"
-	"golang.org/x/image/font/gofont/goregular"
-	"golang.org/x/image/font/opentype"
-	"golang.org/x/image/math/fixed"
-	_ "golang.org/x/image/webp" // YouTube can return WebP branding; uploads remain JPEG/PNG only.
 )
 
 // Poster dimensions and upload limits apply to automatic and manual artwork.
@@ -43,43 +29,6 @@ var ErrImage = errors.New("artwork must be a JPEG or PNG up to 10 MiB and 24 meg
 type Input struct {
 	Channel, Title, Label   string
 	Avatar, Banner, Picture image.Image
-}
-
-// Decode validates dimensions and format before allocating decoded pixels.
-func Decode(data []byte) (image.Image, error) { return decodeImage(data, false) }
-
-// DecodeSource also accepts WebP branding while retaining the same allocation limits.
-func DecodeSource(data []byte) (image.Image, error) { return decodeImage(data, true) }
-
-func decodeImage(data []byte, source bool) (image.Image, error) {
-	if len(data) == 0 || len(data) > MaxUpload {
-		return nil, ErrImage
-	}
-	info, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || (format != "jpeg" && format != "png" && (!source || format != "webp")) || info.Width < 1 || info.Height < 1 || int64(info.Width)*int64(info.Height) > MaxPixels {
-		return nil, ErrImage
-	}
-	result, _, err := image.Decode(bytes.NewReader(data))
-	if err != nil {
-		return nil, ErrImage
-	}
-	return result, nil
-}
-
-// Upload strips source metadata and places the complete image on a 2:3 canvas.
-func Upload(reader io.Reader) ([]byte, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, MaxUpload+1))
-	if err != nil {
-		return nil, err
-	}
-	picture, err := Decode(data)
-	if err != nil {
-		return nil, err
-	}
-	canvas := image.NewRGBA(image.Rect(0, 0, Width, Height))
-	fill(canvas, canvas.Bounds(), color.RGBA{20, 24, 30, 255})
-	contain(canvas, canvas.Bounds(), picture)
-	return encode(canvas)
 }
 
 // Render uses the embedded Go fonts, licensed by Bigelow & Holmes under BSD-3.
@@ -140,83 +89,6 @@ func contain(dst draw.Image, box image.Rectangle, src image.Image) {
 	}
 	start := image.Pt(box.Min.X+(box.Dx()-width)/2, box.Min.Y+(box.Dy()-height)/2)
 	xdraw.CatmullRom.Scale(dst, image.Rectangle{Min: start, Max: start.Add(image.Pt(width, height))}, src, b, draw.Over, nil)
-}
-
-func text(dst draw.Image, value string, point image.Point, size float64, lines int, bold bool) (err error) {
-	data := goregular.TTF
-	if bold {
-		data = gobold.TTF
-	}
-	parsed, err := opentype.Parse(data)
-	if err != nil {
-		return err
-	}
-	face, err := opentype.NewFace(parsed, &opentype.FaceOptions{Size: size, DPI: 72, Hinting: font.HintingFull})
-	if err != nil {
-		return err
-	}
-	defer func() { err = errors.Join(err, face.Close()) }()
-	drawer := font.Drawer{Dst: dst, Src: image.NewUniform(color.RGBA{242, 244, 247, 255}), Face: face}
-	parts := wrap(&drawer, strings.Join(strings.Fields(value), " "), Width-112, lines)
-	for i, line := range parts {
-		drawer.Dot = fixed.P(point.X, point.Y+i*int(size*1.25))
-		drawer.DrawString(line)
-	}
-	return nil
-}
-
-func wrap(d *font.Drawer, value string, width, lines int) []string {
-	out := []string{}
-	line := ""
-	for _, r := range value {
-		if d.MeasureString(line+string(r)).Ceil() > width && line != "" {
-			out = append(out, strings.TrimSpace(line))
-			line = ""
-			if len(out) == lines {
-				last := []rune(out[len(out)-1])
-				if len(last) > 2 {
-					out[len(out)-1] = string(last[:len(last)-2]) + "…"
-				}
-				return out
-			}
-		}
-		line += string(r)
-	}
-	if line != "" && len(out) < lines {
-		out = append(out, strings.TrimSpace(line))
-	}
-	return out
-}
-
-func encode(picture image.Image) ([]byte, error) {
-	var data bytes.Buffer
-	err := jpeg.Encode(&data, picture, &jpeg.Options{Quality: 90})
-	return data.Bytes(), err
-}
-
-// Save stores only normalized, content-addressed assets outside the media cache.
-func Save(dir string, data []byte) (string, error) {
-	info, format, err := image.DecodeConfig(bytes.NewReader(data))
-	if err != nil || format != "jpeg" || info.Width != Width || info.Height != Height {
-		return "", ErrImage
-	}
-	hash := sha256.Sum256(data)
-	ref := hex.EncodeToString(hash[:]) + ".jpg"
-	if err = os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
-	}
-	if err = config.AtomicWrite(filepath.Join(dir, ref), data, 0o600); err != nil {
-		return "", err
-	}
-	return ref, nil
-}
-
-// Path validates a YAML reference before constructing a local asset path.
-func Path(dir, reference string) (string, error) {
-	if !config.ValidArtworkReference(reference) {
-		return "", fmt.Errorf("invalid artwork reference")
-	}
-	return filepath.Join(dir, reference), nil
 }
 
 // Fingerprint includes the rendered labels and image pixels. It lets callers
