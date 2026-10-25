@@ -15,8 +15,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-      - name: Install controlled-media prerequisites
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y ffmpeg
+      - name: Install FUSE and controlled-media prerequisites
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y fuse3 ffmpeg
       - name: Check
         run: make check
       - name: Validate production Compose
@@ -27,15 +27,8 @@ jobs:
           name: quality-evidence
           path: |
             .cache/coverage.out
+            .cache/coverage-native.out
+            .cache/*-linux.cover
+            .cache/*-coverage-source
             .cache/format.diff
           if-no-files-found: error
-
-  linux:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-      - name: Install FUSE and media prerequisites
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y fuse3 ffmpeg
-      - name: Linux qualification
-        run: ./scripts/check-linux.sh

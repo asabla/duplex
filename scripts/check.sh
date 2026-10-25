@@ -24,7 +24,11 @@ golangci-lint run ./...
 gitleaks dir --redact=100 --no-banner .
 gitleaks git --redact=100 --no-banner .
 govulncheck ./...
+./scripts/test-coverage.sh
 make test GO="$GO"
-awk -f scripts/coverage.awk .cache/coverage.out
+GO="$GO" ./scripts/check-linux.sh
+cmp .cache/native-coverage-source .cache/linux-coverage-source || { printf '%s\n' 'Native and Linux evidence use different source.' >&2; exit 1; }
+awk -v profile=.cache/coverage.out -f scripts/coverage.awk .cache/coverage-native.out .cache/library-linux.cover .cache/cache-linux.cover .cache/app-linux.cover
+CGO_ENABLED=0 GOOS=linux golangci-lint run ./...
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 "$GO" build -trimpath -o .cache/duplex-linux-amd64 ./cmd/duplex
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 "$GO" build -trimpath -o .cache/duplex-linux-arm64 ./cmd/duplex

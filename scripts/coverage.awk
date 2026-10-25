@@ -1,22 +1,44 @@
-# Statement coverage is checked independently for every production package.
-NR > 1 {
-  split($1, location, ":")
-  package = location[1]
-  sub(/\/[^/]+$/, "", package)
-  statements[package] += $2
-  if ($3 > 0) covered[package] += $2
+# Merge repeated blocks and enforce 80% statements for each production package.
+# Set -v profile=FILE to retain the merged profile. Counts use the maximum;
+# qualification needs evidence that a block ran, not a sum of separate runs.
+function fail(message) {
+  print message > "/dev/stderr"
+  invalid = 1
+  exit 1
+}
+$1 == "mode:" {
+  if (NF != 2 || $2 != "atomic") fail("Coverage must use atomic mode")
+  headers++
+  next
+}
+{
+  if (NF != 3 || $1 !~ /^duplex\/.+:[0-9]+\.[0-9]+,[0-9]+\.[0-9]+$/ || $2 !~ /^[0-9]+$/ || $3 !~ /^[0-9]+$/) fail("Invalid coverage block")
+  if (($1 in statements) && statements[$1] != $2) fail("Coverage block differs between runs: " $1)
+  statements[$1] = $2
+  if ($3 > counts[$1]) counts[$1] = $3
 }
 END {
-  count = 0
-  for (package in statements) {
-    count++
-    percentage = 100 * covered[package] / statements[package]
+  if (invalid) exit 1
+  if (headers == 0) fail("Coverage report has no header")
+  for (block in statements) {
+    package = block
+    sub("/[^/]+$", "", package)
+    totals[package] += statements[block]
+    if (counts[block] > 0) covered[package] += statements[block]
+  }
+  packages = 0
+  for (package in totals) {
+    packages++
+    if (totals[package] == 0) fail("Coverage package has no statements: " package)
+    percentage = 100 * covered[package] / totals[package]
     printf "%s: %.1f%% statements covered\n", package, percentage
-    if (percentage < 80) failed = 1
+    if (percentage < 80) below = 1
   }
-  if (count == 0) {
-    print "Coverage report contains no production packages" > "/dev/stderr"
-    failed = 1
+  if (packages == 0) fail("Coverage report contains no production packages")
+  if (profile != "") {
+    print "mode: atomic" > profile
+    for (block in statements) print block, statements[block], counts[block] + 0 > profile
+    close(profile)
   }
-  exit failed
+  exit below
 }

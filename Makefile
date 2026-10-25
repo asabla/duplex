@@ -13,7 +13,10 @@ build:
 
 test:
 	@mkdir -p .cache
-	DUPLEX_MEDIA_TEST=1 $(GO) test -race -count=1 -timeout 180s -coverprofile=.cache/coverage.out ./...
+	@./scripts/coverage-source.sh > .cache/native-coverage-source
+	DUPLEX_MEDIA_TEST=1 $(GO) test -race -count=1 -timeout 180s -coverpkg=./... -coverprofile=.cache/coverage-native.out ./...
+	@./scripts/coverage-source.sh > .cache/native-coverage-source-end
+	@cmp .cache/native-coverage-source .cache/native-coverage-source-end || { printf '%s\n' 'Source changed during tests.' >&2; exit 1; }
 
 check:
 	@GO="$(GO)" ./scripts/check.sh
