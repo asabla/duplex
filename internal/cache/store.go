@@ -56,7 +56,7 @@ func New(dir string, limit int64) (*Store, error) {
 	if limit < 4096 {
 		return nil, errors.New("cache limit must be at least 4096 bytes")
 	}
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
 	lock, err := lockDirectory(dir)

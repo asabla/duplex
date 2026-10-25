@@ -26,6 +26,7 @@ func (c *Client) Scan(ctx context.Context, section string) error {
 	}
 	return c.get(ctx, "/library/sections/"+section+"/refresh", nil)
 }
+
 func (c *Client) Bindings(ctx context.Context, section string) ([]Binding, error) {
 	if !validSection(section) {
 		return nil, errors.New("invalid Plex library section")
@@ -36,6 +37,7 @@ func (c *Client) Bindings(ctx context.Context, section string) ([]Binding, error
 	e := c.get(ctx, "/library/sections/"+section+"/allLeaves", &out)
 	return out.Items, e
 }
+
 func (c *Client) LibraryHealth(ctx context.Context, section string) error {
 	if !validSection(section) {
 		return errors.New("configure a dedicated NFO series library section")
@@ -98,6 +100,7 @@ func (c *Client) LibraryHealth(ctx context.Context, section string) error {
 	}
 	return errors.New("dedicated Plex library does not exist")
 }
+
 func SourceID(guid string) string {
 	u, e := url.Parse(guid)
 	if e != nil || u.Scheme != "tv.plex.agents.nfo.series" || u.Host != "episode" {

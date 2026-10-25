@@ -23,6 +23,7 @@ func (s windowSource) Metadata(_ context.Context, id string) (source.Metadata, e
 	}
 	return s.items[id], nil
 }
+
 func TestGlobalWindowPrecedesPackaging(t *testing.T) {
 	snap := source.Channel{ID: "channel"}
 	adapter := windowSource{items: map[string]source.Metadata{}}

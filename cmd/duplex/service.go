@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -64,10 +65,14 @@ func initialize(args []string) error {
 	fmt.Printf("Created configuration. Administrator: admin\nRead the initial password from %s\n", password)
 	return nil
 }
+
 func serve(args []string) error {
 	f := flag.NewFlagSet("serve", flag.ContinueOnError)
 	file := f.String("config", "config.yaml", "writable YAML settings file")
 	noMount := f.Bool("no-mount", false, "administration test mode; readiness remains false")
+	profileDirectory := f.String("profile-dir", "", "private absolute profiling directory; disabled by default")
+	profileKind := f.String("profile-kind", "cpu", "one of cpu, allocs, block, or trace")
+	profileDuration := f.Duration("profile-duration", time.Minute, "profile capture duration")
 	yt := f.String("yt-dlp", "yt-dlp", "pinned yt-dlp executable")
 	deno := f.String("deno", "deno", "pinned Deno executable")
 	if e := f.Parse(args); e != nil {
@@ -89,6 +94,15 @@ func serve(args []string) error {
 		return e
 	}
 	defer application.Close()
+	profile, e := startProfile(ctx, application, *profileDirectory, *profileKind, *profileDuration)
+	if e != nil {
+		return e
+	}
+	defer func() {
+		if err := profile.Stop(); err != nil {
+			slog.Error("profile capture failed", "error", err)
+		}
+	}()
 	handler, e := admin.New(application, auth)
 	if e != nil {
 		return e
@@ -120,6 +134,7 @@ func serve(args []string) error {
 	}
 	return e
 }
+
 func health(args []string) error {
 	f := flag.NewFlagSet("health", flag.ContinueOnError)
 	url := f.String("url", "http://127.0.0.1:8765/mountz", "health URL")
@@ -137,6 +152,7 @@ func health(args []string) error {
 	}
 	return nil
 }
+
 func backup(args []string) error {
 	f := flag.NewFlagSet("backup", flag.ContinueOnError)
 	file := f.String("config", "config.yaml", "YAML settings file")

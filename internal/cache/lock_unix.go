@@ -10,7 +10,7 @@ import (
 )
 
 func lockDirectory(dir string) (*os.File, error) {
-	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0600)
+	f, err := os.OpenFile(filepath.Join(dir, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -20,6 +20,7 @@ func lockDirectory(dir string) (*os.File, error) {
 	}
 	return f, nil
 }
+
 func unlockDirectory(f *os.File) error {
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN); err != nil {
 		return err

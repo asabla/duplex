@@ -18,8 +18,10 @@ import (
 	"duplex/internal/config"
 )
 
-const YTDLPVersion = "2026.10.21"
-const DenoVersion = "2.9.8"
+const (
+	YTDLPVersion = "2026.10.21"
+	DenoVersion  = "2.9.8"
+)
 
 var ErrUnavailable = errors.New("video is unavailable without credentials")
 
@@ -95,6 +97,7 @@ func (m Metadata) State() string {
 	}
 	return "unavailable"
 }
+
 func (m Metadata) Date() time.Time {
 	if d, e := time.Parse("20060102", m.UploadDate); e == nil {
 		return d
@@ -126,6 +129,7 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 	}
 	return b.Buffer.Write(p)
 }
+
 func (y *YouTube) run(ctx context.Context, args ...string) ([]byte, error) {
 	binary := y.Executable
 	if binary == "" {
@@ -160,6 +164,7 @@ func (y *YouTube) run(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	return out.Bytes(), nil
 }
+
 func (y *YouTube) Check(ctx context.Context) error {
 	binary := y.Executable
 	if binary == "" {
@@ -253,6 +258,7 @@ func decodeChannel(b []byte) (Channel, error) {
 	result.Entries = entries
 	return result, nil
 }
+
 func (y *YouTube) ResolveChannel(ctx context.Context, raw string) (Channel, error) {
 	u, e := config.ChannelURL(raw)
 	if e != nil {
@@ -264,6 +270,7 @@ func (y *YouTube) ResolveChannel(ctx context.Context, raw string) (Channel, erro
 	}
 	return decodeChannel(b)
 }
+
 func (y *YouTube) Enumerate(ctx context.Context, id string) (Channel, error) {
 	u, e := config.ChannelURL("https://www.youtube.com/channel/" + id)
 	if e != nil {
@@ -275,9 +282,11 @@ func (y *YouTube) Enumerate(ctx context.Context, id string) (Channel, error) {
 	}
 	return decodeChannel(b)
 }
+
 func (y *YouTube) Metadata(ctx context.Context, id string) (Metadata, error) {
 	return y.Resolve(ctx, id)
 }
+
 func (y *YouTube) Resolve(ctx context.Context, id string) (Metadata, error) {
 	if !videoID.MatchString(id) {
 		return Metadata{}, errors.New("invalid video ID")
@@ -372,6 +381,7 @@ func AllowedURL(raw string) bool {
 	}
 	return false
 }
+
 func HTTPClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if len(via) > 5 || !AllowedURL(r.URL.String()) {

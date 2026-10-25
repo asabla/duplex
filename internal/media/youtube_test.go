@@ -23,6 +23,7 @@ func TestYouTube4KGate(t *testing.T) {
 func TestYouTubeReplayGate(t *testing.T) {
 	testRecordedSource(t, os.Getenv("DUPLEX_REPLAY_JSON"), "137", 1080, true)
 }
+
 func TestYouTube4KReplayGate(t *testing.T) {
 	testRecordedSource(t, os.Getenv("DUPLEX_REPLAY_JSON"), "401", 2160, true)
 }

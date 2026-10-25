@@ -11,16 +11,20 @@ import (
 	"time"
 
 	"duplex/internal/source"
+
 	_ "modernc.org/sqlite"
 )
 
-type Store struct{ DB *sql.DB }
-type Channel struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
-	SyncedAt int64  `json:"synced_at"`
-	Error    string `json:"error,omitempty"`
-}
+type (
+	Store   struct{ DB *sql.DB }
+	Channel struct {
+		ID       string `json:"id"`
+		Title    string `json:"title"`
+		SyncedAt int64  `json:"synced_at"`
+		Error    string `json:"error,omitempty"`
+	}
+)
+
 type Video struct {
 	ID          string `json:"id"`
 	ChannelID   string `json:"channel_id"`
@@ -54,7 +58,7 @@ type Job struct {
 }
 
 func Open(path string) (*Store, error) {
-	if e := os.MkdirAll(filepath.Dir(path), 0700); e != nil {
+	if e := os.MkdirAll(filepath.Dir(path), 0o700); e != nil {
 		return nil, e
 	}
 	db, e := sql.Open("sqlite", path)
@@ -104,10 +108,12 @@ func OpenForBackup(path string) (*Store, error) {
 	}
 	return &Store{DB: db}, nil
 }
+
 func (s *Store) EnsureChannel(ctx context.Context, id, title string) error {
 	_, e := s.DB.ExecContext(ctx, `INSERT INTO channels(id,title) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title`, id, title)
 	return e
 }
+
 func (s *Store) StartJob(ctx context.Context, id string) (int64, error) {
 	r, e := s.DB.ExecContext(ctx, `INSERT INTO sync_jobs(channel_id,state,started) VALUES(?,'running',?)`, id, time.Now().Unix())
 	if e != nil {
@@ -115,6 +121,7 @@ func (s *Store) StartJob(ctx context.Context, id string) (int64, error) {
 	}
 	return r.LastInsertId()
 }
+
 func (s *Store) FinishJob(ctx context.Context, id int64, ch string, err error) error {
 	state, msg := "complete", ""
 	if err != nil {
@@ -127,6 +134,7 @@ func (s *Store) FinishJob(ctx context.Context, id int64, ch string, err error) e
 	}
 	return e
 }
+
 func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
 	rows, e := s.DB.QueryContext(ctx, `SELECT id,title,synced_at,error FROM channels ORDER BY title,id`)
 	if e != nil {
@@ -143,6 +151,7 @@ func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
 	}
 	return out, rows.Err()
 }
+
 func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
 	rows, e := s.DB.QueryContext(ctx, `SELECT id,channel_id,state,started,finished,error FROM sync_jobs ORDER BY id DESC LIMIT 100`)
 	if e != nil {
@@ -294,17 +303,19 @@ func (s *Store) CommitSnapshot(ctx context.Context, ch source.Channel, prepared 
 	}
 	return tx.Commit()
 }
+
 func (s *Store) Bind(ctx context.Context, id, server, key, guid string) error {
 	_, e := s.DB.ExecContext(ctx, `INSERT INTO plex_bindings VALUES(?,?,?,?) ON CONFLICT(video_id,server) DO UPDATE SET rating_key=excluded.rating_key,guid=excluded.guid`, id, server, key, guid)
 	return e
 }
+
 func (s *Store) Backup(ctx context.Context, path string) error {
 	if _, e := os.Stat(path); !os.IsNotExist(e) {
 		return errors.New("backup destination must not exist")
 	}
 	_, e := s.DB.ExecContext(ctx, `VACUUM INTO ?`, path)
 	if e == nil {
-		e = os.Chmod(path, 0600)
+		e = os.Chmod(path, 0o600)
 	}
 	return e
 }

@@ -12,6 +12,7 @@ func TestCompleteNestedSnapshot(t *testing.T) {
 		t.Fatal("partial snapshot accepted")
 	}
 }
+
 func TestMediaURLRestrictions(t *testing.T) {
 	for _, u := range []string{"http://r1.googlevideo.com/a", "https://googlevideo.com.evil.test/a", "https://127.0.0.1/a", "https://user:secret@r1.googlevideo.com/a", "https://r1.googlevideo.com:444/a"} {
 		if AllowedURL(u) {

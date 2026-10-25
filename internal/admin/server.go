@@ -15,6 +15,7 @@ import (
 
 	"duplex/internal/app"
 	"duplex/internal/config"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -72,6 +73,7 @@ func New(a *app.App, auth *Auth) (*Server, error) {
 	}
 	return &Server{App: a, Auth: auth, templates: t}, nil
 }
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	assets, _ := fs.Sub(content, "static")
@@ -111,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 		mux.ServeHTTP(w, r)
 	})
 }
+
 func (s *Server) protected(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, e := s.Auth.Authorize(r)
@@ -132,10 +135,12 @@ func (s *Server) protected(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
 func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
 	csrf := s.Auth.LoginCSRF(w, r)
 	s.render(w, "login", page{CSRF: csrf})
 }
+
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var v struct {
 		Username string `json:"username"`
@@ -172,6 +177,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", 303)
 	}
 }
+
 func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	if v, ok := s.Auth.Session(r); ok {
 		reply(w, 200, map[string]any{"authenticated": true, "csrf": v.CSRF, "expires": v.Expires})
@@ -179,15 +185,18 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 		reply(w, 200, map[string]any{"authenticated": false, "csrf": s.Auth.LoginCSRF(w, r)})
 	}
 }
+
 func (s *Server) render(w http.ResponseWriter, name string, v page) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = s.templates.ExecuteTemplate(w, name, v)
 }
+
 func reply(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(v)
 }
+
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
@@ -202,6 +211,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	}
 	return true
 }
+
 func safeError(e error) string {
 	var p *os.PathError
 	if errors.As(e, &p) {
@@ -209,6 +219,7 @@ func safeError(e error) string {
 	}
 	return e.Error()
 }
+
 func (s *Server) result(w http.ResponseWriter, r *http.Request, e error, message string) {
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		if e != nil {
@@ -230,6 +241,7 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, e error, message
 	w.Header().Set("HX-Trigger", "channelsChanged")
 	s.render(w, "notice", page{Notice: message})
 }
+
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	if p == "/logout" && r.Method == "POST" {
@@ -321,6 +333,7 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		s.render(w, "layout", v)
 	}
 }
+
 func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
 	if r.Method == "GET" {

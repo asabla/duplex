@@ -60,7 +60,7 @@ func TestFuseCrashRecovery(t *testing.T) {
 			t.Fatal(e)
 		}
 		defer m.Close()
-		if e = os.WriteFile(dir+".ready", []byte("ready"), 0600); e != nil {
+		if e = os.WriteFile(dir+".ready", []byte("ready"), 0o600); e != nil {
 			t.Fatal(e)
 		}
 		select {}

@@ -70,8 +70,9 @@ func (v *VirtualMP4) SaveIndex(path string) error {
 	if e != nil {
 		return e
 	}
-	return config.AtomicWrite(path, envelope, 0600)
+	return config.AtomicWrite(path, envelope, 0o600)
 }
+
 func LoadIndex(path string, sources map[string]Representation) (*VirtualMP4, error) {
 	f, e := os.Open(path)
 	if e != nil {

@@ -15,8 +15,10 @@ import (
 	"github.com/Eyevinn/mp4ff/mp4"
 )
 
-const PackagingVersion = "progressive-mp4-v1"
-const maxIndexBytes = 64 * 1024 * 1024
+const (
+	PackagingVersion = "progressive-mp4-v1"
+	maxIndexBytes    = 64 * 1024 * 1024
+)
 
 // Span maps an output range to source bytes. Headers are generated separately;
 // payload bytes are never remuxed by a timestamp-dependent subprocess.

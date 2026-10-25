@@ -26,6 +26,7 @@ import (
 func httpRequest(ctx context.Context, raw string) (*http.Request, error) {
 	return http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
 }
+
 func (a *App) acquireAssets(ctx context.Context, m source.Metadata, c source.Candidate) []library.Entry {
 	out := []library.Entry{}
 	defer func() {
@@ -36,7 +37,7 @@ func (a *App) acquireAssets(ctx context.Context, m source.Metadata, c source.Can
 			}
 		}
 		b, _ := json.Marshal(records)
-		_ = config.AtomicWrite(filepath.Join(a.original.DataDir, "assets", m.ID+".json"), b, 0600)
+		_ = config.AtomicWrite(filepath.Join(a.original.DataDir, "assets", m.ID+".json"), b, 0o600)
 	}()
 	var picture image.Image
 	if data, e := fetchAsset(ctx, m.Thumbnail); e == nil {
@@ -147,8 +148,10 @@ func (a *App) loadAssets(id string) []library.Entry {
 	return out
 }
 
-var cueTime = regexp.MustCompile(`^((?:\d{2}:)?\d{2}:\d{2}\.\d{3})\s+-->\s+((?:\d{2}:)?\d{2}:\d{2}\.\d{3})`)
-var cueMarkup = regexp.MustCompile(`<[^>]*>`)
+var (
+	cueTime   = regexp.MustCompile(`^((?:\d{2}:)?\d{2}:\d{2}\.\d{3})\s+-->\s+((?:\d{2}:)?\d{2}:\d{2}\.\d{3})`)
+	cueMarkup = regexp.MustCompile(`<[^>]*>`)
+)
 
 func VTTtoSRT(raw []byte) []byte {
 	text := strings.ReplaceAll(string(raw), "\r\n", "\n")

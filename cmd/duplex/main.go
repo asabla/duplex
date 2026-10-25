@@ -48,6 +48,7 @@ func main() {
 		os.Exit(1)
 	}
 }
+
 func run() error {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {

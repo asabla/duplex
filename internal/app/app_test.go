@@ -20,6 +20,7 @@ func (f failingSource) Resolve(context.Context, string) (source.Metadata, error)
 func (f failingSource) Metadata(context.Context, string) (source.Metadata, error) {
 	return source.Metadata{}, errors.New("source failed")
 }
+
 func (f failingSource) Enumerate(context.Context, string) (source.Channel, error) {
 	c := source.Channel{ID: "UCSMOQeBJ2RAnuFungnQOxLg", Title: "Sample", Entries: []source.Entry{{ID: "aqz-KE-bpKQ"}}}
 	if f.metadata {
@@ -27,6 +28,7 @@ func (f failingSource) Enumerate(context.Context, string) (source.Channel, error
 	}
 	return c, errors.New("partial enumeration failed")
 }
+
 func TestFailedRefreshRetainsCompleteCatalogue(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

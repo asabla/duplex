@@ -18,6 +18,7 @@ func (s indexTestSource) Size() int64 { return int64(len(s.data)) }
 func (s indexTestSource) ReadAt(_ context.Context, p []byte, o int64) (int, error) {
 	return bytes.NewReader(s.data).ReadAt(p, o)
 }
+
 func TestDurableIndexRejectsChangedSourcesAndCorruption(t *testing.T) {
 	one, two := indexTestSource{"one", []byte("abc")}, indexTestSource{"two", []byte("def")}
 	v := &VirtualMP4{Revision: PackagingVersion, Header: make([]byte, 16), Sources: []string{"one", "two"}, Length: 22, Spans: []Span{{Output: 16, SourceID: "one", Offset: 0, Length: 3, source: one}, {Output: 19, SourceID: "two", Offset: 0, Length: 3, source: two}}}
@@ -39,7 +40,7 @@ func TestDurableIndexRejectsChangedSourcesAndCorruption(t *testing.T) {
 	}
 	data, _ := os.ReadFile(file)
 	data = bytes.Replace(data, []byte(`"offset":0`), []byte(`"offset":1`), 1)
-	if e = os.WriteFile(file, data, 0600); e != nil {
+	if e = os.WriteFile(file, data, 0o600); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = LoadIndex(file, map[string]Representation{"one": one, "two": two}); e == nil {

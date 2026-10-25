@@ -20,6 +20,7 @@ import (
 	"duplex/internal/cache"
 	"duplex/internal/catalog"
 	"duplex/internal/config"
+	"duplex/internal/diagnostics"
 	"duplex/internal/library"
 	"duplex/internal/media"
 	"duplex/internal/plex"
@@ -27,6 +28,7 @@ import (
 )
 
 type App struct {
+	Measurements    *diagnostics.Recorder
 	Config          *config.Manager
 	Catalog         *catalog.Store
 	Cache           *cache.Store
@@ -53,25 +55,26 @@ type App struct {
 	cacheError      string
 }
 type Status struct {
-	Ready           bool              `json:"ready"`
-	MountReady      bool              `json:"mount_ready"`
-	RestartRequired bool              `json:"restart_required"`
-	SourceError     string            `json:"source_error,omitempty"`
-	MountError      string            `json:"mount_error,omitempty"`
-	PlexError       string            `json:"plex_error,omitempty"`
-	ConfigError     string            `json:"config_error,omitempty"`
-	PendingJobs     int               `json:"pending_jobs"`
-	Cache           cache.Stats       `json:"cache"`
-	Channels        []catalog.Channel `json:"channels"`
-	Videos          []catalog.Video   `json:"videos"`
-	Jobs            []catalog.Job     `json:"jobs"`
-	Config          config.Snapshot   `json:"configuration"`
+	Ready           bool                      `json:"ready"`
+	MountReady      bool                      `json:"mount_ready"`
+	RestartRequired bool                      `json:"restart_required"`
+	SourceError     string                    `json:"source_error,omitempty"`
+	MountError      string                    `json:"mount_error,omitempty"`
+	PlexError       string                    `json:"plex_error,omitempty"`
+	ConfigError     string                    `json:"config_error,omitempty"`
+	PendingJobs     int                       `json:"pending_jobs"`
+	Cache           cache.Stats               `json:"cache"`
+	Channels        []catalog.Channel         `json:"channels"`
+	Videos          []catalog.Video           `json:"videos"`
+	Jobs            []catalog.Job             `json:"jobs"`
+	Config          config.Snapshot           `json:"configuration"`
+	Measurements    []diagnostics.Measurement `json:"measurements,omitempty"`
 }
 
 func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, noMount bool) (*App, error) {
 	c := m.Snapshot().Config
 	for _, p := range []string{c.DataDir, c.IndexDir} {
-		if e := os.MkdirAll(p, 0700); e != nil {
+		if e := os.MkdirAll(p, 0o700); e != nil {
 			return nil, e
 		}
 	}
@@ -85,7 +88,7 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 		return nil, e
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	a := &App{Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, assets: map[string][]library.Entry{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), ctx: ctx, cancel: cancel, original: c}
+	a := &App{Measurements: &diagnostics.Recorder{}, Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, assets: map[string][]library.Entry{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), ctx: ctx, cancel: cancel, original: c}
 	if checker, ok := adapter.(interface{ Check(context.Context) error }); ok {
 		checkCtx, stop := context.WithTimeout(ctx, 15*time.Second)
 		e = checker.Check(checkCtx)
@@ -94,6 +97,7 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 			a.toolError = e.Error()
 		}
 	}
+	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add}
 	if !noMount {
 		a.mount, e = library.MountReadOnly(c.Mountpoint, nil)
 		if e != nil {
@@ -118,6 +122,7 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	go a.schedule()
 	return a, nil
 }
+
 func (a *App) Close() error {
 	a.cancel()
 	a.wg.Wait()
@@ -129,6 +134,7 @@ func (a *App) Close() error {
 	e2 := a.Catalog.Close()
 	return errors.Join(mountErr, e, e2)
 }
+
 func (a *App) Queue(id string) error {
 	c := a.Config.Snapshot().Config
 	found := false
@@ -153,6 +159,7 @@ func (a *App) Queue(id string) error {
 		return errors.New("sync queue is full")
 	}
 }
+
 func (a *App) schedule() {
 	defer a.wg.Done()
 	ticker := time.NewTicker(2 * time.Second)
@@ -168,6 +175,7 @@ func (a *App) schedule() {
 		}
 	}
 }
+
 func (a *App) reconcile() {
 	snap := a.Config.Snapshot()
 	c := snap.Config
@@ -211,6 +219,7 @@ func (a *App) reconcile() {
 		stop()
 	}
 }
+
 func (a *App) worker() {
 	defer a.wg.Done()
 	for {
@@ -237,6 +246,7 @@ func (a *App) worker() {
 		}
 	}
 }
+
 func (a *App) prune() {
 	videos, e := a.Catalog.Videos(a.ctx)
 	if e != nil {
@@ -269,6 +279,7 @@ func (a *App) prune() {
 		}
 	}
 }
+
 func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected string) error {
 	if limit == 0 {
 		limit = 50
@@ -301,6 +312,7 @@ func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected st
 	}
 	return a.Queue(ch.ID)
 }
+
 func (a *App) RemoveChannel(id, expected string) error {
 	s := a.Config.Snapshot()
 	channels := []config.Channel{}
@@ -321,7 +333,9 @@ func (a *App) RemoveChannel(id, expected string) error {
 	}
 	return a.Publish()
 }
+
 func (a *App) Sync(ctx context.Context, id string) error {
+	defer a.Measurements.Begin("sync")()
 	a.mu.RLock()
 	toolError := a.toolError
 	a.mu.RUnlock()
@@ -398,7 +412,9 @@ commit:
 	}
 	return a.Scan(ctx)
 }
+
 func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (catalog.Prepared, error) {
+	defer a.Measurements.Begin("prepare")()
 	if m.Date().IsZero() {
 		return catalog.Prepared{}, errors.New("source publication date is unavailable")
 	}
@@ -413,7 +429,9 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 		}
 		attempts++
 		buildCtx, stop := context.WithTimeout(ctx, 5*time.Minute)
-		v, e := media.OpenHTTP(buildCtx, client, candidate.Video.URL, m.ID+":"+candidate.Video.ID, a.Cache)
+		v, e := diagnostics.Measure(a.Measurements, "media.probe", func() (*media.HTTPSource, error) {
+			return media.OpenHTTP(buildCtx, client, candidate.Video.URL, m.ID+":"+candidate.Video.ID, a.Cache)
+		})
 		var rep media.Representation
 		indexPath := ""
 		if e == nil {
@@ -423,14 +441,18 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 				rep = media.Described{Representation: v, Info: details}
 			} else {
 				var au *media.HTTPSource
-				au, e = media.OpenHTTP(buildCtx, client, candidate.Audio.URL, m.ID+":"+candidate.Audio.ID, a.Cache)
+				au, e = diagnostics.Measure(a.Measurements, "media.probe", func() (*media.HTTPSource, error) {
+					return media.OpenHTTP(buildCtx, client, candidate.Audio.URL, m.ID+":"+candidate.Audio.ID, a.Cache)
+				})
 				if e == nil {
 					var mux *media.VirtualMP4
 					h := sha256.Sum256([]byte(m.ID + ":" + candidate.Video.ID + ":" + candidate.Audio.ID))
 					indexPath = filepath.Join(a.original.IndexDir, hex.EncodeToString(h[:])+".json")
-					mux, e = media.LoadIndex(indexPath, map[string]media.Representation{v.ID(): v, au.ID(): au})
+					mux, e = diagnostics.Measure(a.Measurements, "media.index.load", func() (*media.VirtualMP4, error) {
+						return media.LoadIndex(indexPath, map[string]media.Representation{v.ID(): v, au.ID(): au})
+					})
 					if e != nil || mux.Details().Height == 0 {
-						mux, e = media.Mux(buildCtx, v, au)
+						mux, e = diagnostics.Measure(a.Measurements, "media.index.build", func() (*media.VirtualMP4, error) { return media.Mux(buildCtx, v, au) })
 					}
 					if e == nil {
 						rep = mux
@@ -439,7 +461,7 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 			}
 		}
 		if e == nil {
-			e = media.VerifyRanges(buildCtx, rep)
+			e = diagnostics.Run(a.Measurements, "media.verify", func() error { return media.VerifyRanges(buildCtx, rep) })
 		}
 		stop()
 		if e == nil {
@@ -477,7 +499,7 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 			Media                                       media.Details
 		}{m.ID, rep.ID(), candidate.Video.ID, audioFormat, rep.Size(), described.Details()}
 		blob, _ := json.Marshal(descriptor)
-		if e = config.AtomicWrite(filepath.Join(a.original.IndexDir, rep.ID()+".description.json"), blob, 0600); e != nil {
+		if e = config.AtomicWrite(filepath.Join(a.original.IndexDir, rep.ID()+".description.json"), blob, 0o600); e != nil {
 			if failure == "" {
 				failure = fallbackReason(e)
 			}
@@ -486,7 +508,7 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 		a.mu.Lock()
 		a.reps[rep.ID()] = rep
 		a.mu.Unlock()
-		assets := a.acquireAssets(ctx, m, candidate)
+		assets, _ := diagnostics.Measure(a.Measurements, "assets", func() ([]library.Entry, error) { return a.acquireAssets(ctx, m, candidate), nil })
 		a.mu.Lock()
 		if len(assets) > 0 {
 			a.assets[m.ID] = assets
@@ -496,6 +518,7 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 	}
 	return catalog.Prepared{}, errors.New("no verified supported representation")
 }
+
 func fallbackReason(e error) string {
 	var pathError *os.PathError
 	switch {
@@ -522,7 +545,9 @@ type unavailable struct {
 func (r unavailable) ID() string                                         { return r.id }
 func (r unavailable) Size() int64                                        { return r.size }
 func (r unavailable) ReadAt(context.Context, []byte, int64) (int, error) { return 0, media.ErrExpired }
+
 func (a *App) Publish() error {
+	defer a.Measurements.Begin("publish")()
 	a.publishMu.Lock()
 	defer a.publishMu.Unlock()
 	videos, e := a.Catalog.Videos(a.ctx)
@@ -584,6 +609,7 @@ func (a *App) Publish() error {
 	}
 	return nil
 }
+
 func (a *App) plexClient() (*plex.Client, error) {
 	p := a.Config.Snapshot().Config.Plex
 	if p.URL == "" {
@@ -599,9 +625,12 @@ func (a *App) plexClient() (*plex.Client, error) {
 	}
 	return plex.New(p.URL, token)
 }
+
 func (a *App) Scan(ctx context.Context) error {
+	defer a.Measurements.Begin("plex.scan")()
 	return a.integration(ctx, true)
 }
+
 func (a *App) integration(ctx context.Context, scan bool) error {
 	if a.mount == nil {
 		return nil
@@ -636,6 +665,7 @@ func (a *App) integration(ctx context.Context, scan bool) error {
 	a.setPlexError(e)
 	return nil
 }
+
 func (a *App) setPlexError(e error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -644,8 +674,9 @@ func (a *App) setPlexError(e error) {
 		a.plexError = e.Error()
 	}
 }
+
 func (a *App) Status(ctx context.Context) (Status, error) {
-	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats()}
+	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot()}
 	var e error
 	if s.Channels, e = a.Catalog.Channels(ctx); e != nil {
 		return s, e
@@ -706,18 +737,20 @@ func (r localAsset) ReadAt(ctx context.Context, p []byte, o int64) (int, error) 
 	defer f.Close()
 	return f.ReadAt(p, o)
 }
+
 func (a *App) saveAsset(id, suffix string, b []byte) (library.Entry, error) {
 	dir := filepath.Join(a.original.DataDir, "assets")
-	if e := os.MkdirAll(dir, 0700); e != nil {
+	if e := os.MkdirAll(dir, 0o700); e != nil {
 		return library.Entry{}, e
 	}
 	h := sha256.Sum256(b)
 	file := filepath.Join(dir, id+"-"+hex.EncodeToString(h[:])+suffix)
-	if e := config.AtomicWrite(file, b, 0600); e != nil {
+	if e := config.AtomicWrite(file, b, 0o600); e != nil {
 		return library.Entry{}, e
 	}
 	return library.Entry{Path: suffix, Media: localAsset{file: file, size: int64(len(b))}}, nil
 }
+
 func fetchAsset(ctx context.Context, raw string) ([]byte, error) {
 	if !source.AllowedURL(raw) {
 		return nil, errors.New("unsupported asset host")

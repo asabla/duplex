@@ -99,7 +99,7 @@ func TestOnlineBackupDoesNotInterruptJobs(t *testing.T) {
 		t.Fatal(jobs, e)
 	}
 	st, e := os.Stat(output)
-	if e != nil || st.Mode().Perm() != 0600 {
+	if e != nil || st.Mode().Perm() != 0o600 {
 		t.Fatal(st, e)
 	}
 	if e = backup.Backup(ctx, output); e == nil {

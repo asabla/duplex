@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"duplex/internal/media"
+
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 )
@@ -80,7 +81,7 @@ type node struct {
 
 func (n *node) Getattr(_ context.Context, fileHandle fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if h, ok := fileHandle.(*handle); ok {
-		out.Mode = syscall.S_IFREG | 0444
+		out.Mode = syscall.S_IFREG | 0o444
 		out.Size = uint64(h.rep.Size())
 		out.Nlink = 1
 		out.Mtime = uint64(h.modified)
@@ -89,7 +90,7 @@ func (n *node) Getattr(_ context.Context, fileHandle fs.FileHandle, out *fuse.At
 	}
 	s := n.mount.tree.Load()
 	if e, ok := s.files[n.name]; ok {
-		out.Mode = syscall.S_IFREG | 0444
+		out.Mode = syscall.S_IFREG | 0o444
 		out.Size = uint64(e.Media.Size())
 		out.Nlink = 1
 		out.Mtime = uint64(e.Modified)
@@ -97,7 +98,7 @@ func (n *node) Getattr(_ context.Context, fileHandle fs.FileHandle, out *fuse.At
 			out.Mtime = s.modified
 		}
 	} else if _, ok := s.dirs[n.name]; ok {
-		out.Mode = syscall.S_IFDIR | 0555
+		out.Mode = syscall.S_IFDIR | 0o555
 		out.Nlink = 2
 		out.Mtime = s.modified
 	} else {
@@ -106,6 +107,7 @@ func (n *node) Getattr(_ context.Context, fileHandle fs.FileHandle, out *fuse.At
 	out.Ctime = out.Mtime
 	return 0
 }
+
 func (n *node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	if name == "." || name == ".." || strings.Contains(name, "/") {
 		return nil, syscall.ENOENT
@@ -119,6 +121,7 @@ func (n *node) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs
 	out.Attr = attr.Attr
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: out.Mode & syscall.S_IFMT, Ino: Inode(p)}), 0
 }
+
 func (n *node) Readdir(context.Context) (fs.DirStream, syscall.Errno) {
 	s := n.mount.tree.Load()
 	entries, ok := s.dirs[n.name]
@@ -127,6 +130,7 @@ func (n *node) Readdir(context.Context) (fs.DirStream, syscall.Errno) {
 	}
 	return fs.NewListDirStream(entries), 0
 }
+
 func (n *node) Open(_ context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
 	if flags&(syscall.O_WRONLY|syscall.O_RDWR|syscall.O_TRUNC|syscall.O_APPEND) != 0 {
 		return nil, 0, syscall.EROFS
@@ -191,8 +195,9 @@ func prepareMount(mountpoint string) error {
 	if info, err := os.Lstat(mountpoint); err == nil && info.Mode()&os.ModeSymlink != 0 {
 		return errors.New("mount directory must not be a symbolic link")
 	}
-	return os.MkdirAll(mountpoint, 0755)
+	return os.MkdirAll(mountpoint, 0o755)
 }
+
 func MountReadOnly(mountpoint string, entries []Entry) (*Mount, error) {
 	if e := prepareMount(mountpoint); e != nil {
 		return nil, e

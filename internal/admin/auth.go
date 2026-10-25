@@ -46,8 +46,9 @@ func randomToken() string {
 	}
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
+
 func InitCredentials(dir string) (string, error) {
-	if e := os.MkdirAll(dir, 0700); e != nil {
+	if e := os.MkdirAll(dir, 0o700); e != nil {
 		return "", e
 	}
 	path := filepath.Join(dir, "admin.json")
@@ -64,21 +65,22 @@ func InitCredentials(dir string) (string, error) {
 		return "", e
 	}
 	b, _ := json.Marshal(credential{Salt: salt, Hash: hash, Iterations: 600000})
-	if e = config.AtomicWrite(path, b, 0600); e != nil {
+	if e = config.AtomicWrite(path, b, 0o600); e != nil {
 		return "", e
 	}
 	initial := filepath.Join(dir, "initial-admin-password")
-	if e = config.AtomicWrite(initial, []byte(password+"\n"), 0600); e != nil {
+	if e = config.AtomicWrite(initial, []byte(password+"\n"), 0o600); e != nil {
 		return "", e
 	}
 	return initial, nil
 }
+
 func OpenAuth(path string) (*Auth, error) {
 	info, e := os.Stat(path)
 	if e != nil {
 		return nil, e
 	}
-	if info.Mode().Perm()&0077 != 0 {
+	if info.Mode().Perm()&0o077 != 0 {
 		return nil, errors.New("administrator credential file must have mode 0600")
 	}
 	b, e := os.ReadFile(path)
@@ -100,6 +102,7 @@ func (a *Auth) LoginCSRF(w http.ResponseWriter, r *http.Request) string {
 	http.SetCookie(w, &http.Cookie{Name: "duplex_login_csrf", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: secureCookie(r), MaxAge: 600})
 	return token
 }
+
 func sameOrigin(r *http.Request) bool {
 	origin := r.Header.Get("Origin")
 	if origin == "" {
@@ -111,9 +114,11 @@ func sameOrigin(r *http.Request) bool {
 	}
 	return origin == scheme+"://"+r.Host
 }
+
 func equal(a, b string) bool {
 	return len(a) > 0 && subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
+
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request, username, password, csrf string) error {
 	cookie, e := r.Cookie("duplex_login_csrf")
 	if e != nil || !sameOrigin(r) || !equal(cookie.Value, csrf) {
@@ -160,6 +165,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request, username, password,
 	http.SetCookie(w, &http.Cookie{Name: "duplex_session", Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: secureCookie(r), MaxAge: 43200})
 	return nil
 }
+
 func (a *Auth) Session(r *http.Request) (session, bool) {
 	c, e := r.Cookie("duplex_session")
 	if e != nil {
@@ -175,6 +181,7 @@ func (a *Auth) Session(r *http.Request) (session, bool) {
 	}
 	return s, true
 }
+
 func (a *Auth) Authorize(r *http.Request) (session, error) {
 	s, ok := a.Session(r)
 	if !ok {
@@ -191,6 +198,7 @@ func (a *Auth) Authorize(r *http.Request) (session, error) {
 	}
 	return s, nil
 }
+
 func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 	if c, e := r.Cookie("duplex_session"); e == nil {
 		a.mu.Lock()
