@@ -79,3 +79,35 @@ func TestRejectUnsafeChannelAndOverlappingStorage(t *testing.T) {
 		t.Fatal("overlapping cache/catalogue accepted")
 	}
 }
+
+func TestStorageAliasesCannotOverlapDurableAndEvictableData(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(root, "state")
+	if err := os.MkdirAll(filepath.Join(state, "data"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(filepath.Join(state, "data"), alias); err != nil {
+		t.Fatal(err)
+	}
+	config := Default(state)
+	config.CacheDir = filepath.Join(alias, "chunks")
+	if err := config.Validate(); err == nil {
+		t.Fatal("cache alias overlaps durable data")
+	}
+	config = Default(state)
+	config.Mountpoint = filepath.Join(alias, "library")
+	if err := config.Validate(); err == nil {
+		t.Fatal("mount alias overlaps durable data")
+	}
+	config = Default(state)
+	config.CacheDir = alias + "/../ambiguous"
+	if err := config.Validate(); err == nil {
+		t.Fatal("unclean alias path accepted")
+	}
+	config = Default(state)
+	config.CacheDir = filepath.Join(root, "separate", "not-created", "chunks")
+	if err := config.Validate(); err != nil {
+		t.Fatal("dedicated future directory was rejected", err)
+	}
+}

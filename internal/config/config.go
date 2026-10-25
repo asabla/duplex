@@ -84,16 +84,24 @@ func (c Config) Validate() error {
 }
 
 func validateStorage(paths []string) error {
-	for i, path := range paths {
-		if !filepath.IsAbs(path) || filepath.Clean(path) == "/" {
+	resolved := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" {
 			return errors.New("storage and mount paths must be absolute dedicated directories")
 		}
-		for _, previous := range paths[:i] {
-			relative, err := filepath.Rel(previous, path)
+		canonical, err := resolveExistingPath(path)
+		if err != nil {
+			return err
+		}
+		if canonical == "/" {
+			return errors.New("storage and mount paths must be dedicated directories")
+		}
+		for _, previous := range resolved {
+			relative, err := filepath.Rel(previous, canonical)
 			if err != nil {
 				return err
 			}
-			reverse, err := filepath.Rel(path, previous)
+			reverse, err := filepath.Rel(canonical, previous)
 			if err != nil {
 				return err
 			}
@@ -101,8 +109,31 @@ func validateStorage(paths []string) error {
 				return errors.New("storage and mount directories must be separate")
 			}
 		}
+		resolved = append(resolved, canonical)
 	}
 	return nil
+}
+
+func resolveExistingPath(path string) (string, error) {
+	suffix := []string{}
+	for {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			for i := len(suffix) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, suffix[i])
+			}
+			return resolved, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return "", err
+		}
+		suffix = append(suffix, filepath.Base(path))
+		path = parent
+	}
 }
 
 func validatePlex(p Plex) error {
