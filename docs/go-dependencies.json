@@ -1,0 +1,50 @@
+[
+  {
+    "module": "github.com/Eyevinn/mp4ff",
+    "version": "v0.59.0"
+  },
+  {
+    "module": "github.com/dustin/go-humanize",
+    "version": "v1.1.0"
+  },
+  {
+    "module": "github.com/google/uuid",
+    "version": "v1.6.0"
+  },
+  {
+    "module": "github.com/mattn/go-isatty",
+    "version": "v0.0.24"
+  },
+  {
+    "module": "github.com/ncruces/go-strftime",
+    "version": "v1.1.0"
+  },
+  {
+    "module": "github.com/remyoudompheng/bigfft",
+    "version": "v0.0.0-20230129092748-24d4a6f8daec"
+  },
+  {
+    "module": "golang.org/x/sys",
+    "version": "v0.49.0"
+  },
+  {
+    "module": "gopkg.in/yaml.v3",
+    "version": "v3.0.1"
+  },
+  {
+    "module": "modernc.org/libc",
+    "version": "v1.79.0"
+  },
+  {
+    "module": "modernc.org/mathutil",
+    "version": "v1.7.1"
+  },
+  {
+    "module": "modernc.org/memory",
+    "version": "v1.12.1"
+  },
+  {
+    "module": "modernc.org/sqlite",
+    "version": "v1.61.0"
+  }
+]

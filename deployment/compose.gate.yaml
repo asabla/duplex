@@ -1,0 +1,60 @@
+# Qualification only. Run scripts/prepare-gate-host.sh on the Linux daemon host.
+# On macOS, this means the Colima VM, not the macOS filesystem.
+services:
+  media:
+    build:
+      context: ..
+    command:
+      - gate
+      - --video=/fixtures/video.mp4
+      - --audio=/fixtures/audio.m4a
+      - --mount=/gate/library/media
+      - --listen=0.0.0.0:8765
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor=unconfined
+    ports:
+      - 127.0.0.1:18765:8765
+    volumes:
+      - type: bind
+        source: ${DUPLEX_GATE_HOST_DIR:-/var/lib/duplex-gate}
+        target: /gate
+        bind:
+          propagation: rshared
+          create_host_path: false
+      - type: bind
+        source: ${DUPLEX_GATE_FIXTURES:?Set the absolute directory containing video.mp4 and audio.m4a}
+        target: /fixtures
+        read_only: true
+        bind:
+          create_host_path: false
+
+  # Start this profile only after GET /readyz succeeds. Use a dedicated library.
+  plex:
+    profiles: [plex-test]
+    image: plexinc/pms-docker@sha256:01bdf0ad6d53198da4331540c1e73ab65db7a72e961fff97ecb0847d46055c5f
+    ports:
+      - 127.0.0.1:32499:32400
+    environment:
+      TZ: Europe/Stockholm
+      ADVERTISE_IP: http://127.0.0.1:32499/
+      # Test-only access from the default bridge gateway. Check your gateway.
+      ALLOWED_NETWORKS: ${DUPLEX_TEST_ALLOWED_NETWORK:-172.17.0.1/255.255.255.255}
+    network_mode: bridge
+    volumes:
+      - plex-gate-config:/config
+      - plex-gate-transcode:/transcode
+      - type: bind
+        source: ${DUPLEX_GATE_HOST_DIR:-/var/lib/duplex-gate}/library
+        target: /data
+        read_only: true
+        bind:
+          propagation: rslave
+          create_host_path: false
+
+volumes:
+  plex-gate-config:
+  plex-gate-transcode:

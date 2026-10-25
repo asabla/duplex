@@ -1,0 +1,13 @@
+title = "duplex secret scanning"
+
+[extend]
+useDefault = true
+
+# These values are file checksums, including files whose names contain "auth".
+# Match only checksum JSON lines in the source manifest, not other documents.
+[[allowlists]]
+description = "SHA-256 file digests in the source manifest"
+condition = "AND"
+paths = ['''(^|/)docs/source-manifest\.json$''']
+regexTarget = "line"
+regexes = ['''^\s*"[^"]+": "[a-f0-9]{64}"[,]?\s*$''']
