@@ -34,30 +34,39 @@ func (a *App) prepareWithRepresentation(ctx context.Context, m source.Metadata, 
 	}
 	defer release()
 	defer a.Measurements.Begin("prepare")()
+
 	if m.Date().IsZero() {
 		return catalog.Prepared{}, nil, errors.New("source publication date is unavailable")
 	}
+
 	failure := ""
+
 	var causes []error
+
 	attempts := 0
 	for _, candidate := range source.Candidates(m, maxHeight) {
 		if !candidate.Combined && attempts >= 6 {
 			continue
 		}
+
 		attempts++
+
 		prepared, rep, err := a.prepareCandidate(ctx, m, candidate, maxHeight)
 		if err == nil {
 			prepared.Fallback = failure
 			return prepared, rep, nil
 		}
+
 		causes = append(causes, err)
 		if failure == "" {
 			failure = fallbackReason(err)
 		}
 	}
+
 	if len(causes) == 0 {
 		return catalog.Prepared{}, nil, media.ErrUnsupported
 	}
+
 	return catalog.Prepared{}, nil, fmt.Errorf("no verified supported representation: %w", errors.Join(causes...))
 }
 
@@ -66,12 +75,16 @@ func (a *App) mediaClient() *http.Client {
 	if client == nil {
 		client = source.HTTPClient()
 	}
+
 	measured := *client
+
 	transport := client.Transport
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
+
 	measured.Transport = measuredTransport{base: transport, recorder: a.Measurements}
+
 	return &measured
 }
 
@@ -84,21 +97,27 @@ func (a *App) openTrack(ctx context.Context, id string, f source.Format) (*media
 func (a *App) prepareCandidate(ctx context.Context, m source.Metadata, candidate source.Candidate, maxHeight int) (catalog.Prepared, media.Representation, error) {
 	buildCtx, stop := context.WithTimeout(ctx, 5*time.Minute)
 	defer stop()
+
 	representation, indexPath, err := a.candidateRepresentation(buildCtx, m, candidate)
 	if err != nil {
 		return catalog.Prepared{}, nil, err
 	}
+
 	if err = diagnostics.Run(a.Measurements, "media.verify", func() error { return media.VerifyRanges(buildCtx, representation) }); err != nil {
 		return catalog.Prepared{}, nil, err
 	}
+
 	inspected, ok := representation.(media.Inspected)
 	if !ok || inspected.Details().Height <= 0 || inspected.Details().Height > maxHeight {
 		return catalog.Prepared{}, nil, media.ErrUnsupported
 	}
+
 	if err = a.persistRepresentation(m, candidate, inspected, indexPath); err != nil {
 		return catalog.Prepared{}, nil, err
 	}
+
 	a.cacheRepresentation(representation, selectedLeaseExpiry(candidate), m.ID)
+
 	return catalog.Prepared{RequestedHeight: maxHeight, Metadata: m, Revision: representation.ID(), Height: inspected.Details().Height, Size: representation.Size()}, representation, nil
 }
 
@@ -107,26 +126,33 @@ func (a *App) candidateRepresentation(ctx context.Context, m source.Metadata, ca
 	if err != nil {
 		return nil, "", err
 	}
+
 	if candidate.Combined {
 		details, err := media.InspectCombined(ctx, video)
 		return media.Described{Representation: video, Info: details}, "", err
 	}
+
 	if candidate.Audio == nil {
 		return nil, "", media.ErrUnsupported
 	}
+
 	audio, err := a.openTrack(ctx, m.ID, *candidate.Audio)
 	if err != nil {
 		return nil, "", err
 	}
+
 	key := sha256.Sum256([]byte(m.ID + ":" + candidate.Video.ID + ":" + candidate.Audio.ID))
 	indexPath := filepath.Join(a.original.IndexDir, hex.EncodeToString(key[:])+".json")
+
 	index, err := diagnostics.Measure(a.Measurements, "media.index.load", func() (*media.VirtualMP4, error) {
 		return media.LoadIndex(indexPath, map[string]media.Representation{video.ID(): video, audio.ID(): audio})
 	})
 	if err == nil && index.Details().Height > 0 {
 		return index, indexPath, nil
 	}
+
 	index, err = diagnostics.Measure(a.Measurements, "media.index.build", func() (*media.VirtualMP4, error) { return media.Mux(ctx, video, audio) })
+
 	return index, indexPath, err
 }
 
@@ -135,23 +161,28 @@ func (a *App) persistRepresentation(m source.Metadata, candidate source.Candidat
 		if err := index.SaveIndex(filepath.Join(a.original.IndexDir, representation.ID()+".mp4-index.json")); err != nil {
 			return err
 		}
+
 		if err := index.SaveIndex(indexPath); err != nil {
 			return err
 		}
 	}
+
 	audio := ""
 	if candidate.Audio != nil {
 		audio = candidate.Audio.ID
 	}
+
 	descriptor := struct {
 		VideoID, Revision, VideoFormat, AudioFormat string
 		Size                                        int64
 		Media                                       media.Details
 	}{m.ID, representation.ID(), candidate.Video.ID, audio, representation.Size(), representation.Details()}
+
 	data, err := json.Marshal(descriptor)
 	if err != nil {
 		return err
 	}
+
 	return config.AtomicWrite(filepath.Join(a.original.IndexDir, representation.ID()+".description.json"), data, 0o600)
 }
 

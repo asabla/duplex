@@ -47,6 +47,7 @@ func (a *App) operationFailure(operation string, err error) {
 	if err == nil || errors.Is(err, context.Canceled) {
 		return
 	}
+
 	// Do not log error strings: process and transport errors can contain locators.
 	slog.Error("duplex operation failed", "operation", operation)
 	a.Measurements.Add("failure."+operation, 0)

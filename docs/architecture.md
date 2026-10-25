@@ -75,6 +75,13 @@ these groups retain their original atomicity. The scheduler alone uses its
 `lastIntegration` timestamp. Lifecycle code owns acquisition, worker startup, and
 cancel/wait/close ordering. No additional mutex or lock order is introduced.
 
+Channel configuration operations live in `channels.go`; compatibility status is
+in `status.go`; publication and scan scheduling are in `publication.go`. Durable
+asset I/O is separate from asset composition and queue work. Discovery keeps its
+run boundary in `discovery.go`, with upload cursors, playlist selection, and
+metadata resolution next to their corresponding operations. Season artwork
+rendering is separate from channel branding and final publication.
+
 ## Intended direction for later refactors
 
 These are design constraints for future work, not completed extractions:

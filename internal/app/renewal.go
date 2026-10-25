@@ -14,6 +14,7 @@ func selectedLeaseExpiry(candidate source.Candidate) time.Time {
 	if candidate.Audio != nil {
 		formats = append(formats, *candidate.Audio)
 	}
+
 	return leaseExpiry(source.Metadata{Formats: formats})
 }
 
@@ -21,6 +22,7 @@ func selectedLeaseExpiry(candidate source.Candidate) time.Time {
 // handles while new source leases are verified, and limits failed renewals.
 func (a *App) renewCachedSources(ctx context.Context) {
 	due := a.dueRenewals(time.Now())
+
 	visible := visibility(a.Config.Snapshot().Config)
 	for _, id := range due {
 		selected, err := a.Catalog.IsSelected(ctx, id, visible)
@@ -28,13 +30,16 @@ func (a *App) renewCachedSources(ctx context.Context) {
 			a.operationFailure("source renewal selection", err)
 			continue
 		}
+
 		if !selected {
 			continue
 		}
+
 		if err = a.Catalog.QueuePreparation(ctx, id, renewalPriority); err != nil {
 			a.operationFailure("source renewal queue", err)
 			continue
 		}
+
 		a.mu.Lock()
 		a.interruptBackgroundBelowLocked(renewalPriority, 1)
 		a.mu.Unlock()
@@ -45,18 +50,25 @@ func (a *App) renewCachedSources(ctx context.Context) {
 func (a *App) dueRenewals(now time.Time) []string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
 	if a.renewAfter == nil {
 		a.renewAfter = map[string]time.Time{}
 	}
+
 	due := []string{}
+
 	for revision := range a.reps {
 		id := a.runtimeVideos[revision]
+
 		expiry := a.leases[revision]
 		if id == "" || expiry.IsZero() || expiry.After(now.Add(5*time.Minute)) || now.Before(a.renewAfter[revision]) {
 			continue
 		}
+
 		a.renewAfter[revision] = now.Add(15 * time.Minute)
+
 		due = append(due, id)
 	}
+
 	return due
 }

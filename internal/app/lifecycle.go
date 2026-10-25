@@ -24,15 +24,19 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 			return nil, e
 		}
 	}
+
 	store, e := cache.New(c.CacheDir, int64(c.CacheGiB)<<30)
 	if e != nil {
 		return nil, e
 	}
+
 	db, e := catalog.OpenContext(ctx, filepath.Join(c.DataDir, "catalogue.sqlite"))
 	if e != nil {
 		return nil, errors.Join(e, store.Close())
 	}
+
 	ctx, cancel := context.WithCancel(ctx)
+
 	a := &App{
 		Measurements: &diagnostics.Recorder{},
 		Config:       m,
@@ -58,11 +62,14 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	if checker, ok := adapter.(interface{ Check(context.Context) error }); ok {
 		checkCtx, stop := context.WithTimeout(ctx, 15*time.Second)
 		e = checker.Check(checkCtx)
+
 		stop()
+
 		if e != nil {
 			a.toolError = e.Error()
 		}
 	}
+
 	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add}
 	if !noMount {
 		a.mount, e = library.MountProvider(c.Mountpoint, catalogueFS{app: a})
@@ -72,13 +79,17 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	} else {
 		a.mountError = "mount disabled; administration test mode"
 	}
+
 	if e = a.Publish(); e != nil {
 		return nil, errors.Join(e, a.Close())
 	}
+
 	if e = a.Catalog.ResetPreparations(ctx, visibility(c)); e != nil {
 		return nil, errors.Join(e, a.Close())
 	}
+
 	a.startWorkers(ctx, c.Workers)
+
 	return a, nil
 }
 
@@ -86,12 +97,15 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 func (a *App) Close() error {
 	a.cancel()
 	a.wg.Wait()
+
 	var mountErr error
 	if a.mount != nil {
 		mountErr = a.mount.Close()
 	}
+
 	e := a.Cache.Close()
 	e2 := a.Catalog.Close()
+
 	return errors.Join(mountErr, e, e2)
 }
 
@@ -101,18 +115,24 @@ func (a *App) startWorkers(ctx context.Context, workers int) {
 		a.wg.Add(1)
 		go a.preparationWorker(ctx)
 	}
+
 	a.wg.Add(1)
 	go a.scanWorker(ctx)
+
 	a.wg.Add(1)
 	go a.assetWorker(ctx)
+
 	a.wg.Add(1)
 	go a.artworkWorker(ctx)
+
 	a.wg.Add(1)
 	go a.metadataWorker(ctx)
+
 	for i := 0; i < workers; i++ {
 		a.wg.Add(1)
 		go a.worker(ctx)
 	}
+
 	a.wg.Add(1)
 	go a.schedule(ctx)
 }

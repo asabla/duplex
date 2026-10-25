@@ -22,26 +22,32 @@ func (c *uploadCursor) next(ctx context.Context) (*source.Metadata, error) {
 		if err := c.fill(ctx); err != nil {
 			return nil, err
 		}
+
 		if len(c.entries) == 0 {
 			return nil, nil
 		}
+
 		n := min(4, len(c.entries))
 		batch := c.entries[:n]
 		c.entries = c.entries[n:]
+
 		values, err := c.run.metadataBatch(ctx, batch, true)
 		if err != nil {
 			return nil, err
 		}
+
 		for i, m := range values {
 			c.position++
 			if err = c.run.app.Catalog.StageDiscovery(ctx, c.run.id, "uploads", batch[i].ID, c.position); err != nil {
 				return nil, err
 			}
+
 			if recording(m) {
 				c.pending = append(c.pending, m)
 			}
 		}
 	}
+
 	return &c.pending[0], nil
 }
 
@@ -49,19 +55,25 @@ func (c *uploadCursor) fill(ctx context.Context) error {
 	if len(c.entries) > 0 || c.complete {
 		return nil
 	}
+
 	c.scope.Count = min(25, c.run.channel.Selection().Limit)
+
 	listing, err := c.run.reader.Entries(ctx, c.scope, func(batch []source.Entry) error {
 		if err := c.run.app.Catalog.Discover(ctx, c.run.channel.ID, batch); err != nil {
 			return err
 		}
+
 		c.entries = append(c.entries, batch...)
+
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+
 	c.complete = listing.Complete
 	c.scope.Start += listing.Count
+
 	return nil
 }
 
@@ -69,49 +81,66 @@ func (r *discoveryRun) discoverUploads(ctx context.Context, cursors []*uploadCur
 	if r.reader != nil && r.channel.Selection().Mode == "all" {
 		return r.allUploads(ctx)
 	}
+
 	selected := 0
+
 	policy := r.channel.Selection()
 	for policy.Mode == "all" || selected < policy.Limit {
 		best, m, err := nextUpload(ctx, cursors)
 		if err != nil {
 			return err
 		}
+
 		if m == nil {
 			break
 		}
+
 		cursors[best].pending = cursors[best].pending[1:]
+
 		chosen, err := r.selectUpload(ctx, *m, selected)
 		if err != nil {
 			return err
 		}
+
 		if chosen {
 			selected++
 		}
 	}
+
 	return r.finishUploads(ctx)
 }
 
 func nextUpload(ctx context.Context, cursors []*uploadCursor) (int, *source.Metadata, error) {
 	heads := make([]*source.Metadata, len(cursors))
 	failures := make([]error, len(cursors))
+
 	var wg sync.WaitGroup
 	for i, c := range cursors {
 		wg.Add(1)
-		go func() { defer wg.Done(); heads[i], failures[i] = c.next(ctx) }()
+		go func() {
+			defer wg.Done()
+
+			heads[i], failures[i] = c.next(ctx)
+		}()
 	}
+
 	wg.Wait()
+
 	if err := errors.Join(failures...); err != nil {
 		return -1, nil, err
 	}
+
 	best := -1
 	for i, m := range heads {
 		if m != nil && (best < 0 || metadataBefore(*m, *heads[best])) {
 			best = i
 		}
 	}
+
 	if best < 0 {
 		return -1, nil, nil
 	}
+
 	return best, heads[best], nil
 }
 
@@ -119,6 +148,7 @@ func metadataBefore(a, b source.Metadata) bool {
 	if a.Date().Equal(b.Date()) {
 		return a.ID < b.ID
 	}
+
 	return a.Date().After(b.Date())
 }
 
@@ -127,13 +157,17 @@ func (r *discoveryRun) selectUpload(ctx context.Context, m source.Metadata, sele
 	if err != nil || !chosen {
 		return false, err
 	}
+
 	if err = r.app.Catalog.MarkUploadedSelection(ctx, m.ID); err != nil {
 		return false, err
 	}
+
 	r.app.remember(m)
+
 	if err = r.app.queuePreparation(ctx, m.ID, max(0, 100-selected)); err != nil {
 		return false, err
 	}
+
 	return true, r.app.Catalog.JobProgress(ctx, r.id, "uploads", selected+1, 0)
 }
 
@@ -141,17 +175,20 @@ func (r *discoveryRun) selectUpload(ctx context.Context, m source.Metadata, sele
 // in bounded batches; a restart re-enumerates identities and reuses saved work.
 func (r *discoveryRun) allUploads(ctx context.Context) error {
 	u := allUploadDiscovery{run: r}
+
 	consume := func(batch []source.Entry) error { return u.consume(ctx, batch) }
 	for _, tab := range []string{"videos", "streams", "shorts"} {
 		if _, err := r.reader.Entries(ctx, source.Scope{ChannelID: r.channel.ID, Tab: tab, Start: 1}, consume); err != nil {
 			return err
 		}
 	}
+
 	for _, id := range r.channel.Unlisted {
 		if err := consume([]source.Entry{{ID: id}}); err != nil {
 			return err
 		}
 	}
+
 	return r.finishUploads(ctx)
 }
 
@@ -166,12 +203,14 @@ func (u *allUploadDiscovery) consume(ctx context.Context, batch []source.Entry) 
 		if err != nil {
 			return err
 		}
+
 		for _, m := range values {
 			if err = u.add(ctx, m); err != nil {
 				return err
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -180,13 +219,16 @@ func (u *allUploadDiscovery) add(ctx context.Context, m source.Metadata) error {
 	if err := u.run.app.Catalog.StageDiscovery(ctx, u.run.id, "uploads", m.ID, u.position); err != nil {
 		return err
 	}
+
 	if !recording(m) {
 		return nil
 	}
+
 	chosen, err := u.run.selectUpload(ctx, m, u.selected)
 	if chosen {
 		u.selected++
 	}
+
 	return err
 }
 
@@ -195,11 +237,14 @@ func (r *discoveryRun) finishUploads(ctx context.Context) error {
 	if policy := r.channel.Selection(); policy.Mode == "latest" {
 		limit = policy.Limit
 	}
+
 	if err := r.current(); err != nil {
 		return err
 	}
+
 	if err := r.app.Catalog.ReconcileDiscovery(ctx, r.id, "uploads", r.channel.ID, limit); err != nil {
 		return err
 	}
+
 	return r.app.Publish()
 }

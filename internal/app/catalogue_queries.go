@@ -17,6 +17,8 @@ func (a *App) Video(ctx context.Context, id string) (catalog.Video, error) {
 	if err != nil {
 		return v, err
 	}
+
 	v.Exposed, err = a.Catalog.IsSelected(ctx, id, visibility(a.Config.Snapshot().Config))
+
 	return v, err
 }
