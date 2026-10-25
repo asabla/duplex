@@ -108,3 +108,9 @@ func (s *Store) AppliedEpisodeOrder(ctx context.Context, server string, run int6
 	_, err := s.DB.ExecContext(ctx, `UPDATE episode_bindings SET current_index=? WHERE server=? AND seen_run=? AND occurrence_id=?`, index, server, run, occurrence)
 	return err
 }
+
+// Bind retains a year episode Plex key independently of its source identity.
+func (s *Store) Bind(ctx context.Context, id, server, key, guid string) error {
+	_, e := s.DB.ExecContext(ctx, `INSERT INTO plex_bindings VALUES(?,?,?,?) ON CONFLICT(video_id,server) DO UPDATE SET rating_key=excluded.rating_key,guid=excluded.guid`, id, server, key, guid)
+	return e
+}

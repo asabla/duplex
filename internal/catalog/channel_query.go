@@ -91,3 +91,20 @@ func channelOrder(value string) (string, error) {
 		return "", errors.New("invalid channel sort")
 	}
 }
+
+// Channel contains a stable identity and its last complete discovery result.
+type Channel struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	SyncedAt int64  `json:"synced_at"`
+	Error    string `json:"error,omitempty"`
+}
+
+// Channels returns known source channels, including uploaders of curated entries.
+func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
+	rows, e := s.DB.QueryContext(ctx, `SELECT id,title,synced_at,error FROM channels ORDER BY title,id`)
+	if e != nil {
+		return nil, e
+	}
+	return readChannels(rows)
+}

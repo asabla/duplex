@@ -173,3 +173,14 @@ func (s *Store) Summary(ctx context.Context, v Visibility) (Counts, error) {
 	err := s.DB.QueryRowContext(ctx, cte+`SELECT (SELECT count(*) FROM videos),count(*),COALESCE(sum(v.preparation='ready' AND v.state IN ('recorded','replay-ready')),0),COALESCE(sum(v.preparation='failed'),0) FROM selected x JOIN videos v ON v.id=x.id`, args...).Scan(&c.Discovered, &c.Selected, &c.Ready, &c.Failed)
 	return c, err
 }
+
+const videoColumns = `id,channel_id,title,description,state,published,year,number,exposed,revision,height,fallback,size,updated,preparation,preparation_error,metadata_at`
+
+// Videos returns the complete canonical catalogue for the legacy status response.
+func (s *Store) Videos(ctx context.Context) ([]Video, error) {
+	rows, e := s.DB.QueryContext(ctx, `SELECT `+videoColumns+` FROM videos ORDER BY published DESC,id`)
+	if e != nil {
+		return nil, e
+	}
+	return readVideos(rows)
+}
