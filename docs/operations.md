@@ -1,126 +1,137 @@
-# Operation and recovery
+# Operate and recover duplex
 
-## Settings and catalogue
+## Change a collection policy
 
-YAML is the settings authority. UI and API saves validate a complete settings
-object, compare its disk revision, write a temporary file, sync it, rename it,
-and sync the parent directory. External edits are checked every two seconds.
-Invalid edits keep the last valid in-memory settings. Fix invalid YAML before a
-restart. The UI rejects stale saves and reports settings that need a restart.
+Open **Channels** to change uploads between **Latest N** and **All**, or to include
+or skip playlists. In **Playlists**, choose **Inherit**, **Latest N**, **All**, or
+**Skip** for one collection. A channel-wide playlist skip takes precedence over
+individual overrides.
 
-Channel enumeration must finish before a new catalogue snapshot can commit.
-Metadata and selected representations are staged; the transaction applies the
-window after the complete enumeration. A failed enumeration or metadata request
-retains the previous complete catalogue. Unavailable sources are explicit states.
-Upcoming, active, and processing broadcasts have no exposed media file. Existing
-YouTube identity records and assigned season/episode slots remain in SQLite even
-when a recording leaves the window or a channel is unfollowed.
+Latest N uses publication time. Playlist episodes keep YouTube playlist order
+after a complete refresh. A video shared by several playlists uses one canonical
+media revision and cache data, with separate Plex progress for each occurrence.
+Repeated references inside one playlist appear once.
 
-A new recording must have verified container details and stable range reads
-before it is exposed. Index generation reads MP4 headers and fragment metadata;
-long replays can require thousands of small requests. Source header requests have
-bounded concurrency and pacing. Each candidate has a five-minute budget; channel
-jobs have a two-hour budget. These are work limits, not playback latency promises.
+Discovery and preparation are separate. A completed discovery job can still have
+pending media tasks. Inspect **Videos**, or use **Prepare now** for a selected
+recording. Unfollowing removes the channel from the projection and retains its
+identity records. Pausing retains its settings without publishing its media.
 
-On restart, durable metadata and exact file sizes remain available. Source
-locators are resolved again in bounded background jobs. Media handles that need
-restoration return a real error until a verified representation is restored.
-`/readyz` returns 503 during this condition. Do not use that response as a reason
-to delete Plex library items. `/mountz` checks the filesystem separately.
+## Replace artwork
 
-## Cache and representation rules
+Open **Show and season artwork** from a channel, or **Artwork** from a playlist.
+Choose the show or season before uploading. JPEG and PNG inputs are limited to
+10 MiB and 24 megapixels. duplex validates dimensions before decoding, removes
+metadata by re-encoding, and fits the full image into a 2:3 poster.
 
-The configured limit covers media chunk data and unfinished-write reservations.
-Fetches are deduplicated. A read pins its chunk; eviction only removes unpinned
-published chunks. Before a fetch, reservations also check actual filesystem free
-space, include unfinished writers, and evict cold chunks under physical pressure.
-They leave up to 64 MiB of headroom (1% on small volumes) for filesystem and
-durable-state writes. The configured cache size is a maximum; it does not create
-physical capacity. Files are published by atomic rename after sync and include a
-checksum. The cache directory has a single-process lock. Physical disk exhaustion
-and a fully pinned cache return errors. They do not produce placeholder bytes.
+A manual override takes precedence and survives renaming, refresh, reorder, and
+restarts. **Reset to automatic** removes that override. Automatic show posters use
+channel branding; playlist posters use collection artwork and the channel name;
+year posters use channel branding and the year. Episodes keep their own video
+thumbnails. Missing source imagery produces a labelled fallback; retrieval failure
+retains the last valid automatic poster.
 
-Open handles keep one immutable representation. New signed URLs do not alter
-that handle. Expired URLs, changed validators, incorrect lengths, ignored ranges,
-and truncated responses fail. The next scheduled or manual refresh can establish
-a replacement. Cached old chunks can remain usable until eviction, but their
-identity is never reused for an incompatible representation. Without a strong
-upstream validator, data is not reused across source resolutions.
+Artwork assets live in durable storage outside the media cache. Preserve them
+with YAML in a backup. An artwork change requests a targeted Plex metadata
+refresh. **Use local assets** and **Use season titles** must remain enabled.
 
-Packaging indexes, representation descriptions, SQLite, local artwork/subtitles,
-and Plex transcodes are separate from the media cache. Durable indexes and assets
-can grow with catalogue history; monitor those directories separately. Do not
-remove packaging indexes while a release qualification or investigation needs
-their evidence. Plex may read ahead or analyse a file, so bytes fetched after
-playback begins can exceed the selected segment duration. Disable optional Plex
-background analysis to reduce this traffic. The scan health check requires the
-dedicated library thumbnail, intro, credits, and loudness flags to be disabled.
+## Storage and cache pressure
 
-## Backup
+The media cache limit includes published chunks and unfinished reservations.
+Concurrent requests share a fetch. Reads pin chunks until their copy completes;
+eviction removes only unpinned data. The cache also checks physical free space
+and leaves filesystem headroom. A full pinned cache or exhausted disk returns a
+real error. It does not exceed the limit or manufacture missing bytes.
 
-Protect backups as credentials. Stop duplex for a consistent backup of YAML,
-SQLite, secrets, asset manifests, and packaging indexes as a single installation.
-The cache is evictable and does not need a backup. Back up Plex's configuration
-volume separately with Plex stopped; it contains watch history and account data.
-Do not back up the FUSE projection itself.
+SQLite, packaging indexes, representation descriptions, artwork, subtitles, Plex
+configuration, and transcodes are outside this limit. Monitor them separately.
+The cache is evictable. Durable indexes and assets can grow with catalogue history.
+Do not delete files from a running cache directory; it has a single-process lock
+and its own recovery rules.
 
-For an online SQLite-only snapshot, write a new destination:
+An open handle stays bound to one representation. Range responses with changed
+content, incorrect lengths, or an expired locator fail that handle. A new locator
+must preserve the verified object identity before its index can be reused. Without
+strong identity evidence, a new resolution receives a new cache namespace.
+
+## Refresh and restart
+
+Scheduled refresh uses `refresh_minutes`; the default is 30. **Refresh** queues one
+channel and deduplicates existing work. Discovery commits safe additions early.
+Removals and playlist reorder wait for successful enumeration. A partial refresh
+retains the prior selection and does not renumber year episodes.
+
+On restart, the catalogue, identities, and verified indexes remain. Source leases
+are re-established for new reads through bounded work. Mount readiness is separate
+from individual video availability. Check preparation state as well as Diagnostics.
+Keep automatic Plex trash emptying disabled during restoration.
+
+Valid external YAML edits reload. Invalid edits retain the last valid settings
+and appear in Diagnostics. Correct invalid YAML before restarting. Stale UI/API
+saves are rejected; reload before retrying.
+
+## Back up
+
+Back up these together:
+
+- `config.yaml`.
+- `data`, including SQLite, secrets, artwork, and asset manifests.
+- `indexes`.
+- Plex configuration, including its claim and watch history.
+
+The media cache and FUSE projection are not backup sources. Protect backups as
+credentials. For a complete installation backup, stop Plex first, then duplex,
+and use your protected host backup system to copy durable state. Keep the same
+paths and file ownership when restoring.
+
+For an **online SQLite-only** snapshot on Linux:
 
 ```sh
 duplex backup --config /etc/duplex/config.yaml \
   --output /secure-backups/duplex-catalogue.sqlite
 ```
 
-For Docker, choose a new file inside the mounted state directory:
+For Compose, choose a new destination inside the state bind:
 
 ```sh
-docker compose -f deployment/compose.yaml exec duplex-mount \
+docker compose exec duplex-mount \
   duplex backup --config /state/config.yaml --output /state/catalogue-backup.sqlite
 ```
 
-The command uses SQLite `VACUUM INTO`, does not mark running jobs as interrupted,
-and sets the output file to mode `0600`. A database-only copy is not a complete
-installation backup. Do not copy a live SQLite file without its transactional
-backup method. Restore settings, secrets, data, and indexes while duplex is
-stopped, using the same configured paths and file permissions. Start the mount,
-check readiness, then start Plex. A restart ends administrator sessions.
+The command refuses an existing destination, uses SQLite `VACUUM INTO`, sets mode
+`0600`, and does not interrupt running jobs. This snapshot alone is not a complete
+installation backup. Do not copy a live SQLite file without a transactional backup.
 
-## Restart and failure handling
+## Upgrade
 
-Keep the public parent bind mounted into Plex with `rslave` propagation and the
-FUSE child under it. A normal shutdown unmounts FUSE. After a killed process,
-duplex detaches only a disconnected mount whose exact path, filesystem type
-`fuse.duplex`, and source `duplex` match its configured mount. It refuses a live
-mount or any other mounted filesystem. Old open handles fail; new opens use the
-replacement representation. Automatic Plex trash emptying must remain disabled.
+1. Save a complete backup and record the current image or binary revision.
+2. Keep existing YAML, data, indexes, secrets, and Plex configuration. Do not run
+   initialization over them or replace settings with an example file.
+3. Stop playback and allow active reads to finish.
+4. Build or install a qualified replacement, then restart duplex.
+5. Check `/mountz`, Diagnostics, and representative original playback and seeking.
+6. Keep the backup until the upgraded installation passes its acceptance checks.
 
-If readiness remains false, inspect Diagnostics and recent job errors. Check
-source connectivity and the pinned tool versions. Request a manual channel
-refresh after resolving the failure. A failed refresh keeps the prior complete
-catalogue; continuous immediate retries are not used.
+With Compose:
 
-Check both state storage and Docker/Plex storage with `df`. The qualification
-found that a full Docker disk caused Plex item requests to return HTTP 500 and
-stopped its logs, although the duplex cache disk had free space. Reclaim only
-identified disposable data. Do not use a global volume or image prune command on
-a shared Docker host. Check Plex health and replay/resume after storage recovery.
+```sh
+docker compose build duplex-mount
+docker compose up -d --no-deps --wait duplex-mount
+curl --fail http://127.0.0.1:8765/mountz
+```
 
-For native Linux, inspect `journalctl -u duplex` and service readiness. The daemon
-logs do not include resolver output or signed media URLs. Full diagnostics require
-administrator authentication. Keep raw resolver JSON and Plex tokens out of bug
-reports. The qualification `gate` and `fixture-http` commands are local test tools,
-not production administration endpoints.
+Catalogue migrations are transactional. Existing numeric upload limits and
+excluded-playlist behavior remain until a policy is changed. Year paths, episode
+identities, Plex bindings, and artwork overrides are retained. A rollback across
+a schema migration requires the matching durable-state backup, not only an older
+binary. Do not point an old binary at an unsupported schema.
 
-## Administration lists
+## Recover a failed mount
 
-Videos, followed channels, and refresh history use 25 rows per page by default.
-Use the controls above or below each table to move between pages, or select 50
-or 100 rows and press Apply. Video search remains active while changing pages.
-Changing the search or row count starts at page 1. Channel polling retains the
-current page and row count. A page beyond the current result set opens the last
-available page, including after an unfollow or a narrower search.
+A normal shutdown unmounts FUSE. After a process crash, duplex detaches only a
+disconnected mount whose path, filesystem identity, and source match its own
+configuration. It refuses a live or unrelated mount.
 
-The overview and Diagnostics can browse the complete stored refresh history.
-The JSON status snapshot and `/api/v1/jobs` keep their existing latest-100
-contract. This update changes the administration lists, not the JSON response
-format.
+Keep Plex's read-only bind on the stable parent. Old handles fail; new opens use
+the replacement mount. Correct a stale root bind before retrying playback. Never
+empty Plex trash as a mount repair step. See [troubleshooting](troubleshooting.md).

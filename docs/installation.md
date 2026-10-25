@@ -1,70 +1,100 @@
-# Installation
+# Install duplex
 
-Use Linux on amd64 or arm64. On macOS, run Docker, duplex FUSE, and Plex inside
-Colima. Store SQLite, packaging indexes, and cache on Linux-local storage. Docker
-bind sources belong to the daemon host, not the client computer:
-[Docker bind mounts](https://docs.docker.com/engine/storage/bind-mounts/).
+This guide installs one household instance on a Linux Docker host. It then
+connects a dedicated Plex TV library. Use Linux amd64 or arm64. The mount requires
+`/dev/fuse`; Plex itself does not need access to that device.
 
-## Docker on Linux
+## Prepare the host
 
-Run the following commands from this repository. Install Docker Compose and enable
-`/dev/fuse` on the Linux host. Check free space for the media cache, durable data,
-Docker images, Plex database, and Plex transcode storage separately. The 50 GiB
-cache limit does not reserve that capacity in advance.
+Check free storage for the media cache, durable indexes, artwork, Docker images,
+Plex configuration, and transcodes. These are separate storage budgets. A 50 GiB
+cache limit does not provide 50 GiB of physical space.
+
+From the repository on the Linux Docker daemon host:
 
 ```sh
-sudo scripts/prepare-host.sh /var/lib/duplex
-docker compose build
-docker compose run --rm --no-deps duplex-mount \
-  init --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
-docker compose up -d duplex-mount
-curl --fail http://127.0.0.1:8765/mountz
-docker compose exec duplex-mount \
-  cat /state/data/secrets/initial-admin-password
+sudo ./scripts/prepare-host.sh /var/lib/duplex
+sudo ./scripts/check-host.sh /var/lib/duplex
 ```
 
-Open `http://localhost:8765/`. Sign in as `admin` with the generated password. The
-password is generated once. Protect the file; it is not written to application
-logs. Do not put passwords, Plex tokens, or signed media URLs in YAML.
+The checks must report shared mount propagation and a usable FUSE device. The
+preparation script refuses a nonempty, unmarked directory. Repeat the preparation
+and checks after a host reboot unless host startup already restores the shared
+bind mount. Do not substitute a macOS directory for this Linux path.
 
-The default paths inside the service are:
+## Initialize and start
 
-| Purpose | Path |
+The production definition is [compose.yaml](../compose.yaml) at the repository root.
+Qualification fixtures are separate.
+
+```sh
+docker compose build
+docker compose run --rm --no-deps duplex-mount init \
+  --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
+docker compose up -d --wait duplex-mount
+curl --fail http://127.0.0.1:8765/mountz
+```
+
+The last command prints `mount ready`. Initialization creates settings and one
+administrator credential. It refuses to replace an existing installation.
+
+Read the initial password locally:
+
+```sh
+sudo cat /var/lib/duplex/data/secrets/initial-admin-password
+```
+
+Open `http://localhost:8765`, then sign in as `admin`. The host port is bound to
+loopback. Keep the password file private; do not put its contents in YAML or logs.
+
+| Purpose | Container path |
 | --- | --- |
-| Editable settings | `/state/config.yaml` |
-| Durable catalogue and credentials | `/state/data` |
-| Packaging indexes and representation descriptions | `/state/indexes` |
-| Evictable source chunks | `/state/media` |
-| Stable public mount parent | `/state/library` |
-| Replaceable FUSE mount | `/state/library/media` |
+| Settings | `/state/config.yaml` |
+| Catalogue, credentials, and durable artwork | `/state/data` |
+| Packaging indexes | `/state/indexes` |
+| Media chunks | `/state/media` |
+| Stable public parent | `/state/library` |
+| FUSE projection | `/state/library/media` |
 
-The Plex container receives **only the stable public parent**, read-only, with
-`rslave` propagation. Its library location is `/data/media`. Do not bind the FUSE
-mount root directly into Plex: such a bind can retain a disconnected old mount
-after duplex restarts. Only the mount service has FUSE access and `SYS_ADMIN`.
+To use another dedicated host directory or port, set `DUPLEX_HOST_DIR` and
+`DUPLEX_PORT` before each Compose command, or put them in a protected local `.env`.
+These settings choose locations and ports; credentials remain in protected files.
 
-Start the optional isolated Plex service after `/mountz` succeeds:
+## Plex library
+
+The supplied optional Plex service mounts the stable parent read-only with
+`rslave` propagation:
 
 ```sh
 docker compose --profile plex up -d plex
 ```
 
-Claim the server in Plex Web and keep remote access disabled for a local household
-installation. Restart Plex after claim if the NFO agents do not appear. The tested
-server required claim and restart before it exposed the installed NFO providers.
-The reported version alone does not establish this capability.
+Open `http://localhost:32499/web/` and claim that isolated server. Keep remote
+access disabled. If **Plex NFO Series** is absent after claim, restart Plex and
+check again. duplex checks the actual agent; it does not infer support from the
+server version.
 
-Create a dedicated **TV Shows** library with **Plex NFO Series**, location
-`/data/media`. Use Plex Media Server 1.43.1 or newer, and verify that this actual
-agent is available. Disable automatic trash emptying. Disable video preview thumbnails, intro detection, credits detection, and loudness
-analysis in the dedicated library advanced settings. Also disable optional deep
-media analysis and chapter thumbnails on the isolated server. The per-library
-settings are checked before scans; server-wide defaults alone are insufficient. Set Plex transcode
-storage outside the duplex media cache.
+For an existing Plex container, give it a read-only bind of the stable
+`/var/lib/duplex/library` parent with `rslave` propagation. Select the mounted
+`media` child as the library folder. Do not bind the FUSE root directly: an old
+root bind can remain disconnected after remount recovery.
 
-Read a server token through a trusted local administration path. Save it in
-`/state/data/secrets/plex-token`, mode `0600`; do not paste it into the duplex UI.
-In duplex Settings, configure the origin, dedicated section number, and file path:
+Create a dedicated **TV Shows** library:
+
+1. Select **Plex NFO Series** as the agent. Use Plex Media Server 1.43.1 or later.
+2. Set the folder to `/data/media` for the supplied Compose service.
+3. Enable **Use local assets** and **Use season titles**.
+4. Disable automatic trash emptying. This preserves items and watch history
+   through temporary source or mount failures.
+5. Disable video preview thumbnails, intro detection, credits detection, and
+   loudness analysis in this library. Disable optional deep analysis and chapter
+   thumbnails if enabled on the server.
+6. Put Plex transcode storage outside the duplex media cache.
+
+Save your server token in `/state/data/secrets/plex-token` with mode `0600` through
+a trusted local administration path. Keep it out of the UI, YAML, shell arguments,
+and chat. Configure the connection in duplex Settings; use the advanced editor
+for the token file path:
 
 ```yaml
 plex:
@@ -73,60 +103,77 @@ plex:
   token_file: /state/data/secrets/plex-token
 ```
 
-Use the actual section number. The service checks the server version, NFO agent,
-library agent, mount, and automatic trash setting before it requests a scan.
-Follow channel URLs in Channels. Configure per-channel limits, paused channels,
-and explicit unlisted video IDs through the YAML editor.
+Replace `"1"` with the dedicated library's actual section ID. For another Plex
+server, use its reachable origin. The token is sent in a header. Diagnostics
+reports a missing agent, inaccessible token file, or incorrect library setting.
+Scans require mount readiness and the library prerequisites.
 
-## Colima
+Follow the [first channel and playback steps](../README.md#follow-a-channel-and-play-a-video).
 
-Use the existing Colima profile when one is available. Do not change the default
-Docker context for other projects. Prepare VM-local storage inside the VM:
+## Colima on macOS
+
+Keep FUSE, Plex, SQLite, indexes, and media chunks inside the Linux VM. Docker
+bind paths belong to the daemon host, as described in the
+[Docker bind-mount documentation](https://docs.docker.com/engine/storage/bind-mounts/).
+Do not export the Linux FUSE mount back to macOS.
+
+Use the existing Colima profile. If it is stopped, start it. Then run from the
+repository on macOS:
 
 ```sh
+colima start
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/prepare-host.sh
+colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/check-host.sh
 docker --context colima compose build
+docker --context colima compose run --rm --no-deps duplex-mount init \
+  --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
+docker --context colima compose up -d --wait duplex-mount
+curl --fail http://127.0.0.1:8765/mountz
 ```
 
-Use `docker --context colima compose` for the remaining Docker commands above.
-The service state path is the Linux path `/var/lib/duplex`, not a path below
-`/Users`. Do not export the Linux FUSE mount to macOS. Check both the VM root disk
-and the Docker data disk. A full Docker disk can break Plex even if the duplex
-media-cache disk still has space.
+Use `docker --context colima compose` for the remaining Compose commands. This
+leaves other projects' Docker contexts unchanged. Check both the VM root disk and
+the Docker data disk when storage is low.
 
-## Native Linux service
+## Native Linux with systemd
 
-The native service was exercised on Ubuntu 24.04.4 LTS in Colima. The official
-Linux tool bundles require a compatible glibc runtime.
+The native unit is separate from Docker. It uses a dedicated `duplex` account,
+the FUSE device, and `CAP_SYS_ADMIN`. It must share the host mount namespace with
+Plex. Do not add filesystem namespace isolation that hides the mount.
 
-Build `bin/duplex-linux-amd64` or `bin/duplex-linux-arm64` with `GOOS=linux GOARCH=arm64 make build`.
-Install the matching binary as `/usr/local/bin/duplex`. Run
-`sudo scripts/bootstrap-linux.sh` (requires `curl`, `unzip`, `sha256sum`, and
-`install`) to install the pinned official yt-dlp directory
-bundle and Deno runtime. The bundle includes matching EJS challenge code; remote
-component downloads are disabled. See [yt-dlp dependencies](https://github.com/yt-dlp/yt-dlp#dependencies).
-
-Create a dedicated `duplex` system user, `/etc/duplex` owned by it with mode `0700`,
-and `/var/lib/duplex` owned by it with mode `0711`. Create
-`/var/lib/duplex/library` with mode `0755` so Plex can traverse the public projection.
-The data, index, and cache directories remain private. Initialize as that user:
+Build on Linux, then install the binary and pinned runtimes:
 
 ```sh
+make build
+sudo install -m 0755 bin/duplex /usr/local/bin/duplex
+sudo ./scripts/bootstrap-linux.sh
+```
+
+The bootstrap script needs `curl`, `unzip`, `sha256sum`, and `install`. It downloads
+checksum-pinned official yt-dlp and Deno bundles. The yt-dlp bundle includes its
+matching EJS code; remote component downloads remain disabled. See the
+[yt-dlp dependency contract](https://github.com/yt-dlp/yt-dlp#dependencies).
+
+Create a non-login `duplex` system account using your distribution's account tool.
+Keep private state separate from the public library path:
+
+```sh
+sudo install -d -m 0700 -o duplex -g duplex /etc/duplex /var/lib/duplex
+sudo install -d -m 0755 -o duplex -g duplex /srv/duplex/library/media
 sudo -u duplex /usr/local/bin/duplex init \
-  --config /etc/duplex/config.yaml --state-dir /var/lib/duplex
+  --config /etc/duplex/config.yaml --state-dir /var/lib/duplex \
+  --mountpoint /srv/duplex/library/media
 sudo install -m 0644 deployment/duplex.service /etc/systemd/system/duplex.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now duplex.service
+systemctl is-active duplex.service
+curl --fail http://127.0.0.1:8765/mountz
 ```
 
-The dedicated Plex library location is `/var/lib/duplex/library/media`. Install
-`deployment/plex-duplex.conf` as an optional `plexmediaserver.service` drop-in to
-require mount readiness before Plex starts. Keep the host mount namespace;
-filesystem namespace isolation can hide the FUSE mount from Plex. The service
-uses the FUSE device and `CAP_SYS_ADMIN` to mount, with other capabilities removed.
+The expected results are `active` and `mount ready`. Plex's folder is
+`/srv/duplex/library/media`. The public parents must be traversable by the Plex
+account; the catalogue, cache, indexes, and secrets remain private.
 
-For a Docker host, run `sudo scripts/check-host.sh /var/lib/duplex` for setup
-checks. For a native service, check `systemctl is-active duplex`,
-`curl --fail http://127.0.0.1:8765/mountz`, and the mounted filesystem with
-`findmnt /var/lib/duplex/library/media`.
-The native unit is supplied separately from the Docker qualification environment.
+The optional [Plex drop-in](../deployment/plex-duplex.conf) makes
+`plexmediaserver.service` wait for mount readiness. Configure the Plex library as
+above, using the native path and a reachable Plex origin.
