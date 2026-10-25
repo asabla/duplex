@@ -134,3 +134,38 @@ func OccurrenceID(guid string) string {
 	}
 	return ""
 }
+
+// RefreshShow targets one NFO show after local poster changes. A show which has
+// not yet been scanned is picked up by the next normal library scan.
+func (c *Client) RefreshShow(ctx context.Context, section, channel string) error {
+	if !validSection(section) {
+		return errors.New("invalid Plex library section")
+	}
+	var shows struct {
+		Items []Binding `xml:"Directory"`
+	}
+	if err := c.get(ctx, "/library/sections/"+section+"/all?type=2", &shows); err != nil {
+		return err
+	}
+	for _, show := range shows.Items {
+		u, err := url.Parse(show.GUID)
+		if err != nil {
+			continue
+		}
+		if u.Scheme != "tv.plex.agents.nfo.series" || u.Host != "show" {
+			continue
+		}
+		id, err := url.PathUnescape(u.EscapedPath())
+		if err != nil {
+			return err
+		}
+		if strings.TrimPrefix(id, "/") != "youtube-channel:"+channel {
+			continue
+		}
+		if _, err = strconv.ParseUint(show.Key, 10, 64); err != nil {
+			return errors.New("invalid Plex show key")
+		}
+		return c.request(ctx, "PUT", "/library/metadata/"+show.Key+"/refresh", nil)
+	}
+	return nil
+}

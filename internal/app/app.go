@@ -124,6 +124,8 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	go a.scanWorker()
 	a.wg.Add(1)
 	go a.assetWorker()
+	a.wg.Add(1)
+	go a.artworkWorker()
 	for i := 0; i < c.Workers; i++ {
 		a.wg.Add(1)
 		go a.worker()
@@ -285,13 +287,16 @@ func (a *App) prune() {
 	}
 }
 
+// AddChannel preserves the original numeric-limit API. New clients can use Follow.
 func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected string) error {
 	if limit == 0 {
 		limit = 50
 	}
-	if limit < 1 {
-		return errors.New("channel limit must be positive")
-	}
+	return a.Follow(ctx, raw, config.Selection{Mode: "latest", Limit: limit}, true, expected)
+}
+
+// Follow creates explicit upload and playlist defaults in the authoritative YAML.
+func (a *App) Follow(ctx context.Context, raw string, selection config.Selection, include bool, expected string) error {
 	ctx, stop := context.WithTimeout(ctx, 2*time.Minute)
 	defer stop()
 	ch, e := a.Source.ResolveChannel(ctx, raw)
@@ -308,8 +313,7 @@ func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected st
 		}
 	}
 	url := "https://www.youtube.com/channel/" + ch.ID
-	selection := config.Selection{Mode: "latest", Limit: limit}
-	snap.Config.Channels = append(snap.Config.Channels, config.Channel{ID: ch.ID, URL: url, Limit: limit, Enabled: true, Indexing: &selection, Playlists: &config.PlaylistPolicy{Enabled: true}})
+	snap.Config.Channels = append(snap.Config.Channels, config.Channel{ID: ch.ID, URL: url, Limit: 50, Enabled: true, Indexing: &selection, Playlists: &config.PlaylistPolicy{Enabled: include}})
 	if e = a.Config.Save(snap.Config, expected); e != nil {
 		return e
 	}
@@ -478,6 +482,7 @@ func (a *App) Publish() error {
 		return e
 	}
 	entries = append(entries, a.episodeAssets(episodes)...)
+	entries = append(entries, a.posterEntries(episodes)...)
 	if a.mount != nil {
 		return a.mount.Update(entries)
 	}

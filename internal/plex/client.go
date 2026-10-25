@@ -38,9 +38,16 @@ func New(base, token string) (*Client, error) {
 }
 
 func (c *Client) get(ctx context.Context, path string, result any) error {
-	u := *c.base
-	u.Path = path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	return c.request(ctx, http.MethodGet, path, result)
+}
+
+func (c *Client) request(ctx context.Context, method, path string, result any) error {
+	relative, err := url.ParseRequestURI(path)
+	if err != nil || relative.IsAbs() || relative.Host != "" {
+		return errors.New("invalid Plex request path")
+	}
+	u := c.base.ResolveReference(relative)
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), nil)
 	if err != nil {
 		return errors.New("invalid Plex request")
 	}
@@ -54,7 +61,7 @@ func (c *Client) get(ctx context.Context, path string, result any) error {
 		return errors.New("Plex request failed")
 	}
 	defer r.Body.Close()
-	if r.StatusCode != 200 {
+	if r.StatusCode < 200 || r.StatusCode > 299 {
 		return fmt.Errorf("Plex request rejected (HTTP %d)", r.StatusCode)
 	}
 	b, err := io.ReadAll(io.LimitReader(r.Body, 16*1024*1024+1))

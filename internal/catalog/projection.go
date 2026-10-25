@@ -56,3 +56,29 @@ func (s *Store) ChannelArtwork(ctx context.Context, id, avatar, banner string) e
 	_, err := s.DB.ExecContext(ctx, `UPDATE channels SET avatar=CASE WHEN ?<>'' THEN ? ELSE avatar END,banner=CASE WHEN ?<>'' THEN ? ELSE banner END WHERE id=?`, avatar, avatar, banner, banner, id)
 	return err
 }
+
+// Branding returns only the channel's public metadata image candidates.
+func (s *Store) Branding(ctx context.Context, id string) (title, avatar, banner string, err error) {
+	err = s.DB.QueryRowContext(ctx, `SELECT title,avatar,banner FROM channels WHERE id=?`, id).Scan(&title, &avatar, &banner)
+	return title, avatar, banner, err
+}
+
+// Seasons returns durable season scopes for artwork, including temporarily
+// unavailable recordings. It does not require a playable representation.
+func (s *Store) Seasons(ctx context.Context, id string) (map[string]int, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT 'year:'||year,year FROM videos WHERE channel_id=? AND year BETWEEN 1000 AND 9999 GROUP BY year UNION ALL SELECT 'playlist:'||id,season FROM playlists WHERE channel_id=?`, id, id)
+	if err != nil {
+		return nil, err
+	}
+	defer closeRows(rows)
+	out := map[string]int{}
+	for rows.Next() {
+		var scope string
+		var season int
+		if err = rows.Scan(&scope, &season); err != nil {
+			return nil, err
+		}
+		out[scope] = season
+	}
+	return out, rows.Err()
+}
