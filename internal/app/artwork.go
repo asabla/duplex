@@ -28,6 +28,7 @@ type artworkRecord struct {
 type ArtworkPreview struct {
 	ChannelID string `json:"channel_id"`
 	Scope     string `json:"scope"`
+	Label     string `json:"label"`
 	Reference string `json:"reference,omitempty"`
 	Override  bool   `json:"override"`
 	Path      string `json:"-"`
@@ -83,6 +84,17 @@ func (a *App) Artwork(ctx context.Context, channel, scope string) (ArtworkPrevie
 	}
 	if err = a.validateArtworkScope(ctx, channel, scope); err != nil {
 		return result, err
+	}
+	result.Label = "Channel show"
+	if scope != "show" {
+		seasons, err := a.ArtworkSeasons(ctx, catalog.SeasonFilter{Channel: channel, Scope: scope})
+		if err != nil {
+			return result, err
+		}
+		if len(seasons.Items) != 1 {
+			return result, errors.New("season does not exist")
+		}
+		result.Label = seasons.Items[0].Title
 	}
 	ref := ch.Artwork.Seasons[scope]
 	if scope == "show" {

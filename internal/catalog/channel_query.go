@@ -39,13 +39,9 @@ func (s *Store) ChannelsPage(ctx context.Context, f ChannelFilter) (ChannelPage,
 	if f.Failure == "failed" {
 		where += ` AND c.error<>''`
 	}
-	order := "c.title COLLATE NOCASE,c.id"
-	switch f.Sort {
-	case "", "title":
-	case "updated":
-		order = "c.synced_at DESC,c.id"
-	default:
-		return result, errors.New("invalid channel sort")
+	order, err := channelOrder(f.Sort)
+	if err != nil {
+		return result, err
 	}
 	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -79,4 +75,19 @@ func readChannels(rows *sql.Rows) ([]Channel, error) {
 		out = append(out, c)
 	}
 	return out, rows.Err()
+}
+
+func channelOrder(value string) (string, error) {
+	switch value {
+	case "", "title":
+		return "c.title COLLATE NOCASE,c.id", nil
+	case "title_desc":
+		return "c.title COLLATE NOCASE DESC,c.id", nil
+	case "updated":
+		return "c.synced_at DESC,c.id", nil
+	case "updated_oldest":
+		return "c.synced_at,c.id", nil
+	default:
+		return "", errors.New("invalid channel sort")
+	}
 }

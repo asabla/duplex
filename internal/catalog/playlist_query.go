@@ -22,9 +22,9 @@ type (
 	}
 	// PlaylistFilter bounds and filters one playlist page.
 	PlaylistFilter struct {
-		Policies                            []ChannelPolicy
-		Query, Channel, Mode, Failure, Sort string
-		Page, PerPage                       int
+		Policies                                          []ChannelPolicy
+		Query, Channel, Mode, Failure, Sort, Availability string
+		Page, PerPage                                     int
 	}
 	// PlaylistRow combines catalogue details with effective YAML policy.
 	PlaylistRow struct {
@@ -69,6 +69,9 @@ func playlistPolicies(policies []ChannelPolicy) (string, []any) {
 // PlaylistsPage filters and counts in SQLite before loading the requested rows.
 func (s *Store) PlaylistsPage(ctx context.Context, f PlaylistFilter) (PlaylistPage, error) {
 	result := PlaylistPage{Items: []PlaylistRow{}, PerPage: f.PerPage}
+	if f.Availability != "" && f.Availability != "available" && f.Availability != "missing" {
+		return result, errors.New("invalid playlist availability")
+	}
 	if result.PerPage != 25 && result.PerPage != 50 && result.PerPage != 100 {
 		result.PerPage = 25
 	}
@@ -115,6 +118,10 @@ func playlistWhere(f PlaylistFilter) (string, []any) {
 		clauses = append(clauses, `p.policy=?`)
 		args = append(args, f.Mode)
 	}
+	if f.Availability != "" {
+		clauses = append(clauses, `p.available=?`)
+		args = append(args, f.Availability == "available")
+	}
 	if f.Failure == "failed" {
 		clauses = append(clauses, `p.error<>''`)
 	}
@@ -126,10 +133,16 @@ func playlistOrder(value string) (string, error) {
 	switch value {
 	case "", "title":
 		return "p.title COLLATE NOCASE,p.id", nil
+	case "title_desc":
+		return "p.title COLLATE NOCASE DESC,p.id", nil
 	case "season":
 		return "p.channel_id,p.season,p.id", nil
+	case "season_desc":
+		return "p.channel_id,p.season DESC,p.id", nil
 	case "updated":
 		return "p.synced_at DESC,p.id", nil
+	case "updated_oldest":
+		return "p.synced_at,p.id", nil
 	default:
 		return "", errors.New("invalid playlist sort")
 	}

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"duplex/internal/catalog"
 	"duplex/internal/config"
 )
 
@@ -27,6 +28,8 @@ func (s *Server) readAPI(w http.ResponseWriter, r *http.Request) bool {
 			Status any `json:"status"`
 			Counts any `json:"counts"`
 		}{status, counts}
+	case "/api/v1/artwork/seasons":
+		result, err = s.App.ArtworkSeasons(r.Context(), catalog.SeasonFilter{Channel: r.URL.Query().Get("channel"), Query: r.URL.Query().Get("q"), Page: number(r, "page"), PerPage: number(r, "per_page")})
 	case "/api/v1/artwork":
 		result, err = s.App.Artwork(r.Context(), r.URL.Query().Get("channel"), r.URL.Query().Get("scope"))
 	default:

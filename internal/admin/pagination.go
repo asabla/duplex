@@ -72,6 +72,19 @@ func sortLink(values url.Values, path, order string) string {
 	for key, items := range values {
 		query[key] = append([]string(nil), items...)
 	}
+	active := values.Get("sort")
+	if active == "" {
+		active = "title"
+		if path == "/catalogue" {
+			active = "newest"
+		}
+	}
+	if active == order {
+		reverse := map[string]string{"title": "title_desc", "updated": "updated_oldest", "season": "season_desc", "newest": "oldest"}
+		if next := reverse[order]; next != "" {
+			order = next
+		}
+	}
 	query.Set("sort", order)
 	query.Del("page")
 	return path + "?" + query.Encode()

@@ -36,6 +36,7 @@ Failed logins are rate limited. Do not send credentials in URLs.
 | GET `/api/v1/summary` | Small `status` and `counts`; use this for polling. |
 | GET `/api/v1/status` | Compatibility status including the complete video array; avoid frequent polling. |
 | GET `/api/v1/diagnostics` | Protected summary and redacted stage measurements. |
+| GET `/api/v1/artwork/seasons?channel={id}` | Bounded season titles and stable artwork scopes; accepts `q`, `page`, and `per_page`. |
 | GET `/api/v1/artwork?channel={id}&scope={scope}` | Active reference and whether it is an override. |
 | POST `/api/v1/artwork?channel={id}&scope={scope}&revision={revision}` | Raw JPEG or PNG body; validate, normalize, save, and update YAML. |
 | DELETE `/api/v1/artwork?channel={id}&scope={scope}&revision={revision}` | Reset the selected show or season to automatic artwork. |
@@ -53,8 +54,8 @@ loaded. The page envelope contains `items`, `page`, `per_page`, and `total`.
 
 | Resource | Filters | Sort values |
 | --- | --- | --- |
-| Videos | `q`, `channel`, `playlist`, `lifecycle`, `preparation`, `inclusion` | `newest`, `oldest`, `title`, `updated` |
-| Playlists | `q`, `channel`, `policy`, `failure` | `title`, `season`, `updated` |
+| Videos | `q`, `channel`, `playlist`, `lifecycle`, `preparation`, `inclusion` | `newest`, `oldest`, `title`, `title_desc`, `updated`, `updated_oldest` |
+| Playlists | `q`, `channel`, `policy`, `failure`, `availability` | `title`, `title_desc`, `season`, `season_desc`, `updated`, `updated_oldest` |
 | Jobs | `channel`, `state` | `newest`, `oldest` |
 
 Video `inclusion` is `selected` by default, `all`, or `outside`. Lifecycle is
@@ -62,6 +63,9 @@ Video `inclusion` is `selected` by default, `all`, or `outside`. Lifecycle is
 `unavailable`. Preparation is `discovered`, `queued`, `resolving`, `preparing`,
 `ready`, `waiting`, `failed`, or `skipped`. Playlist `policy` filters the effective
 `latest`, `all`, or `skip` policy. `failure=failed` selects failed refreshes.
+Playlist `availability` is `available`, `missing`, or empty for both. Missing means
+absent from the last successful complete root discovery; its identity and season
+number remain durable. Artwork season pages include those retained seasons.
 
 ## Policy writes
 

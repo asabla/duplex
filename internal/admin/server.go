@@ -31,25 +31,29 @@ type Server struct {
 	templates *template.Template
 }
 type page struct {
-	Page            string
-	CSRF            string
-	Error           string
-	Notice          string
-	ReturnURL       string
-	Status          app.Status
-	YAML            string
-	Revision        string
-	Query           string
-	Total, Matches  int
-	Pagination      pagination
-	ChannelRows     []config.Channel
-	ChannelData     []catalog.Channel
-	ChannelSettings map[string]config.Channel
-	PlaylistRows    []catalog.PlaylistRow
-	Counts          catalog.Counts
-	Filters         url.Values
-	Artwork         app.ArtworkPreview
-	Seasons         map[string]int
+	Page                string
+	CSRF                string
+	Error               string
+	Notice              string
+	ReturnURL           string
+	Status              app.Status
+	YAML                string
+	Revision            string
+	Query               string
+	Total, Matches      int
+	Pagination          pagination
+	ChannelRows         []config.Channel
+	ChannelData         []catalog.Channel
+	ChannelSettings     map[string]config.Channel
+	PlaylistRows        []catalog.PlaylistRow
+	Counts              catalog.Counts
+	Filters             url.Values
+	Artwork             app.ArtworkPreview
+	SeasonRows          []catalog.ArtworkSeason
+	SeasonPagination    pagination
+	CurrentSeasonOnPage bool
+	PlaylistOptions     []catalog.PlaylistRow
+	PlaylistFallback    string
 }
 
 // New parses the embedded templates and binds the shared application services.

@@ -20,7 +20,8 @@ identity records. Pausing retains its settings without publishing its media.
 ## Replace artwork
 
 Open **Show and season artwork** from a channel, or **Artwork** from a playlist.
-Choose the show or season before uploading. JPEG and PNG inputs are limited to
+Search by playlist title or year, then choose the show or season before uploading.
+The picker is paginated and retains the current scope across searches. JPEG and PNG inputs are limited to
 10 MiB and 24 megapixels. duplex validates dimensions before decoding, removes
 metadata by re-encoding, and fits the full image into a 2:3 poster.
 

@@ -102,8 +102,12 @@ func videoOrder(sort string) (string, error) {
 		return "v.published,v.id", nil
 	case "title":
 		return "v.title COLLATE NOCASE,v.id", nil
+	case "title_desc":
+		return "v.title COLLATE NOCASE DESC,v.id", nil
 	case "updated":
 		return "v.updated DESC,v.id", nil
+	case "updated_oldest":
+		return "v.updated,v.id", nil
 	default:
 		return "", errors.New("invalid video sort")
 	}

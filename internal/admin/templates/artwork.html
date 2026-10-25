@@ -1,11 +1,18 @@
 {{define "artwork-page"}}
 <h1>Artwork</h1>
-<p>{{.ChannelName .Artwork.ChannelID}} · {{if .Artwork.Override}}Manual override{{else}}Automatic{{end}}</p>
+<p>{{.ChannelName .Artwork.ChannelID}} · {{.Artwork.Label}} · {{if .Artwork.Override}}Manual override{{else}}Automatic{{end}}</p>
 <form action="/artwork" method="get" class="filters">
-  <input type="hidden" name="channel" value="{{.Artwork.ChannelID}}">
+  <input type="hidden" name="channel" value="{{.Artwork.ChannelID}}"><input type="hidden" name="scope" value="{{.Artwork.Scope}}">
+  <label>Find season <input name="q" value="{{.Filters.Get "q"}}" maxlength="200" placeholder="Playlist title or year"></label>
+  <button class="secondary">Find</button><a href="/artwork?channel={{.Artwork.ChannelID}}&amp;scope={{.Artwork.Scope}}">Clear season filter</a>
+</form>
+{{template "pagination" .SeasonPagination}}
+<form action="/artwork" method="get" class="filters">
+  <input type="hidden" name="channel" value="{{.Artwork.ChannelID}}"><input type="hidden" name="q" value="{{.Filters.Get "q"}}"><input type="hidden" name="page" value="{{.SeasonPagination.Number}}"><input type="hidden" name="per_page" value="{{.SeasonPagination.Size}}">
   <label>Show or season <select name="scope">
     <option value="show" {{if eq .Artwork.Scope "show"}}selected{{end}}>Channel show</option>
-    {{range $scope,$season:=.Seasons}}<option value="{{$scope}}" {{if eq $scope $.Artwork.Scope}}selected{{end}}>Season {{$season}} · {{$scope}}</option>{{end}}
+    {{if and (ne .Artwork.Scope "show") (not .CurrentSeasonOnPage)}}<option value="{{.Artwork.Scope}}" selected>{{.Artwork.Label}} (current selection)</option>{{end}}
+    {{range .SeasonRows}}<option value="{{.Scope}}" {{if eq .Scope $.Artwork.Scope}}selected{{end}}>{{.Title}}{{if eq .Kind "playlist"}} · Season {{.Number}}{{end}}</option>{{end}}
   </select></label><button class="secondary">Preview</button>
 </form>
 <div class="artwork-editor">

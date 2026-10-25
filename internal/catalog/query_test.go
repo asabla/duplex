@@ -93,3 +93,45 @@ func TestLegacyJobsPageRetainsOldHistoryWithBoundedRows(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReadPagesSortInBothDirectionsBeforePagination(t *testing.T) {
+	s := collectionStore(t)
+	for _, item := range []struct {
+		id, title string
+		stamp     int
+	}{{"a", "Alpha", 10}, {"z", "Zulu", 20}} {
+		preparedVideo(t, s, item.id, item.title)
+		if _, err := s.DB.ExecContext(t.Context(), `UPDATE videos SET updated=? WHERE id=?`, item.stamp, item.id); err != nil {
+			t.Fatal(err)
+		}
+		if err := s.SavePlaylist(t.Context(), Playlist{ID: "PL" + item.id, Title: item.title, ChannelID: "owner"}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.DB.ExecContext(t.Context(), `UPDATE playlists SET synced_at=? WHERE id=?`, item.stamp, "PL"+item.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct{ order, first string }{{"title", "a"}, {"title_desc", "z"}, {"updated", "z"}, {"updated_oldest", "a"}} {
+		page, err := s.VideosPage(t.Context(), VideoFilter{Inclusion: "all", Sort: tc.order})
+		if err != nil || len(page.Items) != 2 || page.Items[0].ID != tc.first {
+			t.Fatal(tc, page, err)
+		}
+		playlists, err := s.PlaylistsPage(t.Context(), PlaylistFilter{Policies: []ChannelPolicy{{ID: "owner", Mode: "all", Enabled: true}}, Sort: tc.order})
+		if err != nil || playlists.Items[0].ID != "PL"+tc.first {
+			t.Fatal(tc, playlists, err)
+		}
+	}
+	page, err := s.PlaylistsPage(t.Context(), PlaylistFilter{Policies: []ChannelPolicy{{ID: "owner", Mode: "all", Enabled: true}}, Sort: "season_desc"})
+	if err != nil || page.Items[0].ID != "PLz" {
+		t.Fatal(page, err)
+	}
+	for _, tc := range []struct{ order, first string }{{"title", "owner"}, {"title_desc", "uploader"}, {"updated", "uploader"}, {"updated_oldest", "owner"}} {
+		if _, err := s.DB.ExecContext(t.Context(), `UPDATE channels SET synced_at=CASE id WHEN 'owner' THEN 10 ELSE 20 END`); err != nil {
+			t.Fatal(err)
+		}
+		channels, err := s.ChannelsPage(t.Context(), ChannelFilter{IDs: []string{"owner", "uploader"}, Sort: tc.order})
+		if err != nil || channels.Items[0].ID != tc.first {
+			t.Fatal(tc, channels, err)
+		}
+	}
+}

@@ -3,7 +3,8 @@
 <form method="get" action="/catalogue" class="filters">
   <label>Find <input name="q" value="{{.Filters.Get "q"}}" maxlength="200" placeholder="Title or video ID"></label>
   {{template "channel-filter" .}}
-  <label>Playlist <input name="playlist" value="{{.Filters.Get "playlist"}}" placeholder="Playlist ID"></label>
+  <label>Find playlist <input name="playlist_q" value="{{.Filters.Get "playlist_q"}}" maxlength="200" placeholder="Playlist title or ID" hx-get="/fragments/playlist-options" hx-trigger="input changed delay:300ms" hx-sync="this:replace" hx-include="closest form" hx-target="#playlist-picker" hx-swap="outerHTML"></label>
+  {{template "playlist-filter" .}}
   <label>Lifecycle <select name="lifecycle">
     <option value="">All states</option>
     {{range states "recorded" "replay-ready" "upcoming" "active" "processing" "unavailable" "discovered"}}<option {{if eq . ($.Filters.Get "lifecycle")}}selected{{end}}>{{.}}</option>{{end}}
@@ -18,7 +19,12 @@
     <option value="outside" {{if eq (.Filters.Get "inclusion") "outside"}}selected{{end}}>Outside selection</option>
   </select></label>
   <label>Sort <select name="sort">
-    {{range states "newest" "oldest" "title" "updated"}}<option {{if eq . ($.Filters.Get "sort")}}selected{{end}}>{{.}}</option>{{end}}
+    <option value="newest" {{if or (eq (.Filters.Get "sort") "") (eq (.Filters.Get "sort") "newest")}}selected{{end}}>Newest first</option>
+    <option value="oldest" {{if eq (.Filters.Get "sort") "oldest"}}selected{{end}}>Oldest first</option>
+    <option value="title" {{if eq (.Filters.Get "sort") "title"}}selected{{end}}>Title A to Z</option>
+    <option value="title_desc" {{if eq (.Filters.Get "sort") "title_desc"}}selected{{end}}>Title Z to A</option>
+    <option value="updated" {{if eq (.Filters.Get "sort") "updated"}}selected{{end}}>Recently updated</option>
+    <option value="updated_oldest" {{if eq (.Filters.Get "sort") "updated_oldest"}}selected{{end}}>Least recently updated</option>
   </select></label>
   <input type="hidden" name="per_page" value="{{.Pagination.Size}}">
   <button>Filter</button><a href="/catalogue">Clear filters</a>
@@ -29,7 +35,7 @@
 <table>
   <caption class="sr-only">Videos matching the current filters</caption>
   <thead><tr>
-    <th scope="col" aria-sort="{{sortaria .Filters "title" "" "newest"}}"><a href="{{sortlink .Filters "/catalogue" "title"}}">Video</a></th>
+    <th scope="col" aria-sort="{{sortaria .Filters "title" "title_desc" "newest"}}"><a href="{{sortlink .Filters "/catalogue" "title"}}">Video</a></th>
     <th scope="col" aria-sort="{{sortaria .Filters "oldest" "newest" "newest"}}"><a href="{{sortlink .Filters "/catalogue" "newest"}}">Published</a></th>
     <th scope="col">Lifecycle</th><th scope="col">Preparation</th><th scope="col">Quality</th><th scope="col">Library</th><th scope="col">Action</th>
   </tr></thead>
@@ -51,4 +57,13 @@
 </table>
 </div>
 {{template "pagination" .Pagination}}
+{{end}}
+
+{{define "playlist-filter"}}
+<div id="playlist-picker" data-preserve-edits>
+  <label>Playlist <select name="playlist"><option value="">All playlists</option>
+    {{if .PlaylistFallback}}<option value="{{.Filters.Get "playlist"}}" selected>{{.PlaylistFallback}}</option>{{end}}
+    {{range .PlaylistOptions}}<option value="{{.ID}}" {{if eq .ID ($.Filters.Get "playlist")}}selected{{end}}>{{.Title}} · {{$.ChannelName .ChannelID}}{{if not .Available}} (missing){{end}}</option>{{end}}
+  </select></label>
+</div>
 {{end}}

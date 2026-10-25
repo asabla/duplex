@@ -94,10 +94,15 @@ func (s *Server) artworkImage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) artworkResult(w http.ResponseWriter, r *http.Request, err error, message string) {
 	if err == nil {
 		location := "/artwork?" + url.Values{"channel": {r.FormValue("id")}, "scope": {r.FormValue("scope")}}.Encode()
+		returnURL := actionReturnURL(r)
+		current, parseErr := url.Parse(returnURL)
+		if parseErr == nil && current.Path == "/artwork" && current.Query().Get("channel") == r.FormValue("id") && (current.Query().Get("scope") == r.FormValue("scope") || current.Query().Get("scope") == "" && r.FormValue("scope") == "show") {
+			location = returnURL
+		}
 		if r.Header.Get("HX-Request") == "true" {
 			w.Header().Set("HX-Redirect", location)
 		} else {
-			http.Redirect(w, r, location, http.StatusSeeOther)
+			http.Redirect(w, r, location, http.StatusSeeOther) // #nosec G710 -- Both paths are restricted to the matched same-origin artwork scope.
 			return
 		}
 	}
