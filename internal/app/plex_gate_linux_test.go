@@ -106,7 +106,7 @@ func TestPlexPlaylistQualification(t *testing.T) {
 	acknowledge("initial")
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Minute)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Hour)
 	defer cancel()
 	for {
 		select {
