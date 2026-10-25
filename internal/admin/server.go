@@ -2,18 +2,12 @@ package admin
 
 import (
 	"embed"
-	"encoding/json"
-	"errors"
 	"html/template"
-	"io"
 	"io/fs"
-	"log/slog"
 	"net/http"
-	"os"
 	"strings"
 
 	"duplex/internal/app"
-	"duplex/internal/config"
 )
 
 //go:embed templates/*.html static/*
@@ -68,149 +62,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/v1/session", s.session)
 	mux.HandleFunc("POST /api/v1/login", s.login)
 	mux.Handle("/", s.protected(http.HandlerFunc(s.route)))
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
-		w.Header().Set("Cache-Control", "no-store")
-		limit := int64(1 << 20)
-		if r.URL.Path == "/actions/artwork" || r.URL.Path == "/api/v1/artwork" {
-			limit = 10<<20 + 64<<10
-		}
-		r.Body = http.MaxBytesReader(w, r.Body, limit)
-		mux.ServeHTTP(w, r)
-	})
-}
-
-func (s *Server) protected(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, e := s.Auth.Authorize(r)
-		if e != nil {
-			if strings.HasPrefix(r.URL.Path, "/api/") {
-				code := 403
-				if _, ok := s.Auth.Session(r); !ok {
-					code = 401
-				}
-				reply(w, code, map[string]string{"error": e.Error()})
-			} else {
-				if r.Header.Get("HX-Request") == "true" {
-					w.Header().Set("HX-Redirect", "/login")
-				}
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
-			}
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (s *Server) loginPage(w http.ResponseWriter, r *http.Request) {
-	csrf := s.Auth.LoginCSRF(w, r)
-	s.render(w, "login", page{CSRF: csrf})
-}
-
-func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	var v struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		CSRF     string `json:"csrf"`
-	}
-	api := strings.HasPrefix(r.URL.Path, "/api/")
-	if api {
-		if !decode(w, r, &v) {
-			return
-		}
-		if v.CSRF == "" {
-			v.CSRF = r.Header.Get("X-CSRF-Token")
-		}
-	} else {
-		v.Username, v.Password, v.CSRF = r.FormValue("username"), r.FormValue("password"), r.FormValue("csrf")
-	}
-	if len(v.Password) > 1024 {
-		http.Error(w, "invalid credentials", http.StatusBadRequest)
-		return
-	}
-	if e := s.Auth.Login(w, r, v.Username, v.Password, v.CSRF); e != nil {
-		if api {
-			reply(w, 401, map[string]string{"error": e.Error()})
-		} else {
-			w.WriteHeader(401)
-			s.render(w, "login", page{CSRF: s.Auth.LoginCSRF(w, r), Error: e.Error()})
-		}
-		return
-	}
-	if api {
-		reply(w, 200, map[string]bool{"authenticated": true})
-	} else {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-	}
-}
-
-func (s *Server) session(w http.ResponseWriter, r *http.Request) {
-	if v, ok := s.Auth.Session(r); ok {
-		reply(w, 200, map[string]any{"authenticated": true, "csrf": v.CSRF, "expires": v.Expires})
-	} else {
-		reply(w, 200, map[string]any{"authenticated": false, "csrf": s.Auth.LoginCSRF(w, r)})
-	}
-}
-
-func reply(w http.ResponseWriter, code int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		slog.Error("JSON response write failed")
-	}
-}
-
-func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	d := json.NewDecoder(r.Body)
-	d.DisallowUnknownFields()
-	if e := d.Decode(v); e != nil {
-		reply(w, 400, map[string]string{"error": "invalid request JSON"})
-		return false
-	}
-	var trailing any
-	if d.Decode(&trailing) != io.EOF {
-		reply(w, 400, map[string]string{"error": "request must contain one JSON document"})
-		return false
-	}
-	return true
-}
-
-func safeError(e error) string {
-	var p *os.PathError
-	if errors.As(e, &p) {
-		return "Cannot access a required local file. Check the service directories and file permissions."
-	}
-	return e.Error()
-}
-
-func (s *Server) result(w http.ResponseWriter, r *http.Request, e error, message string) {
-	if strings.HasPrefix(r.URL.Path, "/api/") {
-		if e != nil {
-			code := 400
-			if errors.Is(e, config.ErrConflict) {
-				code = 409
-			}
-			reply(w, code, map[string]string{"error": safeError(e)})
-			return
-		}
-		reply(w, 200, map[string]string{"message": message})
-		return
-	}
-	if e != nil {
-		w.WriteHeader(400)
-		s.render(w, "notice", page{Error: safeError(e), ErrorFieldID: errorField(r, e), ReturnURL: actionReturnURL(r)})
-		return
-	}
-	if r.Header.Get("HX-Request") != "true" {
-		http.Redirect(w, r, actionReturnURL(r), http.StatusSeeOther) // #nosec G710 -- actionReturnURL permits only enumerated same-host administration paths.
-		return
-	}
-	w.Header().Set("HX-Trigger", "channelsChanged")
-	s.render(w, "notice", page{Notice: message, ReturnURL: actionReturnURL(r)})
-	s.savedForm(w, r)
+	return secureHandler(mux)
 }
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {
@@ -249,10 +101,4 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, http.StatusMethodNotAllowed, map[string]string{"error": "unsupported endpoint or method"})
-}
-
-func writeText(w http.ResponseWriter, text string) {
-	if _, err := io.WriteString(w, text); err != nil {
-		slog.Error("text response write failed")
-	}
 }
