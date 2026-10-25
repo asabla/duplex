@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -23,14 +22,6 @@ type Client struct {
 	base  *url.URL
 	token string
 	http  *http.Client
-}
-
-// Capabilities records observed server features rather than inferred version support.
-type Capabilities struct {
-	Version   string `json:"version"`
-	Claimed   bool   `json:"claimed"`
-	NFOSeries bool   `json:"nfo_series"`
-	Provider  string `json:"provider,omitempty"`
 }
 
 // New validates a Plex origin and keeps its token out of URLs and diagnostics.
@@ -80,58 +71,4 @@ func (c *Client) request(ctx context.Context, method, path string, result any) (
 		return errors.New("invalid Plex XML response")
 	}
 	return nil
-}
-
-// Check verifies the minimum server version and the advertised NFO series agent.
-func (c *Client) Check(ctx context.Context) (Capabilities, error) {
-	var identity struct {
-		Version string `xml:"version,attr"`
-		Claimed int    `xml:"claimed,attr"`
-	}
-	var result Capabilities
-	if err := c.get(ctx, "/identity", &identity); err != nil {
-		return result, err
-	}
-	result.Version = identity.Version
-	result.Claimed = identity.Claimed == 1
-	numbers := strings.Split(strings.Split(identity.Version, "-")[0], ".")
-	if len(numbers) < 3 {
-		return result, errors.New("unrecognized Plex version")
-	}
-	parts := [3]int{}
-	for n := range 3 {
-		v, err := strconv.Atoi(numbers[n])
-		if err != nil {
-			return result, errors.New("unrecognized Plex version")
-		}
-		parts[n] = v
-	}
-	if parts[0] < 1 || (parts[0] == 1 && (parts[1] < 43 || (parts[1] == 43 && parts[2] < 1))) {
-		return result, errors.New("plex 1.43.1 or newer is required")
-	}
-	var providers struct {
-		Items []struct {
-			ID    string `xml:"identifier,attr"`
-			Title string `xml:"title,attr"`
-			Types []struct {
-				Type int `xml:"type,attr"`
-			} `xml:"MetadataType"`
-		} `xml:"MetadataAgentProvider"`
-	}
-	if err := c.get(ctx, "/media/providers/metadata", &providers); err != nil {
-		return result, err
-	}
-	for _, p := range providers.Items {
-		if !strings.Contains(strings.ToLower(p.ID+" "+p.Title), "nfo") {
-			continue
-		}
-		for _, t := range p.Types {
-			if t.Type == 2 {
-				result.NFOSeries = true
-				result.Provider = p.ID
-				return result, nil
-			}
-		}
-	}
-	return result, ErrMissingNFO
 }
