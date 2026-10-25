@@ -1,5 +1,13 @@
 {{define "status"}}
-  <section data-live data-preserve-edits id="service-status" hx-get="/fragments/status" hx-trigger="every 10s" hx-swap="outerHTML" aria-label="Service status">
+  <section
+    data-live
+    data-preserve-edits
+    id="service-status"
+    hx-get="/fragments/status"
+    hx-trigger="every 10s"
+    hx-swap="outerHTML"
+    aria-label="Service status"
+  >
     <dl class="summary">
       <div>
         <dt>Service</dt>
@@ -7,7 +15,9 @@
       </div>
       <div>
         <dt>Media cache</dt>
-        <dd>{{gib .Status.Cache.Allocated}} / {{gib .Status.Cache.Limit}} GiB</dd>
+        <dd
+          >{{gib .Status.Cache.Allocated}} / {{gib .Status.Cache.Limit}} GiB</dd
+        >
       </div>
       <div>
         <dt>Selected videos</dt>
@@ -26,45 +36,95 @@
         <dd>{{.Status.PendingJobs}}</dd>
       </div>
     </dl>
-    {{if .Status.ConfigError}}<p class="error">{{.Status.ConfigError}}</p>{{end}}
-    {{if .Status.SourceError}}<p class="error">{{.Status.SourceError}}</p>{{end}}
+    {{if .Status.ConfigError}}
+      <p class="error">{{.Status.ConfigError}}</p>
+    {{end}}
+    {{if .Status.SourceError}}
+      <p class="error">{{.Status.SourceError}}</p>
+    {{end}}
     {{if .Status.PlexError}}<p class="error">{{.Status.PlexError}}</p>{{end}}
-    {{if .Status.MetadataError}}<p class="warning">{{.Status.MetadataError}}</p>{{end}}
-    {{if .Status.MetadataPending}}<p>{{.Status.MetadataPending}} show metadata refreshes pending.</p>{{end}}
-    {{if .Status.RestartRequired}}<p class="warning">Saved settings require a service restart.</p>{{end}}
+    {{if .Status.MetadataError}}
+      <p class="warning">{{.Status.MetadataError}}</p>
+    {{end}}
+    {{if .Status.MetadataPending}}
+      <p>{{.Status.MetadataPending}} show metadata refreshes pending.</p>
+    {{end}}
+    {{if .Status.RestartRequired}}
+      <p class="warning">Saved settings require a service restart.</p>
+    {{end}}
   </section>
 {{end}}
 
 {{define "job-progress"}}
   <div id="job-progress" class="table-note">
-    <p>{{.Status.PendingJobs}} tasks pending · Discovery and media preparation run separately.</p>
+    <p
+      >{{.Status.PendingJobs}} tasks pending · Discovery and media preparation
+      run separately.</p
+    >
   </div>
 {{end}}
 
 {{define "job-filters"}}
-  {{if .Channel.ID}}<h2>Activity</h2>{{else}}<div class="page-heading">
+  {{if .Channel.ID}}
+    <h2>Activity</h2>
+  {{else}}
+    <div class="page-heading">
       <div>
         <h1>Activity</h1>
-        <p class="muted">Inspect channel refresh results and preparation work.</p>
+        <p class="muted"
+          >Inspect channel refresh results and preparation work.</p
+        >
       </div>
-  </div>{{end}}
-  <form method="get" action="/jobs" class="toolbar" role="search" aria-label="Filter activity">
-    {{template "context-fields" .}}{{if not .Channel.ID}}{{template "channel-filter" .}}{{end}}
-    <label>Result<select name="state">
-        <option value="">All results</option>{{range states "running" "complete" "failed" "interrupted"}}<option value="{{.}}" {{if eq . ($.Filters.Get "state")}}selected{{end}}>{{stage .}}</option>{{end}}</select>
+    </div>
+  {{end}}
+  <form
+    method="get"
+    action="/jobs"
+    class="toolbar"
+    role="search"
+    aria-label="Filter activity"
+  >
+    {{template "context-fields" .}}{{if not .Channel.ID}}
+      {{template "channel-filter" .}}
+    {{end}}
+    <label
+      >Result<select name="state">
+        <option value="">All results</option
+        >{{range states "running" "complete" "failed" "interrupted"}}
+          <option
+            value="{{.}}"
+            {{if eq . ($.Filters.Get "state")}}selected{{end}}
+            >{{stage .}}</option
+          >
+        {{end}}</select
+      >
     </label>
-    <label>Order<select name="sort">
+    <label
+      >Order<select name="sort">
         <option value="newest">Newest first</option>
-        <option value="oldest" {{if eq (.Filters.Get "sort") "oldest"}}selected{{end}}>Oldest first</option>
+        <option
+          value="oldest"
+          {{if eq (.Filters.Get "sort") "oldest"}}selected{{end}}
+          >Oldest first</option
+        >
       </select>
     </label>
-    <input type="hidden" name="per_page" value="{{.Pagination.Size}}">
-    <button class="secondary">Apply filters</button>{{if .Filtered}}<a href="{{.ClearURL}}">Clear filters</a>{{end}}
+    <input type="hidden" name="per_page" value="{{.Pagination.Size}}" />
+    <button class="secondary">Apply filters</button>{{if .Filtered}}
+      <a href="{{.ClearURL}}">Clear filters</a>
+    {{end}}
   </form>
 {{end}}
 
 {{define "jobs"}}
-  <section id="job-list" hx-get="{{.Pagination.FragmentURL}}" hx-trigger="every 5s, channelsChanged from:body" hx-swap="outerHTML" data-live data-preserve-edits>
+  <section
+    id="job-list"
+    hx-get="{{.Pagination.FragmentURL}}"
+    hx-trigger="every 5s, channelsChanged from:body"
+    hx-swap="outerHTML"
+    data-live
+    data-preserve-edits
+  >
     {{template "job-progress" .}}{{template "compact-pagination" .Pagination}}
     <div class="table-wrap">
       <table>
@@ -79,39 +139,77 @@
             <th scope="col">Recovery</th>
           </tr>
         </thead>
-        <tbody>{{range .Status.Jobs}}<tr>
+        <tbody
+          >{{range .Status.Jobs}}
+            <tr>
               <th scope="row">
-                <a class="item-title" href="{{$.ChannelRowLink .ChannelID}}">{{$.ChannelName .ChannelID}}</a>
+                <a class="item-title" href="{{$.ChannelRowLink .ChannelID}}"
+                  >{{$.ChannelName .ChannelID}}</a
+                >
               </th>
               <td>
-                <span class="status {{if eq .State "complete"}}status-success{{else if eq .State "running"}}status-info{{else}}status-danger{{end}}">{{stage .State}}</span>
+                <span
+                  class="status {{if eq .State "complete"}}
+                    status-success
+                  {{else if eq .State "running"}}
+                    status-info
+                  {{else}}
+                    status-danger
+                  {{end}}"
+                  >{{stage .State}}</span
+                >
               </td>
-              <td>{{stage .Stage}}<small>Refresh {{.ID}}</small>
-              </td>
+              <td>{{stage .Stage}}<small>Refresh {{.ID}}</small> </td>
               <td class="numeric">{{.Discovered}}</td>
               <td class="date" title="{{when .Started}}">{{age .Started}}</td>
-              <td>{{if or (eq .State "failed") (eq .State "interrupted")}}<details class="inspection">
+              <td
+                >{{if or (eq .State "failed") (eq .State "interrupted")}}
+                  <details class="inspection">
                     <summary>Inspect failure</summary>
                     <div>
                       <p class="text-danger">{{.Error}}</p>
-                      <p class="hint">Correct the cause before retrying. Previous complete catalogue data is retained.</p>
-                      <a href="{{channelLink "/catalogue" .ChannelID $.CurrentURL}}&amp;preparation=failed">Inspect affected videos</a>
-                      <form action="/actions/sync" method="post" hx-post="/actions/sync" hx-target="#notice" hx-disabled-elt="find button">
-                        <input type="hidden" name="csrf" value="{{$.CSRF}}">
-                        <input type="hidden" name="id" value="{{.ChannelID}}">
+                      <p class="hint"
+                        >Correct the cause before retrying. Previous complete
+                        catalogue data is retained.</p
+                      >
+                      <a
+                        href="{{channelLink "/catalogue" .ChannelID $.CurrentURL}}&amp;preparation=failed"
+                        >Inspect affected videos</a
+                      >
+                      <form
+                        action="/actions/sync"
+                        method="post"
+                        hx-post="/actions/sync"
+                        hx-target="#notice"
+                        hx-disabled-elt="find button"
+                      >
+                        <input type="hidden" name="csrf" value="{{$.CSRF}}" />
+                        <input type="hidden" name="id" value="{{.ChannelID}}" />
                         <button class="secondary">Retry channel refresh</button>
                       </form>
                     </div>
-                </details>{{else}}<a href="{{channelLink "/catalogue" .ChannelID $.CurrentURL}}">Inspect videos</a>{{end}}</td>
+                  </details>
+                {{else}}
+                  <a href="{{channelLink "/catalogue" .ChannelID $.CurrentURL}}"
+                    >Inspect videos</a
+                  >
+                {{end}}</td
+              >
             </tr>
-          {{else}}<tr>
+          {{else}}
+            <tr>
               <td colspan="6" class="empty">
                 <strong>No matching activity</strong>
-                <p>Refresh a channel to start discovery, or change the filters.</p>
+                <p
+                  >Refresh a channel to start discovery, or change the
+                  filters.</p
+                >
               </td>
-        </tr>{{end}}</tbody>
-      </table>
-    </div>{{template "pagination" .Pagination}}
+            </tr>
+          {{end}}</tbody
+        >
+      </table> </div
+    >{{template "pagination" .Pagination}}
   </section>
 {{end}}
 
@@ -122,17 +220,45 @@
     <h2>Integration</h2>
     <dl class="details">
       <dt>Source tools</dt>
-      <dd>{{if .Status.SourceError}}{{.Status.SourceError}}{{else}}Pinned versions accepted{{end}}</dd>
+      <dd
+        >{{if .Status.SourceError}}
+          {{.Status.SourceError}}
+        {{else}}
+          Pinned versions accepted
+        {{end}}</dd
+      >
       <dt>FUSE mount</dt>
-      <dd>{{if .Status.MountError}}{{.Status.MountError}}{{else if .Status.MountReady}}Mounted{{else}}Not mounted{{end}}</dd>
+      <dd
+        >{{if .Status.MountError}}
+          {{.Status.MountError}}
+        {{else if .Status.MountReady}}
+          Mounted
+        {{else}}
+          Not mounted
+        {{end}}</dd
+      >
       <dt>Plex</dt>
-      <dd>{{if .Status.PlexError}}{{.Status.PlexError}}{{else if not .Status.Config.Config.Plex.URL}}Not configured{{else if .Status.Ready}}Connected and ready{{else}}Not ready; inspect the service checks above{{end}}</dd>
+      <dd
+        >{{if .Status.PlexError}}
+          {{.Status.PlexError}}
+        {{else if not .Status.Config.Config.Plex.URL}}
+          Not configured
+        {{else if .Status.Ready}}
+          Connected and ready
+        {{else}}
+          Not ready; inspect the service checks above
+        {{end}}</dd
+      >
     </dl>
     <a href="/api/v1/diagnostics">Diagnostic JSON</a>
   </section>
   <section class="panel">
     <h2>Media counters</h2>
-    <p>Request attempts and payload bytes received by the media HTTP client. Resolver and artwork traffic are separate. Values restart with the process.</p>
+    <p
+      >Request attempts and payload bytes received by the media HTTP client.
+      Resolver and artwork traffic are separate. Values restart with the
+      process.</p
+    >
     <div class="table-wrap">
       <table>
         <thead>
@@ -142,12 +268,16 @@
           </tr>
         </thead>
         <tbody>
-          {{range .Status.Counters}}<tr>
+          {{range .Status.Counters}}
+            <tr>
               <td>{{.Name}}</td>
               <td>{{.Value}}</td>
-          </tr>{{else}}<tr>
+            </tr>
+          {{else}}
+            <tr>
               <td colspan="2">No media requests yet.</td>
-          </tr>{{end}}
+            </tr>
+          {{end}}
         </tbody>
       </table>
     </div>
@@ -165,14 +295,18 @@
           </tr>
         </thead>
         <tbody>
-          {{range .Status.Measurements}}<tr>
+          {{range .Status.Measurements}}
+            <tr>
               <td>{{.Operation}}</td>
               <td>{{.Count}}</td>
               <td>{{.Total}}</td>
               <td>{{.Maximum}}</td>
-          </tr>{{else}}<tr>
+            </tr>
+          {{else}}
+            <tr>
               <td colspan="4">No measurements yet.</td>
-          </tr>{{end}}
+            </tr>
+          {{end}}
         </tbody>
       </table>
     </div>

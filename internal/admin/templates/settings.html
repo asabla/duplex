@@ -2,42 +2,124 @@
   <div class="page-heading">
     <div>
       <h1>Settings</h1>
-      <p class="muted">Manage library storage, discovery, and the Plex connection.</p>
+      <p class="muted"
+        >Manage library storage, discovery, and the Plex connection.</p
+      >
     </div>
   </div>
   {{template "settings-form" .}}
   <details class="editor advanced-settings">
     <summary>Advanced configuration</summary>
-    <p class="hint">YAML remains the settings authority. Storage paths, listener, mountpoint, and worker changes require a restart.</p>{{template "yaml-form" .}}</details>
+    <p class="hint"
+      >YAML remains the settings authority. Storage paths, listener, mountpoint,
+      and worker changes require a restart.</p
+    >{{template "yaml-form" .}}</details
+  >
 {{end}}
 
 {{define "settings-form"}}
-  <form id="settings-form" {{if .OOB}}hx-swap-oob="outerHTML"{{end}} action="/actions/settings" method="post" hx-post="/actions/settings" hx-target="#notice" hx-disabled-elt="find button" class="settings-form editor">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <input type="hidden" name="revision" value="{{.Revision}}">
-    <input type="hidden" name="_form" value="settings-form">
+  <form
+    id="settings-form"
+    {{if .OOB}}hx-swap-oob="outerHTML"{{end}}
+    action="/actions/settings"
+    method="post"
+    hx-post="/actions/settings"
+    hx-target="#notice"
+    hx-disabled-elt="find button"
+    class="settings-form editor"
+  >
+    <input type="hidden" name="csrf" value="{{.CSRF}}" />
+    <input type="hidden" name="revision" value="{{.Revision}}" />
+    <input type="hidden" name="_form" value="settings-form" />
     <fieldset>
       <legend>Library</legend>
       <div class="settings-grid">
-        <label for="settings-form-cache_gib">Media cache limit (GiB)<input id="settings-form-cache_gib" type="number" name="cache_gib" min="1" max="1048576" value="{{.Status.Config.Config.CacheGiB}}" required aria-describedby="cache-hint">
-          <span id="cache-hint" class="hint">Evictable media only. Plex conversion storage is separate.</span>
+        <label for="settings-form-cache_gib"
+          >Media cache limit (GiB)<input
+            id="settings-form-cache_gib"
+            type="number"
+            name="cache_gib"
+            min="1"
+            max="1048576"
+            value="{{.Status.Config.Config.CacheGiB}}"
+            required
+            aria-describedby="cache-hint"
+          />
+          <span id="cache-hint" class="hint"
+            >Evictable media only. Plex conversion storage is separate.</span
+          >
         </label>
-        <label for="settings-form-refresh_minutes">Refresh every (minutes)<input id="settings-form-refresh_minutes" type="number" name="refresh_minutes" min="1" max="10080" value="{{.Status.Config.Config.RefreshMinutes}}" required aria-describedby="refresh-hint">
-          <span id="refresh-hint" class="hint">You can also refresh a channel manually.</span>
+        <label for="settings-form-refresh_minutes"
+          >Refresh every (minutes)<input
+            id="settings-form-refresh_minutes"
+            type="number"
+            name="refresh_minutes"
+            min="1"
+            max="10080"
+            value="{{.Status.Config.Config.RefreshMinutes}}"
+            required
+            aria-describedby="refresh-hint"
+          />
+          <span id="refresh-hint" class="hint"
+            >You can also refresh a channel manually.</span
+          >
         </label>
-        <label for="settings-form-max_height">Maximum quality<select id="settings-form-max_height" name="max_height">
-            <option value="{{.Status.Config.Config.MaxHeight}}" selected>{{if eq .Status.Config.Config.MaxHeight 2160}}4K (2160p){{else}}{{height .Status.Config.Config.MaxHeight}}{{end}}</option>{{range heights 2160 1440 1080 720 480 360 240 144}}{{if ne . $.Status.Config.Config.MaxHeight}}<option value="{{.}}">{{if eq . 2160}}4K (2160p){{else}}{{height .}}{{end}}</option>{{end}}{{end}}</select>
-          <span class="hint">A supported lower quality is used when needed.</span>
+        <label for="settings-form-max_height"
+          >Maximum quality<select
+            id="settings-form-max_height"
+            name="max_height"
+          >
+            <option value="{{.Status.Config.Config.MaxHeight}}" selected
+              >{{if eq .Status.Config.Config.MaxHeight 2160}}
+                4K (2160p)
+              {{else}}
+                {{height .Status.Config.Config.MaxHeight}}
+              {{end}}</option
+            >{{range heights 2160 1440 1080 720 480 360 240 144}}
+              {{if ne . $.Status.Config.Config.MaxHeight}}
+                <option value="{{.}}"
+                  >{{if eq . 2160}}
+                    4K (2160p)
+                  {{else}}
+                    {{height .}}
+                  {{end}}</option
+                >
+              {{end}}
+            {{end}}</select
+          >
+          <span class="hint"
+            >A supported lower quality is used when needed.</span
+          >
         </label>
       </div>
     </fieldset>
     <fieldset>
       <legend>Plex connection</legend>
-      <label for="settings-form-plex_url">Plex server URL<input id="settings-form-plex_url" type="url" name="plex_url" value="{{.Status.Config.Config.Plex.URL}}" placeholder="http://plex:32400" aria-describedby="plex-url-hint">
-        <span id="plex-url-hint" class="hint">Use the address reachable from the duplex service.</span>
+      <label for="settings-form-plex_url"
+        >Plex server URL<input
+          id="settings-form-plex_url"
+          type="url"
+          name="plex_url"
+          value="{{.Status.Config.Config.Plex.URL}}"
+          placeholder="http://plex:32400"
+          aria-describedby="plex-url-hint"
+        />
+        <span id="plex-url-hint" class="hint"
+          >Use the address reachable from the duplex service.</span
+        >
       </label>
-      <label for="settings-form-plex_section">Plex library section ID<input id="settings-form-plex_section" name="plex_section" value="{{.Status.Config.Config.Plex.Section}}" inputmode="numeric" aria-describedby="plex-library-hint">
-        <span id="plex-library-hint" class="hint">Use the dedicated duplex TV library. The Plex token remains in its protected file.</span>
+      <label for="settings-form-plex_section"
+        >Plex library section ID<input
+          id="settings-form-plex_section"
+          name="plex_section"
+          value="{{.Status.Config.Config.Plex.Section}}"
+          inputmode="numeric"
+          aria-describedby="plex-library-hint"
+        />
+        <span id="plex-library-hint" class="hint"
+          >Use the dedicated duplex TV library. The Plex token remains in its
+          protected file.</span
+        >
       </label>
     </fieldset>
     <div class="form-actions">
@@ -48,12 +130,22 @@
 {{end}}
 
 {{define "yaml-form"}}
-  <form id="yaml-form" {{if .OOB}}hx-swap-oob="outerHTML"{{end}} action="/actions/config" method="post" hx-post="/actions/config" hx-target="#notice" hx-disabled-elt="find button" class="stack">
-    <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <input type="hidden" name="revision" value="{{.Revision}}">
-    <input type="hidden" name="_form" value="yaml-form">
+  <form
+    id="yaml-form"
+    {{if .OOB}}hx-swap-oob="outerHTML"{{end}}
+    action="/actions/config"
+    method="post"
+    hx-post="/actions/config"
+    hx-target="#notice"
+    hx-disabled-elt="find button"
+    class="stack"
+  >
+    <input type="hidden" name="csrf" value="{{.CSRF}}" />
+    <input type="hidden" name="revision" value="{{.Revision}}" />
+    <input type="hidden" name="_form" value="yaml-form" />
     <label for="yaml-form-yaml">YAML configuration</label>
-    <textarea id="yaml-form-yaml" name="yaml" rows="22" spellcheck="false">{{.YAML}}</textarea>
+    <textarea id="yaml-form-yaml" name="yaml" rows="22" spellcheck="false">
+{{.YAML}}</textarea>
     <button>Save configuration</button>
   </form>
 {{end}}

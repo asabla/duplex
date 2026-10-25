@@ -24,25 +24,37 @@ function initialize(root) {
   updateLiveControls();
 }
 
-function livePaused() { return sessionStorage.getItem('duplex-live-paused') === 'true'; }
+function livePaused() {
+  return sessionStorage.getItem('duplex-live-paused') === 'true';
+}
 function updateLiveControls() {
   document.querySelectorAll('[data-live-toggle]').forEach(function (button) {
     button.setAttribute('aria-pressed', String(livePaused()));
-    button.textContent = livePaused() ? 'Resume live updates' : 'Pause live updates';
+    button.textContent = livePaused()
+      ? 'Resume live updates'
+      : 'Pause live updates';
   });
 }
 
 function protectEdits(event) {
   const form = event.target.closest('form');
-  if (form && (form.querySelector('input[name="revision"]') || form.closest('[data-preserve-edits]'))) {
+  if (
+    form &&
+    (form.querySelector('input[name="revision"]') ||
+      form.closest('[data-preserve-edits]'))
+  ) {
     form.dataset.dirty = 'true';
   }
 }
 
 function isEditing(target) {
-  return target.querySelector('form[data-dirty="true"], details[open]') ||
+  return (
+    target.querySelector('form[data-dirty="true"], details[open]') ||
     (target.contains(document.activeElement) &&
-      document.activeElement.matches('input, select, textarea, button, a, summary'));
+      document.activeElement.matches(
+        'input, select, textarea, button, a, summary',
+      ))
+  );
 }
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -65,13 +77,17 @@ document.addEventListener('click', function (event) {
     updateLiveControls();
   }
 });
-document.addEventListener('submit', function (event) {
-  const message = event.target.dataset.confirm;
-  if (message && !window.confirm(message)) {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-  }
-}, true);
+document.addEventListener(
+  'submit',
+  function (event) {
+    const message = event.target.dataset.confirm;
+    if (message && !window.confirm(message)) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+  },
+  true,
+);
 document.addEventListener('htmx:configRequest', function (event) {
   const token = document.querySelector('meta[name="csrf-token"]');
   if (token) {
@@ -99,7 +115,9 @@ document.addEventListener('htmx:oobAfterSwap', function (event) {
 });
 document.addEventListener('htmx:afterSwap', function (event) {
   initialize(event.detail.target);
-  const form = event.detail.requestConfig && event.detail.requestConfig.elt.closest('form');
+  const form =
+    event.detail.requestConfig &&
+    event.detail.requestConfig.elt.closest('form');
   if (!form || event.detail.target.id !== 'notice') {
     return;
   }
@@ -109,9 +127,11 @@ document.addEventListener('htmx:afterSwap', function (event) {
     if (message) {
       message.remove();
     }
-    const described = (field.getAttribute('aria-describedby') || '').split(' ').filter(function (id) {
-      return id !== field.id + '-error';
-    });
+    const described = (field.getAttribute('aria-describedby') || '')
+      .split(' ')
+      .filter(function (id) {
+        return id !== field.id + '-error';
+      });
     field.setAttribute('aria-describedby', described.join(' '));
   });
   const error = event.detail.target.querySelector('[data-field-error]');
@@ -124,7 +144,14 @@ document.addEventListener('htmx:afterSwap', function (event) {
       message.className = 'field-error';
       message.textContent = error.textContent;
       input.insertAdjacentElement('afterend', message);
-      input.setAttribute('aria-describedby', ((input.getAttribute('aria-describedby') || '') + ' ' + message.id).trim());
+      input.setAttribute(
+        'aria-describedby',
+        (
+          (input.getAttribute('aria-describedby') || '') +
+          ' ' +
+          message.id
+        ).trim(),
+      );
     }
   }
   const summary = document.getElementById('form-errors');
@@ -168,8 +195,12 @@ function initializePicker(root) {
     item.textContent = option.textContent;
     item.setAttribute('role', 'option');
     item.setAttribute('aria-selected', 'false');
-    item.addEventListener('mousedown', function (event) { event.preventDefault(); });
-    item.addEventListener('click', function () { choose(index); });
+    item.addEventListener('mousedown', function (event) {
+      event.preventDefault();
+    });
+    item.addEventListener('click', function () {
+      choose(index);
+    });
     list.append(item);
   });
   let active = -1;
@@ -185,25 +216,44 @@ function initializePicker(root) {
     close();
     input.focus();
   }
-  function open() { list.hidden = false; input.setAttribute('aria-expanded', 'true'); }
+  function open() {
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+  }
   const selected = select.selectedOptions[0];
-  input.dataset.selectedLabel = selected && selected.value ? selected.textContent : '';
+  input.dataset.selectedLabel =
+    selected && selected.value ? selected.textContent : '';
   if (!document.activeElement || document.activeElement !== input) {
     input.value = input.dataset.selectedLabel;
   }
   input.onfocus = open;
   input.oninput = open;
-  input.onblur = function () { close(); input.value = input.dataset.selectedLabel; };
+  input.onblur = function () {
+    close();
+    input.value = input.dataset.selectedLabel;
+  };
   input.onkeydown = function (event) {
-    if (event.key === 'Escape') { close(); event.preventDefault(); return; }
-    if (event.key === 'Enter' && !list.hidden && active >= 0) { choose(active); event.preventDefault(); return; }
+    if (event.key === 'Escape') {
+      close();
+      event.preventDefault();
+      return;
+    }
+    if (event.key === 'Enter' && !list.hidden && active >= 0) {
+      choose(active);
+      event.preventDefault();
+      return;
+    }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') {
       return;
     }
     event.preventDefault();
     open();
-    active = (active + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
-    Array.from(list.children).forEach(function (item, index) { item.setAttribute('aria-selected', String(index === active)); });
+    active =
+      (active + (event.key === 'ArrowDown' ? 1 : -1) + options.length) %
+      options.length;
+    Array.from(list.children).forEach(function (item, index) {
+      item.setAttribute('aria-selected', String(index === active));
+    });
     input.setAttribute('aria-activedescendant', list.children[active].id);
     list.children[active].scrollIntoView({ block: 'nearest' });
   };
