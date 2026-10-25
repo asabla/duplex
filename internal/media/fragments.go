@@ -23,10 +23,12 @@ func (r *indexReader) read(p []byte, offset int64) error {
 	if offset < 0 || int64(len(p)) > r.source.Size()-offset {
 		return ErrUnsupported
 	}
+
 	if offset >= r.offset && offset+int64(len(p)) <= r.offset+int64(len(r.data)) {
 		copy(p, r.data[offset-r.offset:])
 		return nil
 	}
+
 	n := sort.Search(len(r.windows), func(n int) bool { return r.windows[n].offset+int64(len(r.windows[n].data)) > offset })
 	if n < len(r.windows) {
 		w := r.windows[n]
@@ -35,23 +37,29 @@ func (r *indexReader) read(p []byte, offset int64) error {
 			return nil
 		}
 	}
+
 	length := min(max(len(p), 16*1024), int(r.source.Size()-offset))
 	if r.total+int64(length) > maxIndexBytes {
 		return fmt.Errorf("%w: index traffic exceeds 64 MiB", ErrUnsupported)
 	}
+
 	r.data = make([]byte, length)
 	r.offset = offset
 	r.total += int64(length)
+
 	var err error
 	if source, ok := r.source.(*HTTPSource); ok {
 		r.data, err = source.fetch(r.ctx, offset, length)
 	} else {
 		_, err = r.source.ReadAt(r.ctx, r.data, offset)
 	}
+
 	if err != nil {
 		return err
 	}
+
 	copy(p, r.data)
+
 	return nil
 }
 
@@ -63,17 +71,23 @@ func (r *indexReader) prefetch(ctx context.Context, index *mp4.SidxBox) error {
 	if !ok || len(r.windows) > 0 {
 		return nil
 	}
+
 	windows, required, err := fragmentWindows(index, source.Size(), maxIndexBytes-r.total)
 	if err != nil {
 		return err
 	}
+
 	if len(windows) == 0 {
 		return nil
 	}
+
 	r.total += required
+
 	if err = fetchFragmentWindows(ctx, source, windows); err != nil {
 		return err
 	}
+
 	r.windows = windows
+
 	return nil
 }

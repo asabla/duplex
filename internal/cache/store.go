@@ -56,21 +56,27 @@ func New(dir string, limit int64) (*Store, error) {
 	if limit < 4096 {
 		return nil, errors.New("cache limit must be at least 4096 bytes")
 	}
+
 	if err := os.MkdirAll(dir, 0o700); err != nil { // #nosec G703 -- The operator selects the private cache root at startup.
 		return nil, err
 	}
+
 	lock, err := lockDirectory(dir)
 	if err != nil {
 		return nil, err
 	}
+
 	store := &Store{dir: dir, limit: limit, items: make(map[string]*entry), lock: lock, allocation: allocated}
+
 	store.space = func() (int64, int64, error) { return diskSpace(dir) }
 	if err = store.recoverDirectory(); err != nil {
 		return nil, errors.Join(err, unlockDirectory(lock))
 	}
+
 	if err = store.reserve(0); err != nil {
 		return nil, errors.Join(err, unlockDirectory(lock))
 	}
+
 	return store, nil
 }
 
@@ -78,15 +84,19 @@ func New(dir string, limit int64) (*Store, error) {
 func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.closed {
 		return nil
 	}
+
 	for _, e := range s.items {
 		if e.pins > 0 || e.done != nil {
 			return errors.New("cache is in use")
 		}
 	}
+
 	s.closed = true
+
 	return unlockDirectory(s.lock)
 }
 
@@ -94,6 +104,7 @@ func (s *Store) Close() error {
 func (s *Store) Stats() Stats {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return Stats{Limit: s.limit, Allocated: s.used, Chunks: len(s.items)}
 }
 
@@ -102,13 +113,17 @@ func (s *Store) Resize(limit int64) error {
 	if limit < 4096 {
 		return errors.New("invalid cache limit")
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	old := s.limit
+
 	s.limit = limit
 	if e := s.reserve(0); e != nil {
 		s.limit = old
 		return e
 	}
+
 	return nil
 }

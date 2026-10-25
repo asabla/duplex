@@ -21,34 +21,44 @@ func (s *Store) Get(ctx context.Context, identity string, offset int64, length i
 	if length <= 0 || offset < 0 || int64(length) > math.MaxInt64-4095 || offset > math.MaxInt64-int64(length) {
 		return nil, nil, errors.New("invalid chunk bounds")
 	}
+
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", identity, offset, length)))
 	key := hex.EncodeToString(hash[:])
+
 	reservation, err := chunkReservation(int64(length))
 	if err != nil {
 		return nil, nil, err
 	}
+
 	interruptions := 0
+
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
+
 		item, created, done, err := s.acquireChunk(key, reservation)
 		if err != nil {
 			return nil, nil, err
 		}
+
 		if done != nil {
 			retry, failure := s.waitChunk(ctx, item, done, interruptions)
 			if failure != nil {
 				return nil, nil, failure
 			}
+
 			if retry {
 				interruptions++
 			}
+
 			continue
 		}
+
 		if created {
 			return s.fetchChunk(ctx, key, item, length, fetch)
 		}
+
 		return s.readChunk(key, item, length)
 	}
 }
@@ -56,35 +66,46 @@ func (s *Store) Get(ctx context.Context, identity string, offset int64, length i
 func (s *Store) acquireChunk(key string, reservation int64) (*entry, bool, <-chan struct{}, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.closed {
 		return nil, false, nil, errors.New("cache is closed")
 	}
+
 	if item := s.items[key]; item != nil {
 		if item.done != nil {
 			return item, false, item.done, nil
 		}
+
 		if item.err == nil {
 			item.pins++
 			item.used = time.Now()
+
 			return item, false, nil, nil
 		}
+
 		if item.pins > 0 {
 			return nil, false, nil, item.err
 		}
+
 		if err := removeChunkFile(item.path); err != nil {
 			return nil, false, nil, err
 		}
+
 		delete(s.items, key)
 		s.used -= item.allocation
 	}
+
 	if reservation > s.limit {
 		return nil, false, nil, ErrFull
 	}
+
 	if err := s.reserveFetch(reservation); err != nil {
 		return nil, false, nil, err
 	}
+
 	item := &entry{done: make(chan struct{}), allocation: reservation, pins: 1, used: time.Now()}
 	s.items[key] = item
+
 	return item, true, nil, nil
 }
 
@@ -97,12 +118,15 @@ func (s *Store) waitChunk(ctx context.Context, item *entry, done <-chan struct{}
 		return false, ctx.Err()
 	case <-done:
 	}
+
 	s.mu.Lock()
 	failure := item.err
 	s.mu.Unlock()
+
 	if errors.Is(failure, errFetchInterrupted) && interruptions < 3 && ctx.Err() == nil {
 		return true, nil
 	}
+
 	return false, failure
 }
 
@@ -113,21 +137,27 @@ func (s *Store) releaseChunk(item *entry) func() {
 
 func (s *Store) readChunk(key string, item *entry, length int) ([]byte, func(), error) {
 	data, err := readChunkFile(item.path, length)
+
 	digest := sha256.Sum256(data)
 	if err == nil && len(data) == length && hex.EncodeToString(digest[:]) == item.digest {
 		return data, s.releaseChunk(item), nil
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	item.pins--
+
 	item.err = errors.New("corrupt cache entry; retry after invalidation")
 	if item.pins == 0 {
 		if err = removeChunkFile(item.path); err != nil {
 			return nil, nil, err
 		}
+
 		delete(s.items, key)
 		s.used -= item.allocation
 	}
+
 	return nil, nil, item.err
 }
 
@@ -136,9 +166,12 @@ func (s *Store) fetchChunk(ctx context.Context, key string, item *entry, length 
 	if err == nil && len(data) != length {
 		err = errors.New("short upstream chunk")
 	}
+
 	temp := ""
+
 	if err == nil {
 		var allocation int64
+
 		temp, allocation, err = s.writeChunk(data, item.allocation)
 		if err == nil {
 			s.mu.Lock()
@@ -147,40 +180,52 @@ func (s *Store) fetchChunk(ctx context.Context, key string, item *entry, length 
 			s.mu.Unlock()
 		}
 	}
+
 	if err == nil {
 		digest := sha256.Sum256(data)
 		item.digest = hex.EncodeToString(digest[:])
 		item.path = filepath.Join(s.dir, key+"-"+item.digest+".chunk")
+
 		err = os.Rename(temp, item.path) // #nosec G703 -- Both paths are constructed in the private cache from a generated temporary name and a hashed chunk key.
 		if err == nil {
 			err = syncChunkDirectory(s.dir)
 		}
 	}
+
 	retained := ""
+
 	if err != nil {
 		var cleanupErr error
+
 		retained, cleanupErr = cleanupChunk(temp, item.path)
 		err = errors.Join(err, cleanupErr)
 	}
+
 	sharedFailure := err
 	if err != nil && ctx.Err() != nil {
 		sharedFailure = errors.Join(err, errFetchInterrupted)
 	}
+
 	s.finishChunk(key, item, sharedFailure, retained)
+
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return data, s.releaseChunk(item), nil
 }
 
 func (s *Store) finishChunk(key string, item *entry, failure error, retained string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	done := item.done
 	item.err = failure
+
 	item.done = nil
 	if failure != nil {
 		item.pins = 0
+
 		if retained == "" {
 			delete(s.items, key)
 			s.used -= item.allocation
@@ -188,5 +233,6 @@ func (s *Store) finishChunk(key string, item *entry, failure error, retained str
 			item.path = retained
 		}
 	}
+
 	close(done)
 }

@@ -48,21 +48,26 @@ func (b blob) ReadAt(_ context.Context, p []byte, o int64) (int, error) {
 // Entries builds a complete static projection for fixtures and small snapshots.
 func Entries(episodes []Episode) ([]Entry, error) {
 	var entries []Entry
+
 	shows := map[string]bool{}
 	names := episodeSeasonNames(episodes)
 	seen := map[string]bool{}
+
 	for _, e := range episodes {
 		if !safeID.MatchString(e.ChannelID) || !safeID.MatchString(e.VideoID) || e.Season < 1 || e.Number < 1 || e.Media == nil {
 			return nil, fmt.Errorf("invalid library episode")
 		}
+
 		if !shows[e.ChannelID] {
 			show, err := ShowMetadata(e.ChannelID, e.ChannelTitle, names[e.ChannelID], e.Modified)
 			if err != nil {
 				return nil, err
 			}
+
 			entries = append(entries, show)
 			shows[e.ChannelID] = true
 		}
+
 		// Do not append arbitrary source IDs: suffixes such as "-video" can be
 		// interpreted as extras by Plex's modern scanner. The assigned episode
 		// slot is stable; the independent source identity is stored in NFO.
@@ -70,13 +75,17 @@ func Entries(episodes []Episode) ([]Entry, error) {
 		if seen[base] {
 			return nil, fmt.Errorf("duplicate library episode")
 		}
+
 		seen[base] = true
+
 		metadata, err := EpisodeMetadata(e)
 		if err != nil {
 			return nil, err
 		}
+
 		entries = append(entries, metadata, Entry{Path: base + ".mp4", Media: e.Media, Modified: e.Modified})
 	}
+
 	return entries, nil
 }
 
@@ -85,17 +94,21 @@ func ShowMetadata(channel, title string, names map[int]string, modified int64) (
 	if !safeID.MatchString(channel) {
 		return Entry{}, fmt.Errorf("invalid channel identity")
 	}
+
 	show := struct {
 		XMLName xml.Name      `xml:"tvshow"`
 		Title   string        `xml:"title"`
 		ID      string        `xml:"id"`
 		Seasons []namedSeason `xml:"namedseason"`
 	}{Title: title, ID: "youtube-channel:" + channel, Seasons: seasonNames(names)}
+
 	data, err := xml.MarshalIndent(show, "", "  ")
 	if err != nil {
 		return Entry{}, err
 	}
+
 	p := path.Join("Channel-"+channel, "tvshow.nfo")
+
 	return Entry{Path: p, Media: metadataBlob(data), Modified: modified}, nil
 }
 
@@ -104,11 +117,14 @@ func EpisodeMetadata(e Episode) (Entry, error) {
 	if !safeID.MatchString(e.ChannelID) || !safeID.MatchString(e.VideoID) || e.Season < 1 || e.Number < 1 {
 		return Entry{}, fmt.Errorf("invalid library episode")
 	}
+
 	base := occurrenceBase(e)
+
 	identity := e.OccurrenceID
 	if identity == "" {
 		identity = "youtube-video:" + e.VideoID
 	}
+
 	episode := struct {
 		XMLName xml.Name `xml:"episodedetails"`
 		Title   string   `xml:"title"`
@@ -117,6 +133,7 @@ func EpisodeMetadata(e Episode) (Entry, error) {
 		Episode int      `xml:"episode"`
 		ID      string   `xml:"id"`
 	}{Title: e.Title, Plot: e.Description, Season: e.Season, Episode: e.Number, ID: identity}
+
 	b, err := xml.MarshalIndent(episode, "", "  ")
 	if err != nil {
 		return Entry{}, err
@@ -128,6 +145,7 @@ func EpisodeMetadata(e Episode) (Entry, error) {
 func metadataBlob(xmlData []byte) blob {
 	data := append([]byte(xml.Header), xmlData...)
 	hash := sha256.Sum256(data)
+
 	return blob{id: fmt.Sprintf("metadata:%x", hash), data: data}
 }
 
@@ -141,16 +159,19 @@ func occurrenceBase(e Episode) string {
 	if number == 0 {
 		number = e.Number
 	}
+
 	return EpisodeBase(e.ChannelID, e.Season, number)
 }
 
 func episodeSeasonNames(episodes []Episode) map[string]map[int]string {
 	names := map[string]map[int]string{}
+
 	for _, e := range episodes {
 		if e.SeasonTitle != "" {
 			if names[e.ChannelID] == nil {
 				names[e.ChannelID] = map[int]string{}
 			}
+
 			names[e.ChannelID][e.Season] = e.SeasonTitle
 		}
 	}
@@ -170,7 +191,9 @@ func CopyRange(ctx context.Context, w io.Writer, r media.Representation, offset,
 	if offset < 0 || length < 0 || length > r.Size()-offset {
 		return io.ErrUnexpectedEOF
 	}
+
 	_, err := io.CopyN(w, &media.Seeker{Context: ctx, Source: r, Offset: offset}, length)
+
 	return err
 }
 
@@ -184,6 +207,8 @@ func seasonNames(names map[int]string) []namedSeason {
 	for number, title := range names {
 		result = append(result, namedSeason{Number: number, Title: title})
 	}
+
 	sort.Slice(result, func(i, j int) bool { return result[i].Number < result[j].Number })
+
 	return result
 }

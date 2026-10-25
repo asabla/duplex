@@ -93,6 +93,15 @@ limits and cleanup in `process.go`, boundary metadata in `metadata.go`, and
 streaming collection operations in `collection.go`. Channel decoding, candidate
 selection, and network policy have separate code locations within `source`.
 
+Cache ownership and public operations stay in `store.go`; restart recovery,
+capacity/reservation accounting, and chunk file I/O are separate from the
+deduplicated fetch state machine. Media verification, request-local seeking,
+combined-track inspection, durable index storage, and fragment prefetch have
+separate code locations. Their byte mapping, limits, and cancellation order are
+unchanged. Linux FUSE mount lifecycle stays separate from static snapshots and
+node callbacks; provider paging retains its existing contract. No new package,
+cache lock, or handle-lifetime rule was introduced by these moves.
+
 ## Intended direction for later refactors
 
 These are design constraints for future work, not completed extractions:

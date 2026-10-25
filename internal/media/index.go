@@ -19,7 +19,9 @@ func (v *VirtualMP4) SaveIndex(path string) error {
 	if e != nil {
 		return e
 	}
+
 	h := sha256.Sum256(b)
+
 	envelope, e := json.Marshal(struct {
 		Checksum string          `json:"checksum"`
 		Data     json.RawMessage `json:"data"`
@@ -27,6 +29,7 @@ func (v *VirtualMP4) SaveIndex(path string) error {
 	if e != nil {
 		return e
 	}
+
 	return config.AtomicWrite(path, envelope, 0o600)
 }
 
@@ -36,14 +39,18 @@ func LoadIndex(path string, sources map[string]Representation) (loaded *VirtualM
 	if err != nil {
 		return nil, err
 	}
+
 	defer func() { result = errors.Join(result, f.Close()) }()
+
 	st, err := f.Stat()
 	if err != nil {
 		return nil, err
 	}
+
 	if !st.Mode().IsRegular() || st.Size() > 256<<20 {
 		return nil, ErrUnsupported
 	}
+
 	return decodeIndex(io.LimitReader(f, (256<<20)+1), sources)
 }
 
@@ -52,29 +59,37 @@ func decodeIndex(reader io.Reader, sources map[string]Representation) (*VirtualM
 		Checksum string          `json:"checksum"`
 		Data     json.RawMessage `json:"data"`
 	}
+
 	decoder := json.NewDecoder(reader)
 	if decoder.Decode(&envelope) != nil {
 		return nil, ErrUnsupported
 	}
+
 	var extra any
 	if !errors.Is(decoder.Decode(&extra), io.EOF) {
 		return nil, ErrUnsupported
 	}
+
 	h := sha256.Sum256(envelope.Data)
 	if hex.EncodeToString(h[:]) != envelope.Checksum {
 		return nil, errors.New("packaging index checksum differs")
 	}
+
 	var v VirtualMP4
 	if json.Unmarshal(envelope.Data, &v) != nil {
 		return nil, ErrUnsupported
 	}
+
 	if v.Revision != PackagingVersion || len(v.Sources) != 2 || len(v.Header) < 16 || v.Length < int64(len(v.Header)) {
 		return nil, ErrUnsupported
 	}
+
 	if err := v.bindSources(sources); err != nil {
 		return nil, err
 	}
+
 	v.setIdentity()
+
 	return &v, nil
 }
 
@@ -82,16 +97,20 @@ func (v *VirtualMP4) bindSources(sources map[string]Representation) error {
 	next := int64(len(v.Header))
 	for i := range v.Spans {
 		span := &v.Spans[i]
+
 		source := sources[span.SourceID]
 		if !validIndexSource(v, span, source) || span.Output != next || span.Length > v.Length-next {
 			return errors.New("index source revision differs")
 		}
+
 		span.source = source
 		next += span.Length
 	}
+
 	if next != v.Length {
 		return ErrUnsupported
 	}
+
 	return nil
 }
 
