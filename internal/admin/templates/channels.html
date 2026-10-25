@@ -1,0 +1,55 @@
+{{define "channel-page"}}
+<h1>Channels</h1>
+<details class="panel" open>
+  <summary>Follow a channel</summary>
+  <form action="/actions/follow" method="post" hx-post="/actions/follow" hx-target="#notice" hx-disabled-elt="find button" class="filters">
+    <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Revision}}">
+    <label>YouTube channel URL <input type="url" name="url" placeholder="https://www.youtube.com/@channel" required></label>
+    <label>Uploads <select name="mode" data-policy><option value="latest">Latest N</option><option value="all">All</option></select></label>
+    <label data-limit>N <input type="number" name="limit" min="1" value="50" required></label>
+    <label class="checkbox"><input type="checkbox" name="include_playlists" checked> Include playlists</label>
+    <button>Follow</button>
+  </form>
+  <p>Each playlist inherits the channel policy unless it has an override.</p>
+</details>
+<form method="get" action="/channels" class="filters">
+  <label>Find <input name="q" value="{{.Filters.Get "q"}}" placeholder="Name or channel ID"></label>
+  <label>Policy <select name="policy"><option value="">All policies</option>{{range states "latest" "all"}}<option {{if eq . ($.Filters.Get "policy")}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Following <select name="state"><option value="">All channels</option>{{range states "enabled" "paused"}}<option {{if eq . ($.Filters.Get "state")}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Failures <select name="failure"><option value="">All results</option><option value="failed" {{if eq (.Filters.Get "failure") "failed"}}selected{{end}}>Failed refresh</option></select></label>
+  <button>Filter</button><a href="/channels">Clear filters</a>
+</form>
+{{template "channels" .}}
+{{end}}
+
+{{define "channels"}}
+<section id="channel-list" hx-get="{{.Pagination.FragmentURL}}" hx-trigger="channelsChanged from:body" hx-swap="outerHTML">
+{{template "pagination" .Pagination}}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col"><a href="{{sortlink .Filters "/channels" "title"}}">Channel</a></th><th scope="col">Policy</th><th scope="col"><a href="{{sortlink .Filters "/channels" "updated"}}">Last discovery</a></th><th scope="col">Actions</th></tr></thead>
+  <tbody>
+  {{range .ChannelData}}{{$settings:=index $.ChannelSettings .ID}}{{$selection:=$settings.Selection}}
+    <tr>
+      <td><strong>{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</strong><small>{{.ID}}</small>{{if not $settings.Enabled}}<small>Paused</small>{{end}}<a href="/artwork?channel={{.ID}}&amp;scope=show">Show and season artwork</a></td>
+      <td>
+        <form action="/actions/policy" method="post" hx-post="/actions/policy" hx-target="#notice" class="policy-form">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="revision" value="{{$.Revision}}"><input type="hidden" name="id" value="{{.ID}}">
+          <label>Uploads <select name="mode" data-policy><option value="latest" {{if eq $selection.Mode "latest"}}selected{{end}}>Latest N</option><option value="all" {{if eq $selection.Mode "all"}}selected{{end}}>All</option></select></label>
+          <label data-limit {{if ne $selection.Mode "latest"}}hidden{{end}}>N <input type="number" name="limit" min="1" value="{{if $selection.Limit}}{{$selection.Limit}}{{else}}50{{end}}"></label>
+          <label class="checkbox"><input name="include_playlists" type="checkbox" {{if $settings.Playlists}}{{if $settings.Playlists.Enabled}}checked{{end}}{{end}}> Include playlists</label>
+          <button class="secondary">Save policy</button>
+        </form>
+      </td>
+      <td>{{age .SyncedAt}}<small>{{when .SyncedAt}}</small>{{if .Error}}<small class="warning">{{.Error}}</small>{{end}}</td>
+      <td class="actions">
+        <form action="/actions/sync" method="post" hx-post="/actions/sync" hx-target="#notice"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="secondary">Refresh</button></form>
+        <a href="/catalogue?channel={{.ID}}">Videos</a><a href="/playlists?channel={{.ID}}">Playlists</a>
+        <form action="/actions/remove" method="post" hx-post="/actions/remove" hx-target="#notice"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="revision" value="{{$.Revision}}"><input type="hidden" name="id" value="{{.ID}}"><button class="danger">Unfollow</button></form>
+      </td>
+    </tr>
+  {{else}}<tr><td colspan="4" class="empty">No matching channels.</td></tr>{{end}}
+  </tbody>
+</table></div>
+{{template "pagination" .Pagination}}
+</section>
+{{end}}

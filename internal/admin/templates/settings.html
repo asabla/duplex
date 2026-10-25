@@ -1,0 +1,29 @@
+{{define "settings-page"}}
+<h1>Settings</h1>
+<p>Settings are saved in the YAML file. Valid external edits reload automatically. A stale save is rejected.</p>
+<form action="/actions/settings" method="post" hx-post="/actions/settings" hx-target="#notice" class="settings-form panel">
+  <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Revision}}">
+  <fieldset><legend>Library</legend>
+    <label>Media cache (GiB) <input type="number" name="cache_gib" min="1" max="1048576" value="{{.Status.Config.Config.CacheGiB}}" required></label>
+    <label>Refresh interval (minutes) <input type="number" name="refresh_minutes" min="1" max="10080" value="{{.Status.Config.Config.RefreshMinutes}}" required></label>
+    <label>Maximum video height <select name="max_height">
+      {{range heights 360 480 720 1080 1440 2160}}<option value="{{.}}" {{if eq . $.Status.Config.Config.MaxHeight}}selected{{end}}>{{.}}p</option>{{end}}
+    </select></label>
+  </fieldset>
+  <fieldset><legend>Plex</legend>
+    <label>Server URL <input type="url" name="plex_url" value="{{.Status.Config.Config.Plex.URL}}" placeholder="http://plex:32400"></label>
+    <label>Library section <input name="plex_section" value="{{.Status.Config.Config.Plex.Section}}" inputmode="numeric"></label>
+    <p>The Plex token stays in its protected file. Transcode storage is separate from the media cache.</p>
+  </fieldset>
+  <button>Save settings</button>
+</form>
+<details class="panel">
+  <summary>Advanced YAML editor</summary>
+  <p>Storage paths, mountpoint, listener, and worker changes require a service restart.</p>
+  <form action="/actions/config" method="post" hx-post="/actions/config" hx-target="#notice" class="stack">
+    <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Revision}}">
+    <label for="yaml">Configuration</label><textarea id="yaml" name="yaml" rows="28" spellcheck="false">{{.YAML}}</textarea>
+    <button>Save YAML</button>
+  </form>
+</details>
+{{end}}

@@ -306,7 +306,7 @@ func (a *App) renderPoster(channel, scope string, input artwork.Input, sourceErr
 }
 
 func (a *App) refreshArtwork(ctx context.Context, channel string) error {
-	if a.mount == nil {
+	if a.mount == nil || a.Config.Snapshot().Config.Plex.URL == "" {
 		return nil
 	}
 	client, err := a.plexClient()

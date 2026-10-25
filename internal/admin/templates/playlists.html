@@ -1,0 +1,40 @@
+{{define "playlist-page"}}
+<h1>Playlists</h1>
+<p>Playlists appear as named seasons. Shared videos use separate Plex progress in each season.</p>
+<form method="get" action="/playlists" class="filters">
+  <label>Find <input name="q" value="{{.Filters.Get "q"}}" placeholder="Title or playlist ID"></label>
+  {{template "channel-filter" .}}
+  <label>Effective policy <select name="policy"><option value="">All policies</option>{{range states "latest" "all" "skip"}}<option {{if eq . ($.Filters.Get "policy")}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Failures <select name="failure"><option value="">All results</option><option value="failed" {{if eq (.Filters.Get "failure") "failed"}}selected{{end}}>Failed refresh</option></select></label>
+  <button>Filter</button><a href="/playlists">Clear filters</a>
+</form>
+{{template "pagination" .Pagination}}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col"><a href="{{sortlink .Filters "/playlists" "title"}}">Playlist</a></th><th scope="col">Channel</th><th scope="col"><a href="{{sortlink .Filters "/playlists" "season"}}">Season</a></th><th scope="col">Policy</th><th scope="col">Selected</th><th scope="col"><a href="{{sortlink .Filters "/playlists" "updated"}}">Last discovery</a></th></tr></thead>
+  <tbody>
+  {{range .PlaylistRows}}
+    <tr>
+      <td><strong>{{.Title}}</strong><small>{{.ID}}</small><a href="/catalogue?playlist={{.ID}}">Videos</a> · <a href="/artwork?channel={{.ChannelID}}&amp;scope=playlist:{{.ID}}">Artwork</a></td>
+      <td>{{$.ChannelName .ChannelID}}</td><td>{{.Season}}</td>
+      <td>
+        <p>{{if .Inherited}}Inherited: {{else}}Override: {{end}}{{if eq .Mode "latest"}}Latest {{.Limit}}{{else}}{{.Mode}}{{end}}</p>
+        <form action="/actions/policy" method="post" hx-post="/actions/policy" hx-target="#notice" class="policy-form">
+          <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="revision" value="{{$.Revision}}"><input type="hidden" name="id" value="{{.ChannelID}}"><input type="hidden" name="playlist" value="{{.ID}}">
+          <label>Policy <select name="mode" data-policy>
+            <option value="inherit" {{if .Inherited}}selected{{end}}>Inherit</option>
+            <option value="latest" {{if and (not .Inherited) (eq .Mode "latest")}}selected{{end}}>Latest N</option>
+            <option value="all" {{if and (not .Inherited) (eq .Mode "all")}}selected{{end}}>All</option>
+            <option value="skip" {{if and (not .Inherited) (eq .Mode "skip")}}selected{{end}}>Skip</option>
+          </select></label>
+          <label data-limit {{if or .Inherited (ne .Mode "latest")}}hidden{{end}}>N <input type="number" name="limit" min="1" value="{{if .Limit}}{{.Limit}}{{else}}50{{end}}"></label>
+          <button class="secondary">Save policy</button>
+        </form>
+      </td>
+      <td>{{if eq .Mode "skip"}}0{{else}}{{.Selected}}{{end}}</td>
+      <td>{{when .SyncedAt}}{{if .Error}}<small class="warning">{{.Error}}</small>{{end}}</td>
+    </tr>
+  {{else}}<tr><td colspan="6" class="empty">No matching playlists. Enable playlists in the channel policy, then refresh the channel.</td></tr>{{end}}
+  </tbody>
+</table></div>
+{{template "pagination" .Pagination}}
+{{end}}

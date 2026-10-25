@@ -1,0 +1,53 @@
+{{define "video-page"}}
+<h1>Videos</h1>
+<form method="get" action="/catalogue" class="filters">
+  <label>Find <input name="q" value="{{.Filters.Get "q"}}" maxlength="200" placeholder="Title or video ID"></label>
+  {{template "channel-filter" .}}
+  <label>Playlist <input name="playlist" value="{{.Filters.Get "playlist"}}" placeholder="Playlist ID"></label>
+  <label>Lifecycle <select name="lifecycle">
+    <option value="">All states</option>
+    {{range states "recorded" "replay-ready" "upcoming" "active" "processing" "unavailable" "discovered"}}<option {{if eq . ($.Filters.Get "lifecycle")}}selected{{end}}>{{.}}</option>{{end}}
+  </select></label>
+  <label>Preparation <select name="preparation">
+    <option value="">All states</option>
+    {{range states "discovered" "queued" "resolving" "preparing" "ready" "waiting" "failed" "skipped"}}<option {{if eq . ($.Filters.Get "preparation")}}selected{{end}}>{{.}}</option>{{end}}
+  </select></label>
+  <label>Library <select name="inclusion">
+    <option value="selected" {{if or (eq (.Filters.Get "inclusion") "selected") (eq (.Filters.Get "inclusion") "")}}selected{{end}}>Selected</option>
+    <option value="all" {{if eq (.Filters.Get "inclusion") "all"}}selected{{end}}>All discovered</option>
+    <option value="outside" {{if eq (.Filters.Get "inclusion") "outside"}}selected{{end}}>Outside selection</option>
+  </select></label>
+  <label>Sort <select name="sort">
+    {{range states "newest" "oldest" "title" "updated"}}<option {{if eq . ($.Filters.Get "sort")}}selected{{end}}>{{.}}</option>{{end}}
+  </select></label>
+  <input type="hidden" name="per_page" value="{{.Pagination.Size}}">
+  <button>Filter</button><a href="/catalogue">Clear filters</a>
+</form>
+<p class="result-count">{{.Total}} discovered records · <span>{{.Matches}} {{if eq .Matches 1}}match{{else}}matches{{end}}</span></p>
+{{template "pagination" .Pagination}}
+<div class="table-wrap">
+<table>
+  <thead><tr>
+    <th scope="col"><a href="{{sortlink .Filters "/catalogue" "title"}}">Video</a></th>
+    <th scope="col"><a href="{{sortlink .Filters "/catalogue" "newest"}}">Published</a></th>
+    <th scope="col">Lifecycle</th><th scope="col">Preparation</th><th scope="col">Quality</th><th scope="col">Library</th><th scope="col">Action</th>
+  </tr></thead>
+  <tbody>
+  {{range .Status.Videos}}
+    <tr>
+      <td><strong>{{.Title}}</strong><small>{{.ID}} · {{$.ChannelName .ChannelID}}</small></td>
+      <td class="date" title="{{when .Published}}">{{day .Published}}</td>
+      <td>{{.State}}</td>
+      <td><span class="state state-{{.Preparation}}">{{.Preparation}}</span>{{if .PreparationError}}<details class="cell-note"><summary>Details</summary><p class="warning">{{.PreparationError}}</p></details>{{end}}</td>
+      <td>{{height .Height}}{{if .Fallback}}<small>{{.Fallback}}</small>{{end}}</td>
+      <td>{{if .Exposed}}Selected{{else}}Outside selection{{end}}{{if .Number}}<small>Year {{.Year}} · Episode {{.Number}}</small>{{end}}</td>
+      <td>{{if .Exposed}}<form action="/actions/prepare" method="post" hx-post="/actions/prepare" hx-target="#notice">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="secondary">Prepare now</button>
+      </form>{{end}}</td>
+    </tr>
+  {{else}}<tr><td colspan="7" class="empty">No matching videos. Change the filters or follow a channel.</td></tr>{{end}}
+  </tbody>
+</table>
+</div>
+{{template "pagination" .Pagination}}
+{{end}}

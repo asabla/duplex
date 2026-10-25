@@ -1,0 +1,63 @@
+{{define "status"}}
+<section id="service-status" hx-get="/fragments/status" hx-trigger="every 10s" hx-swap="outerHTML" aria-label="Service status">
+  <dl class="summary">
+    <div><dt>Service</dt><dd>{{if .Status.Ready}}Ready{{else}}Needs attention{{end}}</dd></div>
+    <div><dt>Media cache</dt><dd>{{gib .Status.Cache.Allocated}} / {{gib .Status.Cache.Limit}} GiB</dd></div>
+    <div><dt>Selected videos</dt><dd>{{.Counts.Selected}}</dd></div>
+    <div><dt>Prepared</dt><dd>{{.Counts.Ready}}</dd></div>
+    <div><dt>Failed</dt><dd>{{.Counts.Failed}}</dd></div>
+    <div><dt>Pending work</dt><dd>{{.Status.PendingJobs}}</dd></div>
+  </dl>
+  {{if .Status.ConfigError}}<p class="error">{{.Status.ConfigError}}</p>{{end}}
+  {{if .Status.SourceError}}<p class="error">{{.Status.SourceError}}</p>{{end}}
+  {{if .Status.PlexError}}<p class="error">{{.Status.PlexError}}</p>{{end}}
+  {{if .Status.RestartRequired}}<p class="warning">Saved settings require a service restart.</p>{{end}}
+</section>
+{{end}}
+
+{{define "job-progress"}}
+<div id="job-progress" hx-get="/fragments/jobs" hx-trigger="every 5s" hx-swap="outerHTML">
+  <p>{{.Status.PendingJobs}} pending discovery or media tasks. Discovery can finish while media preparation continues.</p>
+  {{range .Status.Jobs}}{{if eq .State "running"}}<p>Job {{.ID}} · {{.Stage}} · {{.Discovered}} entries processed</p>{{end}}{{end}}
+</div>
+{{end}}
+
+{{define "job-filters"}}
+<form method="get" action="/jobs" class="filters">
+  {{template "channel-filter" .}}
+  <label>Result <select name="state"><option value="">All results</option>{{range states "running" "complete" "failed" "interrupted"}}<option {{if eq . ($.Filters.Get "state")}}selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <label>Sort <select name="sort"><option value="newest">Newest</option><option value="oldest" {{if eq (.Filters.Get "sort") "oldest"}}selected{{end}}>Oldest</option></select></label>
+  <button>Filter</button><a href="/jobs">Clear filters</a>
+</form>
+{{end}}
+
+{{define "jobs"}}
+{{template "pagination" .Pagination}}
+<div class="table-wrap"><table>
+  <thead><tr><th scope="col">Job</th><th scope="col">Channel</th><th scope="col">Result</th><th scope="col">Stage</th><th scope="col">Entries processed</th><th scope="col">Started</th></tr></thead>
+  <tbody>{{range .Status.Jobs}}
+    <tr><td>{{.ID}}</td><td>{{$.ChannelName .ChannelID}}</td><td>{{.State}}{{if .Error}}<small class="warning">{{.Error}}</small>{{end}}</td><td>{{.Stage}}</td><td>{{.Discovered}}</td><td class="date">{{when .Started}}</td></tr>
+  {{else}}<tr><td colspan="6" class="empty">No matching jobs.</td></tr>{{end}}</tbody>
+</table></div>
+{{template "pagination" .Pagination}}
+{{end}}
+
+{{define "diagnostics-page"}}
+<h1>Diagnostics</h1>
+{{template "status" .}}
+<section class="panel">
+  <h2>Integration</h2>
+  <dl class="details">
+    <dt>Source tools</dt><dd>{{if .Status.SourceError}}{{.Status.SourceError}}{{else}}Pinned versions accepted{{end}}</dd>
+    <dt>FUSE mount</dt><dd>{{if .Status.MountError}}{{.Status.MountError}}{{else if .Status.MountReady}}Mounted{{else}}Not mounted{{end}}</dd>
+    <dt>Plex</dt><dd>{{if .Status.PlexError}}{{.Status.PlexError}}{{else}}No reported integration failure{{end}}</dd>
+  </dl>
+  <a href="/api/v1/diagnostics">Diagnostic JSON</a>
+</section>
+<section class="panel">
+  <h2>Stage measurements</h2>
+  <div class="table-wrap"><table><thead><tr><th scope="col">Operation</th><th scope="col">Count</th><th scope="col">Total</th><th scope="col">Maximum</th></tr></thead><tbody>
+    {{range .Status.Measurements}}<tr><td>{{.Operation}}</td><td>{{.Count}}</td><td>{{.Total}}</td><td>{{.Maximum}}</td></tr>{{else}}<tr><td colspan="4">No measurements yet.</td></tr>{{end}}
+  </tbody></table></div>
+</section>
+{{end}}

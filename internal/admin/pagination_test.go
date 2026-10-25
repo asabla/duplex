@@ -55,7 +55,7 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 	snap := m.Snapshot()
 	for i := 0; i < 30; i++ {
 		id := fmt.Sprintf("UC%022d", i)
-		snap.Config.Channels = append(snap.Config.Channels, config.Channel{ID: id, URL: "https://www.youtube.com/channel/" + id, Limit: 50})
+		snap.Config.Channels = append(snap.Config.Channels, config.Channel{ID: id, URL: "https://www.youtube.com/channel/" + id, Limit: 50, Enabled: true})
 	}
 	if err = m.Save(snap.Config, snap.Revision); err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 61; i++ {
-		_, err = tx.ExecContext(ctx, `INSERT INTO videos(id,channel_id,title,state,updated) VALUES(?,?,?,'recorded',0)`, fmt.Sprintf("video%06d", i), snap.Config.Channels[0].ID, fmt.Sprintf("Video %03d", i))
+		_, err = tx.ExecContext(ctx, `INSERT INTO videos(id,channel_id,title,search_title,state,updated,selected) VALUES(?,?,?,?,'recorded',0,1)`, fmt.Sprintf("video%06d", i), snap.Config.Channels[0].ID, fmt.Sprintf("Video %03d", i), fmt.Sprintf("video %03d", i))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -107,7 +107,7 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 		}
 		return w.Body.String()
 	}
-	for _, path := range []string{"/?page=5", "/diagnostics?page=5"} {
+	for _, path := range []string{"/?page=5", "/jobs?page=5"} {
 		body := get(path)
 		if !strings.Contains(body, "job-channel-000") || strings.Contains(body, "job-channel-003") || strings.Count(body, "Showing 101–103 of 103") != 2 {
 			t.Fatalf("older jobs inaccessible or pagination missing at %s", path)

@@ -1,0 +1,100 @@
+{{define "head"}}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>duplex administration</title>
+<meta name="csrf-token" content="{{.CSRF}}">
+<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"historyCacheSize":0}'>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+{{end}}
+
+{{define "layout"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="app-header">
+  <a href="/" class="wordmark">duplex</a>
+  <nav aria-label="Main navigation">
+    <a href="/channels" {{if eq .Page "/channels"}}aria-current="page"{{end}}>Channels</a>
+    <a href="/playlists" {{if eq .Page "/playlists"}}aria-current="page"{{end}}>Playlists</a>
+    <a href="/catalogue" {{if eq .Page "/catalogue"}}aria-current="page"{{end}}>Videos</a>
+    <a href="/jobs" {{if eq .Page "/jobs"}}aria-current="page"{{end}}>Jobs</a>
+    <a href="/settings" {{if eq .Page "/settings"}}aria-current="page"{{end}}>Settings</a>
+    <a href="/diagnostics" {{if eq .Page "/diagnostics"}}aria-current="page"{{end}}>Diagnostics</a>
+  </nav>
+  <form action="/logout" method="post">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button class="secondary">Sign out</button>
+  </form>
+</header>
+<main id="main">
+  <div id="notice" role="status" aria-live="polite"></div>
+  {{if eq .Page "/channels"}}{{template "channel-page" .}}
+  {{else if eq .Page "/playlists"}}{{template "playlist-page" .}}
+  {{else if eq .Page "/catalogue"}}{{template "video-page" .}}
+  {{else if eq .Page "/settings"}}{{template "settings-page" .}}
+  {{else if eq .Page "/artwork"}}{{template "artwork-page" .}}
+  {{else if eq .Page "/diagnostics"}}{{template "diagnostics-page" .}}
+  {{else}}<h1>Jobs</h1>{{template "job-filters" .}}{{template "job-progress" .}}{{template "jobs" .}}{{end}}
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "login"}}
+<!doctype html>
+<html lang="en">
+<head>{{template "head" .}}</head>
+<body class="login">
+<main>
+  <p class="wordmark">duplex</p>
+  <h1>Sign in</h1>
+  {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
+  <form method="post" action="/login" class="stack">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <label for="username">Administrator</label>
+    <input id="username" name="username" value="admin" autocomplete="username" required>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit">Sign in</button>
+  </form>
+</main>
+</body>
+</html>
+{{end}}
+
+{{define "notice"}}
+{{if .Error}}<p class="error" role="alert">{{.Error}} <a href="">Reload page</a></p>
+{{else}}<p class="success">{{.Notice}} <a href="">Reload page</a></p>{{end}}
+{{end}}
+
+{{define "pagination"}}
+<div class="pagination">
+  <span>Showing {{.From}}–{{.To}} of {{.Total}}</span>
+  <nav aria-label="{{.Label}} pages">
+    {{if .FirstURL}}<a href="{{.FirstURL}}">First</a>{{else}}<span aria-disabled="true">First</span>{{end}}
+    {{if .PreviousURL}}<a href="{{.PreviousURL}}" rel="prev">Previous</a>{{else}}<span aria-disabled="true">Previous</span>{{end}}
+    <span>Page {{.Number}} of {{.Pages}}</span>
+    {{if .NextURL}}<a href="{{.NextURL}}" rel="next">Next</a>{{else}}<span aria-disabled="true">Next</span>{{end}}
+    {{if .LastURL}}<a href="{{.LastURL}}">Last</a>{{else}}<span aria-disabled="true">Last</span>{{end}}
+  </nav>
+  <form action="{{.Path}}" method="get">
+    {{range $key,$values:=.Filters}}{{if and (ne $key "page") (ne $key "per_page")}}{{range $values}}<input type="hidden" name="{{$key}}" value="{{.}}">{{end}}{{end}}{{end}}
+    <label>Rows <select name="per_page">
+      <option value="25" {{if eq .Size 25}}selected{{end}}>25</option>
+      <option value="50" {{if eq .Size 50}}selected{{end}}>50</option>
+      <option value="100" {{if eq .Size 100}}selected{{end}}>100</option>
+    </select></label>
+    <button class="secondary">Apply</button>
+  </form>
+</div>
+{{end}}
+
+{{define "channel-filter"}}
+<label>Channel <select name="channel"><option value="">All channels</option>
+  {{range .Status.Config.Config.Channels}}<option value="{{.ID}}" {{if eq (.ID) ($.Filters.Get "channel")}}selected{{end}}>{{$.ChannelName .ID}}</option>{{end}}
+</select></label>
+{{end}}

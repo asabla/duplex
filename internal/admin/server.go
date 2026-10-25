@@ -8,15 +8,15 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"duplex/internal/app"
+	"duplex/internal/catalog"
 	"duplex/internal/config"
-
-	"gopkg.in/yaml.v3"
 )
 
 //go:embed templates/*.html static/*
@@ -28,21 +28,33 @@ type Server struct {
 	templates *template.Template
 }
 type page struct {
-	Page           string
-	CSRF           string
-	Error          string
-	Notice         string
-	Status         app.Status
-	YAML           string
-	Revision       string
-	Query          string
-	Total, Matches int
-	Pagination     pagination
-	ChannelRows    []config.Channel
+	Page            string
+	CSRF            string
+	Error           string
+	Notice          string
+	Status          app.Status
+	YAML            string
+	Revision        string
+	Query           string
+	Total, Matches  int
+	Pagination      pagination
+	ChannelRows     []config.Channel
+	ChannelData     []catalog.Channel
+	ChannelSettings map[string]config.Channel
+	PlaylistRows    []catalog.PlaylistRow
+	Counts          catalog.Counts
+	Filters         url.Values
+	Artwork         app.ArtworkPreview
+	Seasons         map[string]int
 }
 
 func New(a *app.App, auth *Auth) (*Server, error) {
-	t, e := template.New("duplex").Funcs(template.FuncMap{"gib": func(n int64) string { return strconv.FormatFloat(float64(n)/(1<<30), 'f', 2, 64) }, "when": func(n int64) string {
+	t, e := template.New("duplex").Funcs(template.FuncMap{"states": func(values ...string) []string { return values }, "heights": func(values ...int) []int { return values }, "sortlink": sortLink, "gib": func(n int64) string { return strconv.FormatFloat(float64(n)/(1<<30), 'f', 2, 64) }, "day": func(n int64) string {
+		if n == 0 {
+			return "Unknown"
+		}
+		return time.Unix(n, 0).UTC().Format("2006-01-02")
+	}, "when": func(n int64) string {
 		if n == 0 {
 			return "Never"
 		}
@@ -83,7 +95,7 @@ func (s *Server) Handler() http.Handler {
 		w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc("GET /mountz", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.App.Status(r.Context())
+		v, _, e := s.App.Summary(r.Context())
 		if e != nil || !v.MountReady {
 			http.Error(w, "mount not ready", 503)
 			return
@@ -91,7 +103,7 @@ func (s *Server) Handler() http.Handler {
 		w.Write([]byte("mount ready\n"))
 	})
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
-		v, e := s.App.Status(r.Context())
+		v, _, e := s.App.Summary(r.Context())
 		if e != nil || !v.Ready {
 			http.Error(w, "not ready", 503)
 			return
@@ -109,7 +121,11 @@ func (s *Server) Handler() http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
 		w.Header().Set("Cache-Control", "no-store")
-		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		limit := int64(1 << 20)
+		if r.URL.Path == "/actions/artwork" || r.URL.Path == "/api/v1/artwork" {
+			limit = 10<<20 + 64<<10
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, limit)
 		mux.ServeHTTP(w, r)
 	})
 }
@@ -255,7 +271,14 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	}
 	if p == "/actions/follow" && r.Method == "POST" {
 		limit, _ := strconv.Atoi(r.FormValue("limit"))
-		e := s.App.AddChannel(r.Context(), r.FormValue("url"), limit, r.FormValue("revision"))
+		mode := r.FormValue("mode")
+		if mode == "" {
+			mode = "latest"
+		}
+		if mode != "latest" {
+			limit = 0
+		}
+		e := s.App.Follow(r.Context(), r.FormValue("url"), config.Selection{Mode: mode, Limit: limit}, r.FormValue("include_playlists") == "on", r.FormValue("revision"))
 		s.result(w, r, e, "Channel followed. A refresh is queued.")
 		return
 	}
@@ -277,64 +300,20 @@ func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 		s.result(w, r, e, "Settings saved. Reload this page before making another edit.")
 		return
 	}
+	if s.actions(w, r) {
+		return
+	}
 	if r.Method != "GET" {
 		http.Error(w, "method not allowed", 405)
 		return
 	}
-	if p != "/" && p != "/channels" && p != "/catalogue" && p != "/settings" && p != "/diagnostics" && p != "/fragments/channels" && p != "/fragments/status" {
-		http.NotFound(w, r)
-		return
-	}
-	status, e := s.App.Status(r.Context())
-	if e != nil {
-		http.Error(w, "catalogue unavailable", 503)
-		return
-	}
-	session, _ := s.Auth.Session(r)
-	b, _ := yaml.Marshal(status.Config.Config)
-	v := page{Page: p, CSRF: session.CSRF, Status: status, YAML: string(b), Revision: status.Config.Revision}
-	if p == "/catalogue" {
-		v.Query = strings.TrimSpace(r.URL.Query().Get("q"))
-		if len(v.Query) > 200 {
-			http.Error(w, "search is too long", 400)
-			return
-		}
-		v.Total = len(status.Videos)
-		needle := strings.ToLower(v.Query)
-		rows := status.Videos[:0:0]
-		for _, video := range status.Videos {
-			if needle == "" || strings.Contains(strings.ToLower(video.Title+" "+video.ID+" "+video.ChannelID), needle) {
-				rows = append(rows, video)
-			}
-		}
-		v.Matches = len(rows)
-		v.Pagination = paginate(r.URL.Query(), "/catalogue", "Videos", len(rows))
-		v.Status.Videos = rows[v.Pagination.start():v.Pagination.end()]
-	} else if p == "/channels" || p == "/fragments/channels" {
-		v.Pagination = paginate(r.URL.Query(), "/channels", "Channels", len(status.Config.Config.Channels))
-		v.ChannelRows = status.Config.Config.Channels[v.Pagination.start():v.Pagination.end()]
-	} else if p == "/" || p == "/diagnostics" {
-		requested := paginate(r.URL.Query(), p, "Refresh history", 0)
-		// Query the complete durable history, not Status's latest-100 snapshot.
-		jobs, total, err := s.App.Catalog.JobsPage(r.Context(), requested.requested, requested.Size)
-		if err != nil {
-			http.Error(w, "refresh history unavailable", 503)
-			return
-		}
-		v.Status.Jobs = jobs
-		v.Pagination = paginate(r.URL.Query(), p, "Refresh history", total)
-	}
-
-	if p == "/fragments/channels" {
-		s.render(w, "channels", v)
-	} else if p == "/fragments/status" {
-		s.render(w, "status", v)
-	} else {
-		s.render(w, "layout", v)
-	}
+	s.readPage(w, r)
 }
 
 func (s *Server) api(w http.ResponseWriter, r *http.Request) {
+	if s.readAPI(w, r) || s.mutateAPI(w, r) {
+		return
+	}
 	p := r.URL.Path
 	if r.Method == "GET" {
 		switch p {
@@ -354,8 +333,15 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			reply(w, 200, v)
-		case "/api/v1/status", "/api/v1/diagnostics":
-			v, e := s.App.Status(r.Context())
+		case "/api/v1/diagnostics":
+			v, _, e := s.App.Summary(r.Context())
+			if e != nil {
+				reply(w, 503, map[string]string{"error": "diagnostics unavailable"})
+				return
+			}
+			reply(w, 200, v)
+		case "/api/v1/status":
+			v, _, e := s.App.Summary(r.Context())
 			if e != nil {
 				reply(w, 503, map[string]string{"error": "status unavailable"})
 				return
@@ -407,4 +393,13 @@ func (s *Server) api(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	reply(w, 405, map[string]string{"error": "unsupported endpoint or method"})
+}
+
+func (p page) ChannelName(id string) string {
+	for _, ch := range p.Status.Channels {
+		if ch.ID == id && ch.Title != "" {
+			return ch.Title
+		}
+	}
+	return id
 }

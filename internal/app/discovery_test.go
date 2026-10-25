@@ -270,3 +270,42 @@ func TestPreparationWaitingAndSelectionCancellation(t *testing.T) {
 		t.Fatal(v, err)
 	}
 }
+
+func TestPolicyMutationAndQueuedPriority(t *testing.T) {
+	s := fixtureCollection(2)
+	ch := pipelineChannel(config.DefaultSelection())
+	a := pipelineApp(t, ch, s)
+	a.jobs = make(chan string, 8)
+	a.queued = map[string]bool{}
+	snap := a.Config.Snapshot()
+	if err := a.UpdatePolicy(ch.ID, "", snap.Revision, config.Selection{Mode: "all"}, true); err != nil {
+		t.Fatal(err)
+	}
+	current := a.Config.Snapshot()
+	if current.Config.Channels[0].Selection().Mode != "all" {
+		t.Fatal("All not saved")
+	}
+	if err := a.UpdatePolicy(ch.ID, "PLfixture0001", current.Revision, config.Selection{Mode: "skip"}, true); err != nil {
+		t.Fatal(err)
+	}
+	current = a.Config.Snapshot()
+	if current.Config.Channels[0].PlaylistSelection("PLfixture0001").Mode != "skip" {
+		t.Fatal("Skip not saved")
+	}
+	if err := a.UpdatePolicy(ch.ID, "PLfixture0001", current.Revision, config.Selection{Mode: "inherit"}, true); err != nil {
+		t.Fatal(err)
+	}
+	current = a.Config.Snapshot()
+	if current.Config.Channels[0].PlaylistSelection("PLfixture0001").Mode != "all" {
+		t.Fatal("inherit not restored")
+	}
+	if err := a.UpdatePolicy(ch.ID, "", snap.Revision, config.DefaultSelection(), false); !errors.Is(err, config.ErrConflict) {
+		t.Fatal(err)
+	}
+	if err := a.UpdatePolicy("missing", "", current.Revision, config.DefaultSelection(), false); err == nil {
+		t.Fatal("unknown channel policy accepted")
+	}
+	if err := a.UpdatePolicy(ch.ID, "bad", current.Revision, config.DefaultSelection(), false); err == nil {
+		t.Fatal("invalid playlist ID accepted")
+	}
+}

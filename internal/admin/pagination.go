@@ -6,6 +6,7 @@ import (
 )
 
 type pagination struct {
+	Filters                                 url.Values
 	Label, Path, Query                      string
 	Number, Pages, Size, Total, From, To    int
 	FirstURL, PreviousURL, NextURL, LastURL string
@@ -19,7 +20,7 @@ func paginate(values url.Values, path, label string, total int) pagination {
 	if size != 25 && size != 50 && size != 100 {
 		size = 25
 	}
-	p := pagination{Label: label, Path: path, Query: values.Get("q"), Size: size, Total: total, requested: number}
+	p := pagination{Filters: values, Label: label, Path: path, Query: values.Get("q"), Size: size, Total: total, requested: number}
 	p.Pages = max(1, (total+size-1)/size)
 	p.Number = min(number, p.Pages)
 	if total > 0 {
@@ -27,7 +28,12 @@ func paginate(values url.Values, path, label string, total int) pagination {
 		p.To = p.end()
 	}
 	link := func(n int) string {
-		q := url.Values{"page": {strconv.Itoa(n)}, "per_page": {strconv.Itoa(size)}}
+		q := url.Values{}
+		for key, values := range values {
+			q[key] = append([]string(nil), values...)
+		}
+		q.Set("page", strconv.Itoa(n))
+		q.Set("per_page", strconv.Itoa(size))
 		if p.Query != "" {
 			q.Set("q", p.Query)
 		}
@@ -48,4 +54,14 @@ func (p pagination) end() int   { return min(p.start()+p.Size, p.Total) }
 func (p pagination) FragmentURL() string {
 	q := url.Values{"page": {strconv.Itoa(p.Number)}, "per_page": {strconv.Itoa(p.Size)}}
 	return "/fragments/channels?" + q.Encode()
+}
+
+func sortLink(values url.Values, path, order string) string {
+	query := url.Values{}
+	for key, items := range values {
+		query[key] = append([]string(nil), items...)
+	}
+	query.Set("sort", order)
+	query.Del("page")
+	return path + "?" + query.Encode()
 }
