@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -85,11 +86,11 @@ func (c Config) Validate() error {
 
 func validateStorage(paths []string) error {
 	resolved := make([]string, 0, len(paths))
-	for _, path := range paths {
+	for index, path := range paths {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == "/" {
 			return errors.New("storage and mount paths must be absolute dedicated directories")
 		}
-		canonical, err := resolveExistingPath(path)
+		canonical, err := resolveStoragePath(path, index == len(paths)-1)
 		if err != nil {
 			return err
 		}
@@ -112,6 +113,23 @@ func validateStorage(paths []string) error {
 		resolved = append(resolved, canonical)
 	}
 	return nil
+}
+
+func resolveStoragePath(path string, mountpoint bool) (string, error) {
+	canonical, err := resolveExistingPath(path)
+	if !mountpoint || !errors.Is(err, syscall.ENOTCONN) {
+		return canonical, err
+	}
+	// A disconnected mount must reach the mount layer, which checks ownership
+	// before detaching it. Do not relax alias checks for symlinks or parents.
+	if _, leafErr := os.Lstat(path); !errors.Is(leafErr, syscall.ENOTCONN) {
+		return "", err
+	}
+	parent, parentErr := filepath.EvalSymlinks(filepath.Dir(path))
+	if parentErr != nil {
+		return "", parentErr
+	}
+	return filepath.Join(parent, filepath.Base(path)), nil
 }
 
 func resolveExistingPath(path string) (string, error) {
