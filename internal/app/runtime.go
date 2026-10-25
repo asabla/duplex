@@ -1,0 +1,168 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"io/fs"
+	"time"
+
+	"duplex/internal/catalog"
+	"duplex/internal/media"
+)
+
+const (
+	runtimeRepresentations = 128
+	runtimeIndexBytes      = int64(64 << 20)
+)
+
+type representationBinding struct {
+	done chan struct{}
+	rep  media.Representation
+	err  error
+}
+
+func (a *App) acquirePreparation(ctx context.Context) (func(), error) {
+	a.mu.Lock()
+	if a.prepareSlots == nil {
+		a.prepareSlots = make(chan struct{}, 2)
+	}
+	slots := a.prepareSlots
+	a.mu.Unlock()
+	finished := a.Measurements.Begin("preparation.wait")
+	defer finished()
+	select {
+	case slots <- struct{}{}:
+		return func() { <-slots }, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (a *App) cacheRepresentation(rep media.Representation, expires time.Time) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.reps == nil {
+		a.reps = map[string]media.Representation{}
+	}
+	if a.leases == nil {
+		a.leases = map[string]time.Time{}
+	}
+	if a.runtimeUsed == nil {
+		a.runtimeUsed = map[string]time.Time{}
+	}
+	a.reps[rep.ID()] = rep
+	a.leases[rep.ID()] = expires
+	a.runtimeUsed[rep.ID()] = time.Now()
+	for len(a.reps) > 1 && (len(a.reps) > runtimeRepresentations || a.runtimeIndexCost() > runtimeIndexBytes) {
+		oldest := ""
+		for id := range a.reps {
+			if oldest == "" || a.runtimeUsed[id].Before(a.runtimeUsed[oldest]) {
+				oldest = id
+			}
+		}
+		delete(a.reps, oldest)
+		delete(a.leases, oldest)
+		delete(a.runtimeUsed, oldest)
+	}
+}
+
+func (a *App) cachedRepresentation(revision string) media.Representation {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !time.Now().Before(a.leases[revision]) {
+		return nil
+	}
+	rep := a.reps[revision]
+	if rep != nil {
+		if a.runtimeUsed == nil {
+			a.runtimeUsed = map[string]time.Time{}
+		}
+		a.runtimeUsed[revision] = time.Now()
+	}
+	return rep
+}
+
+func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.Representation, error) {
+	if rep := a.cachedRepresentation(episode.Revision); rep != nil {
+		return rep, nil
+	}
+	a.mu.Lock()
+	if a.bindings == nil {
+		a.bindings = map[string]*representationBinding{}
+	}
+	if call := a.bindings[episode.Revision]; call != nil {
+		a.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-call.done:
+			return call.rep, call.err
+		}
+	}
+	call := &representationBinding{done: make(chan struct{})}
+	a.bindings[episode.Revision] = call
+	a.mu.Unlock()
+	call.rep, call.err = a.bindUncachedEpisode(ctx, episode)
+	a.mu.Lock()
+	delete(a.bindings, episode.Revision)
+	close(call.done)
+	a.mu.Unlock()
+	return call.rep, call.err
+}
+
+func (a *App) bindUncachedEpisode(ctx context.Context, episode catalog.Episode) (media.Representation, error) {
+	if rep := a.cachedRepresentation(episode.Revision); rep != nil {
+		return rep, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+	selected, err := a.Catalog.IsSelected(ctx, episode.VideoID, visibility(a.Config.Snapshot().Config))
+	if err != nil {
+		return nil, err
+	}
+	if !selected {
+		return nil, fs.ErrNotExist
+	}
+	m, err := a.playbackMetadata(ctx, episode.VideoID)
+	if err != nil {
+		return nil, err
+	}
+	if m.ID != episode.VideoID {
+		return nil, media.ErrChanged
+	}
+	if err = a.Catalog.SaveMetadata(ctx, m); err != nil {
+		return nil, err
+	}
+	if !recording(m) {
+		return nil, media.ErrUnsupported
+	}
+	prepared, rep, err := a.prepareWithRepresentation(ctx, m, a.Config.Snapshot().Config.MaxHeight)
+	if err != nil {
+		return nil, err
+	}
+	if err = a.Catalog.SavePrepared(ctx, prepared); err != nil {
+		return nil, err
+	}
+	if prepared.Revision != episode.Revision || prepared.Size != episode.Size {
+		a.requestScan()
+		return nil, media.ErrChanged
+	}
+	if err = errors.Join(a.Publish(), a.Catalog.QueueAsset(ctx, episode.VideoID)); err != nil {
+		return nil, err
+	}
+	return rep, nil
+}
+
+// runtimeIndexCost estimates resident index storage conservatively. One oversized
+// index can remain cached; its on-disk parser limit bounds that case separately.
+func (a *App) runtimeIndexCost() int64 {
+	var total int64
+	for _, rep := range a.reps {
+		if index, ok := rep.(*media.VirtualMP4); ok {
+			total += int64(cap(index.Header)) + int64(cap(index.Spans))*160 + 32<<10
+		} else {
+			total += 16 << 10
+		}
+	}
+	return total
+}

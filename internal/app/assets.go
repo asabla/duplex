@@ -220,10 +220,11 @@ func (a *App) loadAssets(id string) []library.Entry {
 			return nil
 		}
 		file := filepath.Join(dir, r.File)
-		if stat, e := os.Stat(file); e != nil || stat.Size() != r.Size {
+		stat, e := os.Stat(file)
+		if e != nil || stat.Size() != r.Size {
 			return nil
 		}
-		out = append(out, library.Entry{Path: r.Suffix, Media: localAsset{file: file, size: r.Size}})
+		out = append(out, library.Entry{Path: r.Suffix, Media: localAsset{file: file, size: r.Size}, Modified: stat.ModTime().Unix()})
 	}
 	return out
 }

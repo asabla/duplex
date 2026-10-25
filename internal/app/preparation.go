@@ -109,6 +109,10 @@ func (a *App) usable(ctx context.Context, id string) (bool, error) {
 }
 
 func (a *App) queuePreparation(ctx context.Context, id string, priority int) error {
+	ready, err := a.Catalog.PreparedForHeight(ctx, id, a.Config.Snapshot().Config.MaxHeight)
+	if err != nil || (ready && priority < 1000) {
+		return err
+	}
 	usable, err := a.usable(ctx, id)
 	if err != nil || usable {
 		return err
@@ -326,10 +330,8 @@ func (a *App) assetWorker(ctx context.Context) {
 				assets, assetErr := a.acquireAssets(workCtx, m, candidates[0])
 				err = assetErr
 				if len(assets) > 0 {
-					a.mu.Lock()
-					a.assets[id] = assets
-					a.mu.Unlock()
 					err = errors.Join(err, a.Publish())
+					a.requestScan()
 				}
 			}
 		}

@@ -49,11 +49,12 @@ type Video struct {
 
 // Prepared describes an exact, verified media revision ready for publication.
 type Prepared struct {
-	Metadata source.Metadata
-	Revision string
-	Height   int
-	Fallback string
-	Size     int64
+	Metadata        source.Metadata
+	RequestedHeight int
+	Revision        string
+	Height          int
+	Fallback        string
+	Size            int64
 }
 
 // Job records discovery progress separately from durable media preparation tasks.
@@ -83,7 +84,7 @@ func OpenContext(ctx context.Context, path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	var version int
-	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 2 {
+	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 3 {
 		return nil, errors.Join(errors.New("unsupported catalogue schema version"), db.Close())
 	}
 	s := &Store{db}
@@ -135,7 +136,7 @@ func OpenForBackupContext(ctx context.Context, path string) (*Store, error) {
 
 // EnsureChannel creates an identity and preserves its title when no new title is supplied.
 func (s *Store) EnsureChannel(ctx context.Context, id, title string) error {
-	_, e := s.DB.ExecContext(ctx, `INSERT INTO channels(id,title) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET title=CASE WHEN excluded.title<>'' THEN excluded.title ELSE channels.title END`, id, title)
+	_, e := s.DB.ExecContext(ctx, `INSERT INTO channels(id,title,updated) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET updated=CASE WHEN excluded.title<>'' AND channels.title<>excluded.title THEN MAX(channels.updated+1,excluded.updated,COALESCE((SELECT MAX(updated)+1 FROM videos WHERE channel_id=channels.id),0),COALESCE((SELECT MAX(MAX(m.updated,p.updated))+1 FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id WHERE p.channel_id=channels.id),0)) ELSE channels.updated END,title=CASE WHEN excluded.title<>'' THEN excluded.title ELSE channels.title END`, id, title, time.Now().Unix())
 	return e
 }
 

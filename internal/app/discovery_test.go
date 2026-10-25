@@ -12,7 +12,6 @@ import (
 
 	"duplex/internal/catalog"
 	"duplex/internal/config"
-	"duplex/internal/library"
 	"duplex/internal/media"
 	"duplex/internal/source"
 )
@@ -82,7 +81,7 @@ func (s *collectionSource) Resolve(ctx context.Context, id string) (source.Metad
 	return s.Metadata(ctx, id)
 }
 
-func pipelineApp(t *testing.T, ch config.Channel, adapter source.SourceAdapter) *App {
+func pipelineApp(t testing.TB, ch config.Channel, adapter source.SourceAdapter) *App {
 	t.Helper()
 	dir := t.TempDir()
 	file := filepath.Join(dir, "config.yaml")
@@ -109,7 +108,7 @@ func pipelineApp(t *testing.T, ch config.Channel, adapter source.SourceAdapter) 
 	})
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
-	return &App{Config: manager, Catalog: db, Source: adapter, ctx: ctx, cancel: cancel, reps: map[string]media.Representation{}, assets: map[string][]library.Entry{}, leases: map[string]time.Time{}, prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1)}
+	return &App{Config: manager, Catalog: db, Source: adapter, ctx: ctx, cancel: cancel, reps: map[string]media.Representation{}, leases: map[string]time.Time{}, prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1)}
 }
 
 func pipelineChannel(policy config.Selection) config.Channel {

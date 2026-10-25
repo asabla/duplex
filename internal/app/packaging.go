@@ -21,9 +21,19 @@ import (
 // Prepare verifies the highest supported candidate and records any quality fallback.
 // Optional assets run separately; no media payload is prepared as a complete file.
 func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (catalog.Prepared, error) {
+	prepared, _, err := a.prepareWithRepresentation(ctx, m, maxHeight)
+	return prepared, err
+}
+
+func (a *App) prepareWithRepresentation(ctx context.Context, m source.Metadata, maxHeight int) (catalog.Prepared, media.Representation, error) {
+	release, err := a.acquirePreparation(ctx)
+	if err != nil {
+		return catalog.Prepared{}, nil, err
+	}
+	defer release()
 	defer a.Measurements.Begin("prepare")()
 	if m.Date().IsZero() {
-		return catalog.Prepared{}, errors.New("source publication date is unavailable")
+		return catalog.Prepared{}, nil, errors.New("source publication date is unavailable")
 	}
 	failure := ""
 	var causes []error
@@ -33,10 +43,10 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 			continue
 		}
 		attempts++
-		prepared, err := a.prepareCandidate(ctx, m, candidate, maxHeight)
+		prepared, rep, err := a.prepareCandidate(ctx, m, candidate, maxHeight)
 		if err == nil {
 			prepared.Fallback = failure
-			return prepared, nil
+			return prepared, rep, nil
 		}
 		causes = append(causes, err)
 		if failure == "" {
@@ -44,9 +54,9 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 		}
 	}
 	if len(causes) == 0 {
-		return catalog.Prepared{}, media.ErrUnsupported
+		return catalog.Prepared{}, nil, media.ErrUnsupported
 	}
-	return catalog.Prepared{}, fmt.Errorf("no verified supported representation: %w", errors.Join(causes...))
+	return catalog.Prepared{}, nil, fmt.Errorf("no verified supported representation: %w", errors.Join(causes...))
 }
 
 func (a *App) mediaClient() *http.Client {
@@ -62,34 +72,25 @@ func (a *App) openTrack(ctx context.Context, id string, f source.Format) (*media
 	})
 }
 
-func (a *App) prepareCandidate(ctx context.Context, m source.Metadata, candidate source.Candidate, maxHeight int) (catalog.Prepared, error) {
+func (a *App) prepareCandidate(ctx context.Context, m source.Metadata, candidate source.Candidate, maxHeight int) (catalog.Prepared, media.Representation, error) {
 	buildCtx, stop := context.WithTimeout(ctx, 5*time.Minute)
 	defer stop()
 	representation, indexPath, err := a.candidateRepresentation(buildCtx, m, candidate)
 	if err != nil {
-		return catalog.Prepared{}, err
+		return catalog.Prepared{}, nil, err
 	}
 	if err = diagnostics.Run(a.Measurements, "media.verify", func() error { return media.VerifyRanges(buildCtx, representation) }); err != nil {
-		return catalog.Prepared{}, err
+		return catalog.Prepared{}, nil, err
 	}
 	inspected, ok := representation.(media.Inspected)
 	if !ok || inspected.Details().Height <= 0 || inspected.Details().Height > maxHeight {
-		return catalog.Prepared{}, media.ErrUnsupported
+		return catalog.Prepared{}, nil, media.ErrUnsupported
 	}
 	if err = a.persistRepresentation(m, candidate, inspected, indexPath); err != nil {
-		return catalog.Prepared{}, err
+		return catalog.Prepared{}, nil, err
 	}
-	a.mu.Lock()
-	if a.reps == nil {
-		a.reps = map[string]media.Representation{}
-	}
-	if a.leases == nil {
-		a.leases = map[string]time.Time{}
-	}
-	a.reps[representation.ID()] = representation
-	a.leases[representation.ID()] = leaseExpiry(m)
-	a.mu.Unlock()
-	return catalog.Prepared{Metadata: m, Revision: representation.ID(), Height: inspected.Details().Height, Size: representation.Size()}, nil
+	a.cacheRepresentation(representation, leaseExpiry(m))
+	return catalog.Prepared{RequestedHeight: maxHeight, Metadata: m, Revision: representation.ID(), Height: inspected.Details().Height, Size: representation.Size()}, representation, nil
 }
 
 func (a *App) candidateRepresentation(ctx context.Context, m source.Metadata, candidate source.Candidate) (media.Representation, string, error) {

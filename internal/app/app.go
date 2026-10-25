@@ -26,6 +26,9 @@ import (
 
 // App coordinates catalogue discovery, media preparation, publication, and integration.
 type App struct {
+	runtimeUsed     map[string]time.Time
+	prepareSlots    chan struct{}
+	bindings        map[string]*representationBinding
 	httpClient      *http.Client
 	metadata        map[string]metadataLease
 	leases          map[string]time.Time
@@ -39,9 +42,7 @@ type App struct {
 	Source          source.SourceAdapter
 	mount           *library.Mount
 	mu              sync.RWMutex
-	publishMu       sync.Mutex
 	reps            map[string]media.Representation
-	assets          map[string][]library.Entry
 	queued          map[string]bool
 	attempted       map[string]time.Time
 	jobs            chan string
@@ -94,7 +95,7 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 		return nil, errors.Join(e, db.Close())
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	a := &App{Measurements: &diagnostics.Recorder{}, Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, assets: map[string][]library.Entry{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1), metadata: map[string]metadataLease{}, leases: map[string]time.Time{}, ctx: ctx, cancel: cancel, original: c}
+	a := &App{Measurements: &diagnostics.Recorder{}, Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1), metadata: map[string]metadataLease{}, leases: map[string]time.Time{}, ctx: ctx, cancel: cancel, original: c}
 	if checker, ok := adapter.(interface{ Check(context.Context) error }); ok {
 		checkCtx, stop := context.WithTimeout(ctx, 15*time.Second)
 		e = checker.Check(checkCtx)
@@ -105,7 +106,7 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	}
 	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add}
 	if !noMount {
-		a.mount, e = library.MountReadOnly(c.Mountpoint, nil)
+		a.mount, e = library.MountProvider(c.Mountpoint, catalogueFS{app: a})
 		if e != nil {
 			return nil, errors.Join(e, a.Close())
 		}
@@ -255,47 +256,13 @@ func (a *App) worker(ctx context.Context) {
 			a.mu.Lock()
 			a.attempted[id] = time.Now()
 			a.mu.Unlock()
-			jobCtx, cancel := context.WithTimeout(ctx, 2*time.Hour)
+			jobCtx, cancel := context.WithCancel(ctx)
 			err := a.Sync(jobCtx, id)
 			cancel()
 			a.operationFailure("channel discovery", err)
 			a.mu.Lock()
 			delete(a.queued, id)
 			a.mu.Unlock()
-			a.prune(ctx)
-		}
-	}
-}
-
-func (a *App) prune(ctx context.Context) {
-	videos, e := a.Catalog.Episodes(ctx)
-	if e != nil {
-		return
-	}
-	enabled := map[string]bool{}
-	for _, ch := range a.Config.Snapshot().Config.Channels {
-		enabled[ch.ID] = ch.Enabled
-	}
-	active, assets := map[string]bool{}, map[string]bool{}
-	for _, v := range videos {
-		if enabled[v.OwnerID] {
-			active[v.Revision] = true
-			assets[v.VideoID] = true
-		}
-	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if len(a.queued) > 0 {
-		return
-	}
-	for id := range a.reps {
-		if !active[id] {
-			delete(a.reps, id)
-		}
-	}
-	for id := range a.assets {
-		if !assets[id] {
-			delete(a.assets, id)
 		}
 	}
 }
@@ -379,26 +346,11 @@ func fallbackReason(e error) string {
 	}
 }
 
-// Publish atomically replaces the mounted snapshot using verified runtime media.
+// Publish makes current durable state available through the database-backed mount.
+// Directory and attribute reads use bounded queries with no catalogue snapshot.
 func (a *App) Publish() error {
 	defer a.Measurements.Begin("publish")()
-	a.publishMu.Lock()
-	defer a.publishMu.Unlock()
-	rows, e := a.Catalog.Episodes(a.ctx)
-	if e != nil {
-		return e
-	}
-	episodes := a.publishedEpisodes(rows)
-	entries, e := library.Entries(episodes)
-	if e != nil {
-		return e
-	}
-	entries = append(entries, a.episodeAssets(episodes)...)
-	entries = append(entries, a.posterEntries(episodes)...)
-	if a.mount != nil {
-		return a.mount.Update(entries)
-	}
-	return nil
+	return a.ctx.Err()
 }
 
 func (a *App) plexClient() (*plex.Client, error) {
@@ -510,11 +462,6 @@ func (a *App) Status(ctx context.Context) (Status, error) {
 		s.ConfigError = cacheError
 	}
 	s.Ready = s.MountReady && s.SourceError == "" && s.PlexError == "" && !s.RestartRequired
-	for _, v := range s.Videos {
-		if v.Exposed && v.Fallback == "Restoring verified representation after restart" {
-			s.Ready = false
-		}
-	}
 	return s, nil
 }
 
@@ -528,9 +475,6 @@ func (a *App) statusVideos(s *Status) {
 		v := &s.Videos[i]
 		if !enabled[v.ChannelID] {
 			v.Exposed = false
-		}
-		if v.Exposed && a.reps[v.Revision] == nil {
-			v.Fallback = "Restoring verified representation after restart"
 		}
 	}
 }

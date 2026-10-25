@@ -6,11 +6,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"image"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -18,7 +16,6 @@ import (
 	"duplex/internal/artwork"
 	"duplex/internal/catalog"
 	"duplex/internal/config"
-	"duplex/internal/library"
 )
 
 type artworkRecord struct {
@@ -67,11 +64,11 @@ func (a *App) validateArtworkScope(ctx context.Context, channel, scope string) e
 	if scope == "show" {
 		return nil
 	}
-	seasons, err := a.Catalog.Seasons(ctx, channel)
+	exists, err := a.Catalog.HasSeason(ctx, channel, scope)
 	if err != nil {
 		return err
 	}
-	if _, ok := seasons[scope]; !ok {
+	if !exists {
 		return errors.New("season does not exist")
 	}
 	return nil
@@ -168,41 +165,6 @@ func (a *App) setArtwork(ctx context.Context, channel, scope, revision, ref stri
 		return err
 	}
 	return a.refreshArtwork(ctx, channel)
-}
-
-func (a *App) posterEntries(episodes []library.Episode) []library.Entry {
-	type poster struct{ channel, scope, file string }
-	scopes := map[poster]bool{}
-	for _, ep := range episodes {
-		dir := "Channel-" + ep.ChannelID
-		scopes[poster{ep.ChannelID, "show", path.Join(dir, "poster.jpg")}] = true
-		scope := fmt.Sprintf("year:%04d", ep.Season)
-		if strings.HasPrefix(ep.OccurrenceID, "youtube-playlist:") {
-			parts := strings.Split(ep.OccurrenceID, ":")
-			if len(parts) == 4 {
-				scope = "playlist:" + parts[2]
-			}
-		}
-		scopes[poster{ep.ChannelID, scope, path.Join(dir, fmt.Sprintf("season%02d-poster.jpg", ep.Season))}] = true
-	}
-	out := []library.Entry{}
-	for scope := range scopes {
-		preview, err := a.Artwork(a.ctx, scope.channel, scope.scope)
-		if err != nil {
-			a.operationFailure("artwork projection", err)
-			continue
-		}
-		if preview.Path == "" {
-			continue
-		}
-		info, err := os.Stat(preview.Path)
-		if err != nil {
-			a.operationFailure("artwork file", err)
-			continue
-		}
-		out = append(out, library.Entry{Path: scope.file, Media: localAsset{file: preview.Path, size: info.Size()}, Modified: info.ModTime().Unix()})
-	}
-	return out
 }
 
 func (a *App) renderArtwork(ctx context.Context, ch config.Channel) error {

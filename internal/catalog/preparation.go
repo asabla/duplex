@@ -39,7 +39,7 @@ func (s *Store) SaveMetadata(ctx context.Context, m source.Metadata) error {
 		published = date.Unix()
 	}
 	now := time.Now().Unix()
-	_, err = tx.ExecContext(ctx, `INSERT INTO videos(id,channel_id,title,search_title,description,state,published,updated,metadata_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id,title=excluded.title,search_title=excluded.search_title,description=excluded.description,state=excluded.state,published=CASE WHEN excluded.published<>0 THEN excluded.published ELSE videos.published END,updated=excluded.updated,metadata_at=excluded.metadata_at`, m.ID, m.ChannelID, m.Title, strings.ToLower(m.Title), m.Description, m.State(), published, now, now)
+	_, err = tx.ExecContext(ctx, `INSERT INTO videos(id,channel_id,title,search_title,description,state,published,updated,metadata_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET channel_id=excluded.channel_id,title=excluded.title,search_title=excluded.search_title,description=excluded.description,state=excluded.state,published=CASE WHEN excluded.published<>0 THEN excluded.published ELSE videos.published END,updated=CASE WHEN videos.title<>excluded.title OR videos.description<>excluded.description OR videos.state<>excluded.state OR (excluded.published<>0 AND videos.published<>excluded.published) THEN MAX(videos.updated+1,excluded.updated,COALESCE((SELECT MAX(MAX(m.updated,p.updated))+1 FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id WHERE m.video_id=videos.id),0)) ELSE videos.updated END,metadata_at=excluded.metadata_at`, m.ID, m.ChannelID, m.Title, strings.ToLower(m.Title), m.Description, m.State(), published, now, now)
 	if err != nil {
 		return err
 	}
@@ -52,7 +52,7 @@ func (s *Store) SaveMetadata(ctx context.Context, m source.Metadata) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO metadata_revisions(video_id,revision,metadata) SELECT ?,COALESCE(MAX(revision),0)+1,? FROM metadata_revisions WHERE video_id=?`, m.ID, b, m.ID)
+	_, err = tx.ExecContext(ctx, `INSERT INTO metadata_revisions(video_id,revision,metadata) SELECT ?,COALESCE(MAX(revision),0)+1,? FROM metadata_revisions WHERE video_id=? HAVING NOT EXISTS(SELECT 1 FROM metadata_revisions WHERE video_id=? AND revision=(SELECT MAX(revision) FROM metadata_revisions WHERE video_id=?) AND metadata=?)`, m.ID, b, m.ID, m.ID, m.ID, b)
 	if err != nil {
 		return err
 	}
@@ -87,7 +87,7 @@ func (s *Store) SavePrepared(ctx context.Context, p Prepared) error {
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE videos SET exposed=selected,year=?,number=?,revision=?,height=?,fallback=?,size=?,preparation='ready',preparation_error='',updated=? WHERE id=?`, year, number, p.Revision, p.Height, p.Fallback, p.Size, time.Now().Unix(), p.Metadata.ID)
+	_, err = tx.ExecContext(ctx, `UPDATE videos SET exposed=selected,year=?,number=?,revision=?,height=?,fallback=?,size=?,requested_height=?,preparation='ready',preparation_error='',updated=CASE WHEN revision<>? OR number=0 OR height<>? OR fallback<>? OR size<>? THEN MAX(updated+1,?,COALESCE((SELECT MAX(MAX(m.updated,p.updated))+1 FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id WHERE m.video_id=videos.id),0)) ELSE updated END WHERE id=?`, year, number, p.Revision, p.Height, p.Fallback, p.Size, p.RequestedHeight, p.Revision, p.Height, p.Fallback, p.Size, time.Now().Unix(), p.Metadata.ID)
 	if err != nil {
 		return err
 	}
@@ -160,6 +160,6 @@ func (s *Store) JobProgress(ctx context.Context, id int64, stage string, discove
 // MarkUnavailable records a source lifecycle failure without assigning an
 // inferred playlist owner as the video's established uploader.
 func (s *Store) MarkUnavailable(ctx context.Context, id string) error {
-	_, err := s.DB.ExecContext(ctx, `UPDATE videos SET state='unavailable',updated=? WHERE id=?`, time.Now().Unix(), id)
+	_, err := s.DB.ExecContext(ctx, `UPDATE videos SET state='unavailable',updated=CASE WHEN state<>'unavailable' THEN MAX(updated+1,?) ELSE updated END WHERE id=?`, time.Now().Unix(), id)
 	return err
 }

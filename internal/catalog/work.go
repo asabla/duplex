@@ -105,10 +105,10 @@ func (s *Store) PendingPreparations(ctx context.Context) (int, error) {
 	return n, err
 }
 
-// ResetPreparations restores selected source leases after process restart.
+// ResetPreparations resumes interrupted work; verified indexes bind lazily on open.
 func (s *Store) ResetPreparations(ctx context.Context, v Visibility) error {
 	cte, args := selectedCTE(v)
-	_, err := s.DB.ExecContext(ctx, cte+`INSERT INTO preparation_jobs(video_id,state,priority,updated) SELECT id,'queued',10,? FROM selected WHERE true ON CONFLICT(video_id) DO UPDATE SET state='queued',priority=10,updated=excluded.updated`, append(args, time.Now().Unix())...)
+	_, err := s.DB.ExecContext(ctx, cte+`INSERT INTO preparation_jobs(video_id,state,priority,updated) SELECT v.id,'queued',10,? FROM selected s JOIN videos v ON v.id=s.id WHERE v.revision='' OR v.id IN (SELECT video_id FROM preparation_jobs WHERE state IN ('queued','resolving','preparing')) ON CONFLICT(video_id) DO UPDATE SET state='queued',priority=10,updated=excluded.updated`, append(args, time.Now().Unix())...)
 	return err
 }
 
@@ -120,7 +120,7 @@ func (s *Store) MarkUploadedSelection(ctx context.Context, id string) error {
 
 // AddPlaylistMember preserves existing order until full reconciliation succeeds.
 func (s *Store) AddPlaylistMember(ctx context.Context, playlist, video string, position int, selected bool) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode) VALUES(?,?,?,?,COALESCE((SELECT MAX(episode)+1 FROM playlist_members WHERE playlist_id=?),1)) ON CONFLICT(playlist_id,video_id) DO UPDATE SET selected=MAX(playlist_members.selected,excluded.selected)`, playlist, video, position, selected, playlist)
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode,updated) VALUES(?,?,?,?,COALESCE((SELECT MAX(episode)+1 FROM playlist_members WHERE playlist_id=?),1),?) ON CONFLICT(playlist_id,video_id) DO UPDATE SET selected=MAX(playlist_members.selected,excluded.selected)`, playlist, video, position, selected, playlist, time.Now().Unix())
 	return err
 }
 
@@ -146,4 +146,11 @@ func (s *Store) FinishAsset(ctx context.Context, id string, failure error) error
 	}
 	_, err := s.DB.ExecContext(ctx, `UPDATE asset_jobs SET state=?,error=?,updated=? WHERE video_id=?`, state, message, time.Now().Unix(), id)
 	return err
+}
+
+// PreparedForHeight allows durable verified entries to remain unloaded until use.
+func (s *Store) PreparedForHeight(ctx context.Context, id string, height int) (bool, error) {
+	var ready bool
+	err := s.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM videos WHERE id=? AND revision<>'' AND requested_height=? AND state IN ('recorded','replay-ready'))`, id, height).Scan(&ready)
+	return ready, err
 }

@@ -47,7 +47,7 @@ func (s *Store) SavePlaylist(ctx context.Context, p Playlist) error {
 			p.Season = 10000
 		}
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO playlists(id,channel_id,title,description,thumbnail,season) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,description=excluded.description,thumbnail=CASE WHEN excluded.thumbnail<>'' THEN excluded.thumbnail ELSE playlists.thumbnail END`, p.ID, p.ChannelID, p.Title, p.Description, p.Thumbnail, p.Season)
+	_, err = tx.ExecContext(ctx, `INSERT INTO playlists(id,channel_id,title,description,thumbnail,season,updated) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET updated=CASE WHEN playlists.title<>excluded.title OR playlists.description<>excluded.description OR (excluded.thumbnail<>'' AND playlists.thumbnail<>excluded.thumbnail) THEN MAX(playlists.updated+1,excluded.updated,COALESCE((SELECT MAX(MAX(v.updated,m.updated))+1 FROM playlist_members m JOIN videos v ON v.id=m.video_id WHERE m.playlist_id=playlists.id),0)) ELSE playlists.updated END,title=excluded.title,description=excluded.description,thumbnail=CASE WHEN excluded.thumbnail<>'' THEN excluded.thumbnail ELSE playlists.thumbnail END`, p.ID, p.ChannelID, p.Title, p.Description, p.Thumbnail, p.Season, time.Now().Unix())
 	if err != nil {
 		return err
 	}

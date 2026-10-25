@@ -20,3 +20,8 @@ func (m *Mount) Update(_ []Entry) error { return errors.New("FUSE mounting requi
 func MountReadOnly(_ string, _ []Entry) (*Mount, error) {
 	return nil, errors.New("FUSE mounting requires Linux; use Colima for macOS testing")
 }
+
+// MountProvider requires Linux; macOS tests must use a Linux VM.
+func MountProvider(_ string, _ Provider) (*Mount, error) {
+	return nil, errors.New("FUSE mounting requires Linux; use Colima for macOS testing")
+}

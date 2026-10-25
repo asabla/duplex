@@ -8,9 +8,18 @@ import (
 )
 
 func (s *Store) migrate(ctx context.Context, version int) error {
-	if version == 2 {
-		return nil
+	if version < 2 {
+		if err := s.migrateCollections(ctx); err != nil {
+			return err
+		}
 	}
+	if version < 3 {
+		return s.migrateProjection(ctx)
+	}
+	return nil
+}
+
+func (s *Store) migrateCollections(ctx context.Context) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -84,4 +93,31 @@ func backfillSearch(ctx context.Context, tx *sql.Tx) error {
 		}
 		last = batch[len(batch)-1].id
 	}
+}
+
+func (s *Store) migrateProjection(ctx context.Context) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	statements := []string{
+		`ALTER TABLE videos ADD COLUMN requested_height INTEGER NOT NULL DEFAULT 0`,
+		`UPDATE videos SET requested_height=2160 WHERE revision<>''`,
+		`ALTER TABLE playlist_members ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE playlists ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE channels ADD COLUMN updated INTEGER NOT NULL DEFAULT 0`,
+		`UPDATE playlist_members SET updated=COALESCE((SELECT updated FROM videos WHERE id=video_id),0)`,
+		`UPDATE playlists SET updated=synced_at`,
+		`UPDATE channels SET updated=COALESCE((SELECT MAX(updated) FROM videos WHERE channel_id=channels.id),0)`,
+		`CREATE INDEX video_projection ON videos(channel_id,year,number) WHERE selected=1 AND revision<>''`,
+		`DELETE FROM discovery_items WHERE run_id IN (SELECT id FROM sync_jobs WHERE state<>'running')`,
+		`PRAGMA user_version=3`,
+	}
+	for _, statement := range statements {
+		if _, err = tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }

@@ -1,8 +1,10 @@
 package library
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
+	"errors"
 	"io"
 	"reflect"
 	"testing"
@@ -63,4 +65,51 @@ func (r *representationReader) Read(p []byte) (int, error) {
 	n, err := r.entry.Media.ReadAt(context.Background(), p, r.offset)
 	r.offset += int64(n)
 	return n, err
+}
+
+func TestRangeCopiesValidateBoundsAndPropagateReadErrors(t *testing.T) {
+	source := blob{id: "fixture", data: []byte("abcdefgh")}
+	var output bytes.Buffer
+	if err := CopyRange(t.Context(), &output, source, 3, 4); err != nil || output.String() != "defg" {
+		t.Fatal(output.String(), err)
+	}
+	for _, value := range [][2]int64{{-1, 1}, {0, -1}, {7, 2}, {9, 0}} {
+		output.Reset()
+		if err := CopyRange(t.Context(), &output, source, value[0], value[1]); err == nil || output.Len() != 0 {
+			t.Fatal(value, output.String(), err)
+		}
+	}
+	if _, err := ShowMetadata("../unsafe", "Title", nil, 0); err == nil {
+		t.Fatal("unsafe channel path accepted")
+	}
+	entry, err := ShowMetadata("channel", "invalid\x01", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output.Reset()
+	if err = CopyRange(t.Context(), &output, entry.Media, 0, entry.Media.Size()); err != nil {
+		t.Fatal(err)
+	}
+	var metadata struct {
+		Title string `xml:"title"`
+	}
+	if err = xml.Unmarshal(output.Bytes(), &metadata); err != nil || bytes.Contains(output.Bytes(), []byte{1}) {
+		t.Fatal("unsafe XML emitted", output.String(), err)
+	}
+	if _, err := EpisodeMetadata(Episode{ChannelID: "channel", VideoID: "video", Season: 0, Number: 1}); err == nil {
+		t.Fatal("invalid episode slot accepted")
+	}
+}
+
+type failedRange struct{ err error }
+
+func (r failedRange) ID() string                                         { return "failed" }
+func (r failedRange) Size() int64                                        { return 8 }
+func (r failedRange) ReadAt(context.Context, []byte, int64) (int, error) { return 0, r.err }
+func TestCopyRangePreservesReadFailures(t *testing.T) {
+	sentinel := errors.New("fixture source failed")
+	var output bytes.Buffer
+	if err := CopyRange(t.Context(), &output, failedRange{sentinel}, 0, 1); !errors.Is(err, sentinel) || output.Len() != 0 {
+		t.Fatal(output.String(), err)
+	}
 }
