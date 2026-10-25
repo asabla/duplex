@@ -8,7 +8,7 @@ import (
 )
 
 // requireElement checks browser-relevant attributes independently of HTML layout.
-func requireElement(t *testing.T, body []byte, tag string, attributes map[string]string, text string) {
+func requireElement(t *testing.T, body []byte, tag string, attributes map[string]string, text string) *html.Node {
 	t.Helper()
 
 	document, err := html.Parse(strings.NewReader(string(body)))
@@ -16,10 +16,14 @@ func requireElement(t *testing.T, body []byte, tag string, attributes map[string
 		t.Fatal(err)
 	}
 
-	var matches func(*html.Node) bool
+	var (
+		found   *html.Node
+		matches func(*html.Node) bool
+	)
 
 	matches = func(node *html.Node) bool {
 		if node.Type == html.ElementNode && node.Data == tag && hasAttributes(node, attributes) && (text == "" || strings.Join(strings.Fields(elementText(node)), " ") == text) {
+			found = node
 			return true
 		}
 
@@ -34,6 +38,8 @@ func requireElement(t *testing.T, body []byte, tag string, attributes map[string
 	if !matches(document) {
 		t.Fatalf("missing %s with attributes %v and text %q in %s", tag, attributes, text, body)
 	}
+
+	return found
 }
 
 func hasAttributes(node *html.Node, wanted map[string]string) bool {

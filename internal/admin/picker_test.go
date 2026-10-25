@@ -27,6 +27,11 @@ func TestPickersUseBoundedTitleSearchAndKeepTheCurrentScope(t *testing.T) {
 		t.Fatal("playlist picker loaded more than one bounded page")
 	}
 
+	option := requireElement(t, body, "option", map[string]string{"value": "PLfixture0001"}, "Controlled playlist · Controlled channel")
+	if got := elementText(option); got != "Controlled playlist · Controlled channel" {
+		t.Fatalf("picker textContent changed: %q", got)
+	}
+
 	body, _ = f.request(t, http.MethodGet, "/fragments/playlist-options?playlist_q=Picker+collection+59", "", nil, http.StatusOK)
 	if !strings.Contains(string(body), "Picker collection 59") || strings.Contains(string(body), "Picker collection 58") {
 		t.Fatal(string(body))

@@ -204,14 +204,9 @@
             >{{.PlaylistFallback}}</option
           >
         {{end}}{{range .PlaylistOptions}}
-          <option
-            value="{{.ID}}"
-            {{if eq .ID ($.Filters.Get "playlist")}}selected{{end}}
-            >{{.Title}} ·
-            {{$.ChannelName .ChannelID}}{{if not .Available}}
-              (missing)
-            {{end}}</option
-          >
+          {{/*The enhanced picker copies textContent into its search input.*/}}
+          <!-- prettier-ignore -->
+          <option value="{{.ID}}" {{if eq .ID ($.Filters.Get "playlist")}}selected{{end}}>{{.Title}} · {{$.ChannelName .ChannelID}}{{if not .Available}} (missing){{end}}</option>
         {{end}}</select
       >
     </label>
