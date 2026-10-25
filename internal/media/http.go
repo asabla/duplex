@@ -31,19 +31,54 @@ type HTTPSource struct {
 
 // OpenHTTP probes a byte, never the whole object. Callers must supply a client
 // with appropriate destination and redirect restrictions for untrusted URLs.
-func OpenHTTP(ctx context.Context, client *http.Client, url, identity string, store cache.ChunkStore) (*HTTPSource, error) {
-	if client == nil {
-		return nil, errors.New("HTTP client is required")
+func OpenHTTP(ctx context.Context, client *http.Client, raw, identity string, store cache.ChunkStore) (*HTTPSource, error) {
+	return openHTTP(ctx, client, raw, identity, store, SourceVersion{})
+}
+
+// SourceVersion is an opaque version from the authenticated source adapter.
+// It is never derived from a lease URL alone. Size must match the range probe.
+type SourceVersion struct {
+	Key  string
+	Size int64
+}
+
+// OpenVersionedHTTP also validates fresh start, middle, and end fingerprints
+// before allowing a provider version to reuse cached chunks or packaging indexes.
+func OpenVersionedHTTP(ctx context.Context, client *http.Client, raw, identity string, store cache.ChunkStore, version SourceVersion) (*HTTPSource, error) {
+	return openHTTP(ctx, client, raw, identity, store, version)
+}
+
+func openHTTP(ctx context.Context, client *http.Client, raw, identity string, store cache.ChunkStore, version SourceVersion) (*HTTPSource, error) {
+	if client == nil || identity == "" {
+		return nil, errors.New("HTTP client and source identity are required")
 	}
-	s := &HTTPSource{client: client, url: url, cache: store}
-	resp, err := s.request(ctx, 0, 1)
+	s := &HTTPSource{client: client, url: raw, cache: store}
+	if err := s.probe(ctx); err != nil {
+		return nil, err
+	}
+	scope, err := s.namespace(ctx, version)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	h := sha256.Sum256([]byte(identity + ":" + strconv.FormatInt(s.size, 10) + ":" + scope))
+	s.id = hex.EncodeToString(h[:])
+	return s, nil
+}
+
+func (s *HTTPSource) probe(ctx context.Context) error {
+	resp, err := s.request(ctx, 0, 1)
+	if err != nil {
+		return err
+	}
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 2))
+	closeErr := resp.Body.Close()
+	if readErr != nil || closeErr != nil || len(body) != 1 {
+		return errors.New("invalid range probe body")
+	}
 	var start, end, total int64
-	if _, err = fmt.Sscanf(resp.Header.Get("Content-Range"), "bytes %d-%d/%d", &start, &end, &total); err != nil || start != 0 || end != 0 || total <= 0 || strings.TrimSpace(resp.Header.Get("Content-Range")) != fmt.Sprintf("bytes %d-%d/%d", start, end, total) {
-		return nil, errors.New("source has no exact byte-range size")
+	value := strings.TrimSpace(resp.Header.Get("Content-Range"))
+	if _, err = fmt.Sscanf(value, "bytes %d-%d/%d", &start, &end, &total); err != nil || start != 0 || end != 0 || total <= 0 || value != fmt.Sprintf("bytes 0-0/%d", total) {
+		return errors.New("source has no exact byte-range size")
 	}
 	s.size = total
 	s.etag = resp.Header.Get("ETag")
@@ -51,20 +86,36 @@ func OpenHTTP(ctx context.Context, client *http.Client, url, identity string, st
 		s.etag = ""
 	}
 	s.modified = resp.Header.Get("Last-Modified")
-	b, err := io.ReadAll(io.LimitReader(resp.Body, 2))
-	if err != nil || len(b) != 1 {
-		return nil, errors.New("invalid range probe body")
-	}
 	s.UpstreamBytes.Add(1)
-	// Without a strong validator, do not reuse data across resolutions. A signed
-	// URL can expire, but must never become a durable identity on its own.
-	scope := s.etag
-	if scope == "" {
-		scope = url + ":" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	return nil
+}
+
+func (s *HTTPSource) namespace(ctx context.Context, version SourceVersion) (string, error) {
+	if version.Key != "" && version.Size != s.size {
+		return "", ErrChanged
 	}
-	h := sha256.Sum256([]byte(identity + ":" + strconv.FormatInt(total, 10) + ":" + scope))
-	s.id = hex.EncodeToString(h[:])
-	return s, nil
+	if s.etag != "" {
+		return s.etag, nil
+	}
+	if version.Key == "" {
+		return s.url + ":" + strconv.FormatInt(time.Now().UnixNano(), 10), nil
+	}
+	decoded, err := hex.DecodeString(version.Key)
+	if err != nil || len(decoded) != sha256.Size {
+		return "", errors.New("invalid provider version")
+	}
+	h := sha256.New()
+	h.Write(decoded)
+	h.Write([]byte(s.modified))
+	for _, offset := range []int64{0, s.size / 2, max(0, s.size-65536)} {
+		data, err := s.fetch(ctx, offset, int(min(int64(65536), s.size-offset)))
+		if err != nil {
+			return "", err
+		}
+		h.Write([]byte(strconv.FormatInt(offset, 10)))
+		h.Write(data)
+	}
+	return "provider-v1:" + hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (s *HTTPSource) ID() string  { return s.id }
