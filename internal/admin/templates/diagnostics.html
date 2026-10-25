@@ -11,6 +11,8 @@
   {{if .Status.ConfigError}}<p class="error">{{.Status.ConfigError}}</p>{{end}}
   {{if .Status.SourceError}}<p class="error">{{.Status.SourceError}}</p>{{end}}
   {{if .Status.PlexError}}<p class="error">{{.Status.PlexError}}</p>{{end}}
+  {{if .Status.MetadataError}}<p class="warning">{{.Status.MetadataError}}</p>{{end}}
+  {{if .Status.MetadataPending}}<p>{{.Status.MetadataPending}} show metadata refreshes pending.</p>{{end}}
   {{if .Status.RestartRequired}}<p class="warning">Saved settings require a service restart.</p>{{end}}
 </section>
 {{end}}

@@ -23,6 +23,9 @@ func (a *App) Summary(ctx context.Context) (Status, catalog.Counts, error) {
 	if s.PendingJobs, err = a.Catalog.PendingPreparations(ctx); err != nil {
 		return s, counts, err
 	}
+	if s.MetadataPending, s.MetadataError, err = a.Catalog.ShowRefreshStatus(ctx); err != nil {
+		return s, counts, err
+	}
 	a.mu.RLock()
 	s.SourceError, s.MountError, s.PlexError, s.RestartRequired = a.toolError, a.mountError, a.plexError, a.restart
 	s.PendingJobs += len(a.queued)

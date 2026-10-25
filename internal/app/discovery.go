@@ -43,6 +43,9 @@ func (a *App) Sync(ctx context.Context, id string) error {
 	run := discoveryRun{app: a, id: runID, channel: ch}
 	run.reader, _ = source.CollectionReader(a.Source)
 	err = run.execute(ctx)
+	if err == nil {
+		a.requestScan()
+	}
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 	defer stop()
 	finishErr := a.Catalog.FinishJob(cleanup, runID, id, err)
@@ -426,6 +429,11 @@ func (r *discoveryRun) playlist(ctx context.Context, id string, policy config.Se
 	if err = r.current(); err != nil {
 		return err
 	}
+	release, err := r.app.acquireLibraryUpdate(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	return r.app.Catalog.ReconcileDiscovery(ctx, r.id, id, r.channel.ID, limit)
 }
 

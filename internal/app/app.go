@@ -20,48 +20,51 @@ import (
 	"duplex/internal/diagnostics"
 	"duplex/internal/library"
 	"duplex/internal/media"
-	"duplex/internal/plex"
 	"duplex/internal/source"
 )
 
 // App coordinates catalogue discovery, media preparation, publication, and integration.
 type App struct {
-	runtimeVideos   map[string]string
-	renewAfter      map[string]time.Time
-	runtimeUsed     map[string]time.Time
-	prepareSlots    chan struct{}
-	preparations    map[string]*preparationRun
-	foreground      int
-	bindings        map[string]*representationBinding
-	httpClient      *http.Client
-	metadata        map[string]metadataLease
-	leases          map[string]time.Time
-	prepareWake     chan struct{}
-	scanWake        chan struct{}
-	scanPending     bool
-	Measurements    *diagnostics.Recorder
-	Config          *config.Manager
-	Catalog         *catalog.Store
-	Cache           *cache.Store
-	Source          source.SourceAdapter
-	mount           *library.Mount
-	mu              sync.RWMutex
-	reps            map[string]media.Representation
-	queued          map[string]bool
-	attempted       map[string]time.Time
-	jobs            chan string
-	ctx             context.Context
-	cancel          context.CancelFunc
-	wg              sync.WaitGroup
-	original        config.Config
-	toolError       string
-	mountError      string
-	plexError       string
-	restart         bool
-	appliedRevision string
-	lastIntegration time.Time
-	applied         config.Config
-	cacheError      string
+	hintWriters      chan struct{}
+	libraryUpdates   chan struct{}
+	hints            map[string]cachedHints
+	runtimeVideos    map[string]string
+	renewAfter       map[string]time.Time
+	runtimeUsed      map[string]time.Time
+	prepareSlots     chan struct{}
+	preparations     map[string]*preparationRun
+	foreground       int
+	bindings         map[string]*representationBinding
+	httpClient       *http.Client
+	metadata         map[string]metadataLease
+	leases           map[string]time.Time
+	prepareWake      chan struct{}
+	scanWake         chan struct{}
+	scanPending      bool
+	Measurements     *diagnostics.Recorder
+	Config           *config.Manager
+	Catalog          *catalog.Store
+	Cache            *cache.Store
+	Source           source.SourceAdapter
+	mount            *library.Mount
+	mu               sync.RWMutex
+	reps             map[string]media.Representation
+	queued           map[string]bool
+	attempted        map[string]time.Time
+	jobs             chan string
+	ctx              context.Context
+	cancel           context.CancelFunc
+	wg               sync.WaitGroup
+	original         config.Config
+	toolError        string
+	mountError       string
+	plexError        string
+	plexBindingError string
+	restart          bool
+	appliedRevision  string
+	lastIntegration  time.Time
+	applied          config.Config
+	cacheError       string
 }
 
 // Status is the compatibility diagnostic snapshot; Summary is intended for polling.
@@ -72,6 +75,8 @@ type Status struct {
 	SourceError     string                    `json:"source_error,omitempty"`
 	MountError      string                    `json:"mount_error,omitempty"`
 	PlexError       string                    `json:"plex_error,omitempty"`
+	MetadataError   string                    `json:"metadata_error,omitempty"`
+	MetadataPending int                       `json:"metadata_pending"`
 	ConfigError     string                    `json:"config_error,omitempty"`
 	PendingJobs     int                       `json:"pending_jobs"`
 	Cache           cache.Stats               `json:"cache"`
@@ -90,13 +95,13 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 			return nil, e
 		}
 	}
-	db, e := catalog.OpenContext(ctx, filepath.Join(c.DataDir, "catalogue.sqlite"))
+	store, e := cache.New(c.CacheDir, int64(c.CacheGiB)<<30)
 	if e != nil {
 		return nil, e
 	}
-	store, e := cache.New(c.CacheDir, int64(c.CacheGiB)<<30)
+	db, e := catalog.OpenContext(ctx, filepath.Join(c.DataDir, "catalogue.sqlite"))
 	if e != nil {
-		return nil, errors.Join(e, db.Close())
+		return nil, errors.Join(e, store.Close())
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	a := &App{Measurements: &diagnostics.Recorder{}, Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1), metadata: map[string]metadataLease{}, leases: map[string]time.Time{}, ctx: ctx, cancel: cancel, original: c}
@@ -133,6 +138,8 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	go a.assetWorker(ctx)
 	a.wg.Add(1)
 	go a.artworkWorker(ctx)
+	a.wg.Add(1)
+	go a.metadataWorker(ctx)
 	for i := 0; i < c.Workers; i++ {
 		a.wg.Add(1)
 		go a.worker(ctx)
@@ -227,7 +234,7 @@ func (a *App) reconcile(ctx context.Context) {
 	if changed || time.Since(a.lastIntegration) >= time.Minute {
 		a.lastIntegration = time.Now()
 		ctx, stop := context.WithTimeout(ctx, 20*time.Second)
-		a.operationFailure("integration health", a.integration(ctx, false))
+		a.operationFailure("integration health", a.integration(ctx, integrationHealth))
 		stop()
 	}
 }
@@ -379,90 +386,6 @@ func (a *App) Publish() error {
 	return a.ctx.Err()
 }
 
-func (a *App) plexClientFor(p config.Plex) (*plex.Client, error) {
-	if p.URL == "" {
-		return nil, errors.New("plex connection is not configured")
-	}
-	token := ""
-	if p.TokenFile != "" {
-		b, e := os.ReadFile(p.TokenFile)
-		if e != nil {
-			return nil, errors.New("cannot read Plex token file")
-		}
-		token = string(b)
-	}
-	return plex.New(p.URL, token)
-}
-
-// Scan checks the mount and Plex prerequisites before requesting library discovery.
-func (a *App) Scan(ctx context.Context) error {
-	defer a.Measurements.Begin("plex.scan")()
-	return a.integration(ctx, true)
-}
-
-func (a *App) integration(ctx context.Context, scan bool) (err error) {
-	if a.mount == nil {
-		return nil
-	}
-	defer func() { a.setPlexError(err) }()
-	if !a.mount.Ready() {
-		a.mu.Lock()
-		a.mountError = "Library mount is unavailable; scans are disabled"
-		a.mu.Unlock()
-		return errors.New("library mount is unavailable")
-	}
-	connection := a.Config.Snapshot().Config.Plex
-	client, err := a.plexClientFor(connection)
-	if err != nil {
-		return err
-	}
-	if _, err = client.Check(ctx); err != nil {
-		return err
-	}
-	if err = client.LibraryHealth(ctx, connection.Section); err != nil {
-		return err
-	}
-	if !scan {
-		return nil
-	}
-	if err = client.Scan(ctx, connection.Section); err != nil {
-		return err
-	}
-	return a.bindPlex(ctx, client, connection)
-}
-
-func (a *App) bindPlex(ctx context.Context, client *plex.Client, connection config.Plex) error {
-	return client.WalkBindings(ctx, connection.Section, func(bindings []plex.Binding) error {
-		for _, binding := range bindings {
-			if err := a.bindPlexItem(ctx, binding, connection); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func (a *App) bindPlexItem(ctx context.Context, binding plex.Binding, connection config.Plex) error {
-	if occurrence := plex.OccurrenceID(binding.GUID); occurrence != "" {
-		if err := a.Catalog.BindOccurrence(ctx, occurrence, connection.URL, binding.Key, binding.GUID); err != nil {
-			return err
-		}
-	}
-	if id := plex.SourceID(binding.GUID); id != "" {
-		return a.Catalog.Bind(ctx, id, connection.URL, binding.Key, binding.GUID)
-	}
-	return nil
-}
-
-func (a *App) setPlexError(e error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.plexError = ""
-	if e != nil {
-		a.plexError = e.Error()
-	}
-}
-
 // Status is the compatibility diagnostic snapshot; Summary is intended for polling.
 func (a *App) Status(ctx context.Context) (Status, error) {
 	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot()}
@@ -474,6 +397,9 @@ func (a *App) Status(ctx context.Context) (Status, error) {
 		return s, e
 	}
 	if s.Jobs, e = a.Catalog.Jobs(ctx); e != nil {
+		return s, e
+	}
+	if s.MetadataPending, s.MetadataError, e = a.Catalog.ShowRefreshStatus(ctx); e != nil {
 		return s, e
 	}
 	a.mu.RLock()

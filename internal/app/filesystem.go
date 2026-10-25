@@ -101,18 +101,25 @@ func (p catalogueFS) episodeItem(ctx context.Context, ch config.Channel, visible
 	if err != nil {
 		return resolvedFile{}, err
 	}
+	if fileName == ".plexmatch" {
+		selected, err := p.app.Catalog.ProjectionSeasonAt(ctx, visible, ch.ID, season)
+		if err != nil {
+			return resolvedFile{}, projectionError(err)
+		}
+		if !strings.HasPrefix(selected.Scope, "playlist:") {
+			return resolvedFile{}, fs.ErrNotExist
+		}
+		entry, err := p.app.seasonHints(ctx, ch.ID, season)
+		return entryFile(entry), projectionError(err)
+	}
 	number, suffix, err := episodeNumber(ch.ID, season, fileName)
 	if err != nil {
 		return resolvedFile{}, err
 	}
-	episodes, err := p.app.Catalog.ProjectionPage(ctx, visible, ch.ID, season, number-1, 1)
+	ep, err := p.app.Catalog.ProjectionFile(ctx, visible, ch.ID, season, number)
 	if err != nil {
-		return resolvedFile{}, err
+		return resolvedFile{}, projectionError(err)
 	}
-	if len(episodes) == 0 || episodes[0].Number != number {
-		return resolvedFile{}, fs.ErrNotExist
-	}
-	ep := episodes[0]
 	if suffix == ".mp4" {
 		return resolvedFile{info: library.Node{Size: ep.Size, Modified: ep.Updated}, episode: &ep}, nil
 	}
@@ -130,7 +137,7 @@ func (p catalogueFS) episodeItem(ctx context.Context, ch config.Channel, visible
 }
 
 func libraryEpisode(ep catalog.Episode) library.Episode {
-	return library.Episode{ChannelID: ep.OwnerID, ChannelTitle: ep.ChannelTitle, VideoID: ep.VideoID, Title: ep.Title, Description: ep.Description, Season: ep.Season, Number: ep.Number, SeasonTitle: ep.SeasonTitle, OccurrenceID: ep.OccurrenceID, Modified: ep.Updated}
+	return library.Episode{ChannelID: ep.OwnerID, ChannelTitle: ep.ChannelTitle, VideoID: ep.VideoID, Title: ep.Title, Description: ep.Description, Season: ep.Season, Number: ep.Number, FileNumber: ep.FileNumber, SeasonTitle: ep.SeasonTitle, OccurrenceID: ep.OccurrenceID, Modified: ep.Updated}
 }
 
 func entryFile(entry library.Entry) resolvedFile {
@@ -230,7 +237,12 @@ func (p catalogueFS) showMetadata(ctx context.Context, ch config.Channel, visibl
 	if err != nil {
 		return library.Entry{}, projectionError(err)
 	}
-	return library.ShowMetadata(ch.ID, title, names, modified)
+	entry, err := library.ShowMetadata(ch.ID, title, names, modified)
+	if err != nil {
+		return library.Entry{}, err
+	}
+	entry.Modified, err = p.app.Catalog.RecordShowMetadata(ctx, ch.ID, entry.Media.ID(), modified)
+	return entry, err
 }
 
 func (p catalogueFS) ReadDir(ctx context.Context, name, after string, limit int) ([]library.Child, error) {
@@ -334,7 +346,7 @@ func (p catalogueFS) episodeChildren(ctx context.Context, ch config.Channel, vis
 		return nil, err
 	}
 	base := ""
-	if after != "" {
+	if after != "" && after != ".plexmatch" {
 		number, _, err := episodeNumber(ch.ID, season, after)
 		if err != nil {
 			return nil, err
@@ -346,8 +358,17 @@ func (p catalogueFS) episodeChildren(ctx context.Context, ch config.Channel, vis
 		return nil, err
 	}
 	children := []library.Child{}
+	if after < ".plexmatch" {
+		selected, err := p.app.Catalog.ProjectionSeasonAt(ctx, visible, ch.ID, season)
+		if err != nil {
+			return nil, projectionError(err)
+		}
+		if strings.HasPrefix(selected.Scope, "playlist:") {
+			children = append(children, library.Child{Name: ".plexmatch"})
+		}
+	}
 	for _, ep := range episodes {
-		name := path.Base(library.EpisodeBase(ep.OwnerID, ep.Season, ep.Number))
+		name := path.Base(library.EpisodeBase(ep.OwnerID, ep.Season, ep.FileNumber))
 		suffixes := []string{".mp4", ".nfo"}
 		for _, asset := range p.app.loadAssets(ep.VideoID) {
 			suffixes = append(suffixes, asset.Path)

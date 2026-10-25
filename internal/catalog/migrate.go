@@ -19,9 +19,50 @@ func (s *Store) migrate(ctx context.Context, version int) error {
 		}
 	}
 	if version < 4 {
-		return s.migratePlaylistRoots(ctx)
+		if err := s.migratePlaylistRoots(ctx); err != nil {
+			return err
+		}
+	}
+	if version < 5 {
+		return s.migratePlaylistPaths(ctx)
 	}
 	return nil
+}
+
+func (s *Store) migratePlaylistPaths(ctx context.Context) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	for _, statement := range []string{
+		`ALTER TABLE playlist_members ADD COLUMN file_episode INTEGER NOT NULL DEFAULT 0`,
+		`UPDATE playlist_members SET file_episode=episode WHERE selected=1 AND episode>0`,
+		`WITH pending AS MATERIALIZED (SELECT playlist_id,video_id,ROW_NUMBER() OVER(PARTITION BY playlist_id ORDER BY episode,position,video_id) AS slot FROM playlist_members WHERE file_episode=0), assigned AS MATERIALIZED (SELECT playlist_id,MAX(file_episode) AS last FROM playlist_members GROUP BY playlist_id) UPDATE playlist_members AS m SET file_episode=COALESCE((SELECT last FROM assigned WHERE playlist_id=m.playlist_id),0)+(SELECT slot FROM pending WHERE playlist_id=m.playlist_id AND video_id=m.video_id) WHERE file_episode=0`,
+		`CREATE UNIQUE INDEX playlist_file_slots ON playlist_members(playlist_id,file_episode)`,
+		`CREATE INDEX playlist_episode_numbers ON playlist_members(playlist_id,episode)`,
+		`CREATE INDEX playlist_video_membership ON playlist_members(video_id,playlist_id)`,
+		`ALTER TABLE playlists ADD COLUMN projection_revision INTEGER NOT NULL DEFAULT 1`,
+		`CREATE TABLE catalogue_identity(id INTEGER PRIMARY KEY CHECK(id=1),identity TEXT NOT NULL UNIQUE)`,
+		`INSERT INTO catalogue_identity VALUES(1,lower(hex(randomblob(16))))`,
+		`CREATE TRIGGER playlist_hint_insert AFTER INSERT ON playlist_members BEGIN UPDATE playlists SET projection_revision=projection_revision+1 WHERE id=NEW.playlist_id; END`,
+		`CREATE TRIGGER playlist_hint_update AFTER UPDATE OF selected,episode,file_episode ON playlist_members WHEN OLD.selected<>NEW.selected OR OLD.episode<>NEW.episode OR OLD.file_episode<>NEW.file_episode BEGIN UPDATE playlists SET projection_revision=projection_revision+1 WHERE id=NEW.playlist_id; END`,
+		`CREATE TRIGGER playlist_hint_delete AFTER DELETE ON playlist_members BEGIN UPDATE playlists SET projection_revision=projection_revision+1 WHERE id=OLD.playlist_id; END`,
+		`CREATE TRIGGER playlist_hint_media AFTER UPDATE OF revision,state ON videos WHEN ((OLD.revision<>'' AND OLD.state IN ('recorded','replay-ready'))<>(NEW.revision<>'' AND NEW.state IN ('recorded','replay-ready'))) BEGIN UPDATE playlists SET projection_revision=projection_revision+1 WHERE id IN (SELECT playlist_id FROM playlist_members WHERE video_id=NEW.id); END`,
+		`CREATE TABLE show_metadata(channel_id TEXT PRIMARY KEY REFERENCES channels(id),digest TEXT NOT NULL,modified INTEGER NOT NULL,pending INTEGER NOT NULL DEFAULT 1,attempted INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '')`,
+		`ALTER TABLE episode_bindings ADD COLUMN owner_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE episode_bindings ADD COLUMN playlist_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE episode_bindings ADD COLUMN video_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE episode_bindings ADD COLUMN current_index INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE episode_bindings ADD COLUMN seen_run INTEGER NOT NULL DEFAULT 0`,
+		`CREATE INDEX observed_episodes ON episode_bindings(server,seen_run,occurrence_id)`,
+		`PRAGMA user_version=5`,
+	} {
+		if _, err = tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (s *Store) migrateCollections(ctx context.Context) error {

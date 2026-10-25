@@ -34,12 +34,13 @@ func (s *Store) ReconcileDiscovery(ctx context.Context, run int64, collection, o
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE videos SET selected=1,exposed=(revision<>'' AND number>0) WHERE id IN (`+selection+`)`, args...)
 	} else {
-		if _, err = tx.ExecContext(ctx, `UPDATE playlist_members SET selected=0 WHERE playlist_id=?`, collection); err != nil {
+		removalArgs := append([]any{time.Now().Unix(), collection}, args...)
+		if _, err = tx.ExecContext(ctx, `UPDATE playlist_members SET selected=0,updated=MAX(updated+1,?) WHERE playlist_id=? AND selected=1 AND video_id NOT IN (`+selection+`)`, removalArgs...); err != nil {
 			return err
 		}
 		// UPSERT from SELECT requires an explicit WHERE before ON CONFLICT.
-		query := `WITH chosen AS (` + selection + `), ordered AS (SELECT d.video_id,d.position,ROW_NUMBER() OVER(ORDER BY d.position,d.video_id) AS episode FROM discovery_items d JOIN chosen c ON c.video_id=d.video_id WHERE d.run_id=? AND d.collection=?) INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode,updated) SELECT ?,video_id,position,1,episode,? FROM ordered WHERE true ON CONFLICT(playlist_id,video_id) DO UPDATE SET updated=CASE WHEN playlist_members.position<>excluded.position OR playlist_members.episode<>excluded.episode THEN MAX(playlist_members.updated+1,excluded.updated,COALESCE((SELECT MAX(v.updated,p.updated,c.updated)+1 FROM videos v JOIN playlists p ON p.id=playlist_members.playlist_id JOIN channels c ON c.id=p.channel_id WHERE v.id=playlist_members.video_id),0)) ELSE playlist_members.updated END,position=excluded.position,selected=1,episode=excluded.episode`
-		args = append(args, run, collection, collection, time.Now().Unix())
+		query := `WITH chosen AS (` + selection + `), ordered AS (SELECT d.video_id,d.position,ROW_NUMBER() OVER(ORDER BY d.position,d.video_id) AS episode FROM discovery_items d JOIN chosen c ON c.video_id=d.video_id WHERE d.run_id=? AND d.collection=?) INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode,file_episode,updated) SELECT ?,video_id,position,1,episode,COALESCE((SELECT MAX(file_episode) FROM playlist_members WHERE playlist_id=?),0)+episode,? FROM ordered WHERE true ON CONFLICT(playlist_id,video_id) DO UPDATE SET updated=CASE WHEN playlist_members.position<>excluded.position OR playlist_members.episode<>excluded.episode OR playlist_members.selected<>excluded.selected THEN MAX(playlist_members.updated+1,excluded.updated,COALESCE((SELECT MAX(v.updated,p.updated,c.updated)+1 FROM videos v JOIN playlists p ON p.id=playlist_members.playlist_id JOIN channels c ON c.id=p.channel_id WHERE v.id=playlist_members.video_id),0)) ELSE playlist_members.updated END,position=excluded.position,selected=1,episode=excluded.episode`
+		args = append(args, run, collection, collection, collection, time.Now().Unix())
 		_, err = tx.ExecContext(ctx, query, args...)
 	}
 	if err != nil {

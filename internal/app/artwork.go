@@ -271,6 +271,11 @@ func (a *App) refreshArtwork(ctx context.Context, channel string) error {
 	if a.mount == nil || a.Config.Snapshot().Config.Plex.URL == "" {
 		return nil
 	}
+	release, err := a.acquireLibraryUpdate(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	connection := a.Config.Snapshot().Config.Plex
 	client, err := a.plexClientFor(connection)
 	if err != nil {

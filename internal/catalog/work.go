@@ -139,7 +139,7 @@ func (s *Store) MarkUploadedSelection(ctx context.Context, id string) error {
 
 // AddPlaylistMember preserves existing order until full reconciliation succeeds.
 func (s *Store) AddPlaylistMember(ctx context.Context, playlist, video string, position int, selected bool) error {
-	_, err := s.DB.ExecContext(ctx, `INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode,updated) VALUES(?,?,?,?,COALESCE((SELECT MAX(episode)+1 FROM playlist_members WHERE playlist_id=?),1),?) ON CONFLICT(playlist_id,video_id) DO UPDATE SET selected=MAX(playlist_members.selected,excluded.selected)`, playlist, video, position, selected, playlist, time.Now().Unix())
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode,file_episode,updated) VALUES(?,?,?,?,COALESCE((SELECT MAX(episode)+1 FROM playlist_members WHERE playlist_id=?),1),COALESCE((SELECT MAX(file_episode)+1 FROM playlist_members WHERE playlist_id=?),1),?) ON CONFLICT(playlist_id,video_id) DO UPDATE SET episode=CASE WHEN playlist_members.selected=0 AND excluded.selected=1 THEN excluded.episode ELSE playlist_members.episode END,updated=CASE WHEN playlist_members.selected=0 AND excluded.selected=1 THEN MAX(playlist_members.updated+1,excluded.updated) ELSE playlist_members.updated END,selected=MAX(playlist_members.selected,excluded.selected)`, playlist, video, position, selected, playlist, playlist, time.Now().Unix())
 	return err
 }
 

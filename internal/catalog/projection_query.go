@@ -10,9 +10,9 @@ import (
 func projectionCTE(v Visibility) (string, []any) {
 	args := []any{}
 	sets := []string{valueSet("active_channels", v.Channels, &args), valueSet("playlist_channels", v.PlaylistChannels, &args), valueSet("skipped_playlists", v.SkippedPlaylists, &args)}
-	sets = append(sets, `episodes(owner,title,video,name,description,playlist,season_title,season,number,revision,size,updated) AS (
- SELECT v.channel_id,c.title,v.id,v.title,v.description,'','',v.year,v.number,v.revision,v.size,MAX(v.updated,c.updated) FROM videos v JOIN channels c ON c.id=v.channel_id JOIN active_channels a ON a.id=v.channel_id WHERE v.selected=1 AND v.revision<>'' AND v.number>0 AND v.state IN ('recorded','replay-ready')
- UNION ALL SELECT p.channel_id,c.title,v.id,v.title,v.description,p.id,p.title,p.season,m.episode,v.revision,v.size,MAX(v.updated,m.updated,p.updated,c.updated) FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id JOIN channels c ON c.id=p.channel_id JOIN playlist_channels a ON a.id=p.channel_id JOIN videos v ON v.id=m.video_id WHERE m.selected=1 AND m.episode>0 AND v.revision<>'' AND v.state IN ('recorded','replay-ready') AND NOT EXISTS(SELECT 1 FROM skipped_playlists x WHERE x.id=p.id))`)
+	sets = append(sets, `episodes(owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated) AS (
+ SELECT v.channel_id,c.title,v.id,v.title,v.description,'','',v.year,v.number,v.number,v.revision,v.size,MAX(v.updated,c.updated) FROM videos v JOIN channels c ON c.id=v.channel_id JOIN active_channels a ON a.id=v.channel_id WHERE v.selected=1 AND v.revision<>'' AND v.number>0 AND v.state IN ('recorded','replay-ready')
+ UNION ALL SELECT p.channel_id,c.title,v.id,v.title,v.description,p.id,p.title,p.season,m.episode,m.file_episode,v.revision,v.size,MAX(v.updated,m.updated,p.updated,c.updated) FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id JOIN channels c ON c.id=p.channel_id JOIN playlist_channels a ON a.id=p.channel_id JOIN videos v ON v.id=m.video_id WHERE m.selected=1 AND m.episode>0 AND v.revision<>'' AND v.state IN ('recorded','replay-ready') AND NOT EXISTS(SELECT 1 FROM skipped_playlists x WHERE x.id=p.id))`)
 	return "WITH " + strings.Join(sets, ",") + " ", args
 }
 
@@ -23,11 +23,43 @@ func (s *Store) ProjectionPage(ctx context.Context, v Visibility, owner string, 
 	}
 	cte, args := projectionCTE(v)
 	args = append(args, owner, season, after, limit)
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND number>? ORDER BY number,video LIMIT ?`, args...)
+	rows, err := s.DB.QueryContext(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND number>? ORDER BY number,video LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
 	return readProjectionRows(rows)
+}
+
+// ProjectionFile resolves an immutable scanner slot, independently of the
+// current display episode number in a reordered playlist.
+func (s *Store) ProjectionFile(ctx context.Context, v Visibility, owner string, season, fileNumber int) (Episode, error) {
+	cte, args := projectionCTE(v)
+	args = append(args, owner, season, fileNumber)
+	rows, err := s.DB.QueryContext(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND file_number=? LIMIT 1`, args...)
+	if err != nil {
+		return Episode{}, err
+	}
+	episodes, err := readProjectionRows(rows)
+	if err != nil {
+		return Episode{}, err
+	}
+	if len(episodes) == 0 {
+		return Episode{}, sql.ErrNoRows
+	}
+	return episodes[0], nil
+}
+
+// PlaylistOrder returns the current display index for a selected occurrence.
+func (s *Store) PlaylistOrder(ctx context.Context, v Visibility, occurrence string) (int, error) {
+	parts := strings.Split(occurrence, ":")
+	if len(parts) != 4 || parts[0] != "youtube-playlist" {
+		return 0, sql.ErrNoRows
+	}
+	cte, args := projectionCTE(v)
+	args = append(args, parts[1], parts[2], parts[3])
+	var index int
+	err := s.DB.QueryRowContext(ctx, cte+`SELECT number FROM episodes WHERE owner=? AND playlist=? AND video=? LIMIT 1`, args...).Scan(&index)
+	return index, err
 }
 
 // ProjectionSeason is one visible directory and its local poster identity.
@@ -72,7 +104,7 @@ func (s *Store) ProjectionFilesPage(ctx context.Context, v Visibility, owner str
 	}
 	cte, args := projectionCTE(v)
 	args = append(args, owner, season, after, limit)
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND printf('Channel-%s - S%04dE%04d',owner,season,number)>=? ORDER BY printf('Channel-%s - S%04dE%04d',owner,season,number),video LIMIT ?`, args...)
+	rows, err := s.DB.QueryContext(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND printf('Channel-%s - S%04dE%04d',owner,season,file_number)>=? ORDER BY printf('Channel-%s - S%04dE%04d',owner,season,file_number),video LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}

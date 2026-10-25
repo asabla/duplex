@@ -109,7 +109,7 @@ func pipelineApp(t testing.TB, ch config.Channel, adapter source.SourceAdapter) 
 	})
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
-	return &App{Config: manager, Catalog: db, Source: adapter, ctx: ctx, cancel: cancel, reps: map[string]media.Representation{}, leases: map[string]time.Time{}, prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1)}
+	return &App{Config: manager, Catalog: db, Source: adapter, ctx: ctx, cancel: cancel, original: manager.Snapshot().Config, reps: map[string]media.Representation{}, leases: map[string]time.Time{}, prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1)}
 }
 
 func pipelineChannel(policy config.Selection) config.Channel {

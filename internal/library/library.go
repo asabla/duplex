@@ -28,7 +28,7 @@ type Entry struct {
 // Episode is one channel-season occurrence of a verified media representation.
 type Episode struct {
 	ChannelID, ChannelTitle, VideoID, Title, Description string
-	Season, Number                                       int
+	Season, Number, FileNumber                           int
 	SeasonTitle, OccurrenceID                            string
 	Media                                                media.Representation
 	Modified                                             int64
@@ -66,7 +66,7 @@ func Entries(episodes []Episode) ([]Entry, error) {
 		// Do not append arbitrary source IDs: suffixes such as "-video" can be
 		// interpreted as extras by Plex's modern scanner. The assigned episode
 		// slot is stable; the independent source identity is stored in NFO.
-		base := EpisodeBase(e.ChannelID, e.Season, e.Number)
+		base := occurrenceBase(e)
 		if seen[base] {
 			return nil, fmt.Errorf("duplicate library episode")
 		}
@@ -96,7 +96,7 @@ func ShowMetadata(channel, title string, names map[int]string, modified int64) (
 		return Entry{}, err
 	}
 	p := path.Join("Channel-"+channel, "tvshow.nfo")
-	return Entry{Path: p, Media: blob{id: p, data: append([]byte(xml.Header), data...)}, Modified: modified}, nil
+	return Entry{Path: p, Media: metadataBlob(data), Modified: modified}, nil
 }
 
 // EpisodeMetadata renders one occurrence without loading its media index.
@@ -104,7 +104,7 @@ func EpisodeMetadata(e Episode) (Entry, error) {
 	if !safeID.MatchString(e.ChannelID) || !safeID.MatchString(e.VideoID) || e.Season < 1 || e.Number < 1 {
 		return Entry{}, fmt.Errorf("invalid library episode")
 	}
-	base := EpisodeBase(e.ChannelID, e.Season, e.Number)
+	base := occurrenceBase(e)
 	identity := e.OccurrenceID
 	if identity == "" {
 		identity = "youtube-video:" + e.VideoID
@@ -122,12 +122,26 @@ func EpisodeMetadata(e Episode) (Entry, error) {
 		return Entry{}, err
 	}
 
-	return Entry{Path: base + ".nfo", Media: blob{id: base + ".nfo", data: append([]byte(xml.Header), b...)}, Modified: e.Modified}, nil
+	return Entry{Path: base + ".nfo", Media: metadataBlob(b), Modified: e.Modified}, nil
+}
+
+func metadataBlob(xmlData []byte) blob {
+	data := append([]byte(xml.Header), xmlData...)
+	hash := sha256.Sum256(data)
+	return blob{id: fmt.Sprintf("metadata:%x", hash), data: data}
 }
 
 // EpisodeBase formats an already validated stable occurrence path.
 func EpisodeBase(channel string, season, number int) string {
 	return path.Join("Channel-"+channel, fmt.Sprintf("Season %04d", season), fmt.Sprintf("Channel-%s - S%04dE%04d", channel, season, number))
+}
+
+func occurrenceBase(e Episode) string {
+	number := e.FileNumber
+	if number == 0 {
+		number = e.Number
+	}
+	return EpisodeBase(e.ChannelID, e.Season, number)
 }
 
 func episodeSeasonNames(episodes []Episode) map[string]map[int]string {

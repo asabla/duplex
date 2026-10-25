@@ -12,6 +12,7 @@ import (
 
 	"duplex/internal/catalog"
 	"duplex/internal/config"
+	"duplex/internal/diagnostics"
 	"duplex/internal/source"
 )
 
@@ -326,7 +327,7 @@ func (a *App) scanWorker(ctx context.Context) {
 	defer a.wg.Done()
 	timer := time.NewTicker(time.Second)
 	defer timer.Stop()
-	var last time.Time
+	state := scanSchedule{}
 	for {
 		select {
 		case <-ctx.Done():
@@ -334,21 +335,54 @@ func (a *App) scanWorker(ctx context.Context) {
 		case <-a.scanWake:
 		case <-timer.C:
 		}
-		a.mu.Lock()
-		scan := a.scanPending && time.Since(last) >= 10*time.Second
-		if scan {
-			a.scanPending = false
-		}
-		a.mu.Unlock()
-		if !scan {
+		mode, run := a.nextScan(time.Now(), &state)
+		if !run {
 			continue
 		}
-		ctx, stop := context.WithTimeout(ctx, 20*time.Second)
-		err := a.Scan(ctx)
+		work, stop := context.WithTimeout(ctx, 20*time.Second)
+		operation := "plex.reconcile"
+		if mode == integrationScan {
+			operation = "plex.scan"
+		}
+		err := diagnostics.Run(a.Measurements, operation, func() error { return a.integration(work, mode) })
 		stop()
 		a.operationFailure("Plex scan", err)
-		last = time.Now()
+		state.finished(mode, err)
 	}
+}
+
+type scanSchedule struct {
+	lastScan time.Time
+	retryAt  time.Time
+	retries  int
+}
+
+func (a *App) nextScan(now time.Time, state *scanSchedule) (integrationMode, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.scanPending && now.Sub(state.lastScan) >= 10*time.Second {
+		a.scanPending = false
+		state.retries = 0
+		return integrationScan, true
+	}
+	if state.retries > 0 && !now.Before(state.retryAt) {
+		state.retries--
+		return integrationBindings, true
+	}
+	return integrationHealth, false
+}
+
+func (s *scanSchedule) finished(mode integrationMode, failure error) {
+	if mode == integrationScan {
+		s.lastScan = time.Now()
+		if failure != nil {
+			s.retries = 3
+		}
+	}
+	if failure == nil {
+		s.retries = 0
+	}
+	s.retryAt = time.Now().Add(30 * time.Second)
 }
 
 func (a *App) assetWorker(ctx context.Context) {

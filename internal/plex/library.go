@@ -3,16 +3,74 @@ package plex
 import (
 	"context"
 	"errors"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Binding identifies a Plex item without tying its key to a filesystem path.
 type Binding struct {
+	Index int    `xml:"index,attr" json:"index"`
 	Key   string `xml:"ratingKey,attr" json:"key"`
 	GUID  string `xml:"guid,attr" json:"guid"`
 	Title string `xml:"title,attr" json:"title"`
+}
+
+// SetEpisodeOrder edits only a known item's display index. Its scanner path and
+// NFO identity stay fixed, so Plex does not transfer another item's watch state.
+func (c *Client) SetEpisodeOrder(ctx context.Context, section, key string, index int) error {
+	if !validSection(section) || !validSection(key) || index < 1 || int64(index) > 1<<31-1 {
+		return errors.New("invalid Plex episode order")
+	}
+	query := url.Values{"type": {"4"}, "id": {key}, "index.value": {strconv.Itoa(index)}}
+	return c.request(ctx, http.MethodPut, "/library/sections/"+section+"/all?"+query.Encode(), nil)
+}
+
+// WaitScan lets the asynchronously requested scanner finish before bindings are
+// read. The caller owns the deadline; a long scan remains visible as incomplete.
+func (c *Client) WaitScan(ctx context.Context, section string) error {
+	if !validSection(section) {
+		return errors.New("invalid Plex library section")
+	}
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+		busy, err := c.libraryScanning(ctx, section)
+		if err != nil || !busy {
+			return err
+		}
+	}
+}
+
+func (c *Client) libraryScanning(ctx context.Context, section string) (bool, error) {
+	var response struct {
+		Items []struct {
+			Key        string `xml:"key,attr"`
+			Refreshing string `xml:"refreshing,attr"`
+		} `xml:"Directory"`
+	}
+	if err := c.get(ctx, "/library/sections", &response); err != nil {
+		return false, err
+	}
+	for _, item := range response.Items {
+		if item.Key == section {
+			if item.Refreshing == "0" {
+				return false, nil
+			}
+			if item.Refreshing == "1" {
+				return true, nil
+			}
+			return false, errors.New("plex did not report library scanner state")
+		}
+	}
+	return false, errors.New("dedicated Plex library does not exist")
 }
 
 // PlexAdapter defines the library integration contract used by duplex.

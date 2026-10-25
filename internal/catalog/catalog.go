@@ -84,7 +84,7 @@ func OpenContext(ctx context.Context, path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	var version int
-	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 4 {
+	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 5 {
 		return nil, errors.Join(errors.New("unsupported catalogue schema version"), db.Close())
 	}
 	s := &Store{db}
@@ -101,6 +101,9 @@ CREATE TABLE IF NOT EXISTS plex_bindings(video_id TEXT NOT NULL,server TEXT NOT 
 		return nil, errors.Join(e, db.Close())
 	}
 	if e = s.migrate(ctx, version); e != nil {
+		return nil, errors.Join(e, db.Close())
+	}
+	if _, e = db.ExecContext(ctx, `UPDATE show_metadata SET attempted=0 WHERE pending=1 AND error=''`); e != nil {
 		return nil, errors.Join(e, db.Close())
 	}
 	_, e = db.ExecContext(ctx, `UPDATE sync_jobs SET state='interrupted',finished=?,error='service restarted during sync' WHERE state='running'`, time.Now().Unix())
