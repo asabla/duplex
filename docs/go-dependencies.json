@@ -24,8 +24,16 @@
     "version": "v0.0.0-20230129092748-24d4a6f8daec"
   },
   {
+    "module": "golang.org/x/image",
+    "version": "v0.47.0"
+  },
+  {
     "module": "golang.org/x/sys",
     "version": "v0.49.0"
+  },
+  {
+    "module": "golang.org/x/text",
+    "version": "v0.43.0"
   },
   {
     "module": "gopkg.in/yaml.v3",

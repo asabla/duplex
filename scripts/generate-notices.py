@@ -22,7 +22,7 @@ for module in modules:
         raise SystemExit('Missing license: ' + module['Path'])
     notices.append('\n===== ' + module['Path'] + ' ' + module['Version'] + ' =====\n')
     notices.extend('\n' + p.name + '\n' + p.read_text() for p in files)
-for name in ('go-LICENSE.txt', 'htmx-LICENSE.txt', 'deno-LICENSE.txt'):
+for name in ('go-LICENSE.txt', 'htmx-LICENSE.txt', 'deno-LICENSE.txt', 'go-font-LICENSE.txt'):
     notices.append('\n===== ' + name + ' =====\n' + Path('docs/licenses', name).read_text())
 Path('THIRD_PARTY_NOTICES.txt').write_text('\n'.join(notices))
 Path('docs/go-dependencies.json').write_text(json.dumps([{'module': m['Path'], 'version': m['Version']} for m in modules], indent=2) + '\n')
