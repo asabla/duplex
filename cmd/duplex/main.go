@@ -219,7 +219,7 @@ func run() error {
 					return nil, e
 				}
 				for _, item := range items {
-					episodes = append(episodes, library.Episode{ChannelID: channelID, ChannelTitle: channelTitle, VideoID: item.ID, Title: item.Title, Year: item.Year, Number: item.Number, Media: virtual})
+					episodes = append(episodes, library.Episode{ChannelID: channelID, ChannelTitle: channelTitle, VideoID: item.ID, Title: item.Title, Season: item.Year, Number: item.Number, Media: virtual})
 				}
 			} else {
 				for i := 1; i <= *fixtureEpisodes; i++ {
@@ -228,7 +228,7 @@ func run() error {
 						id = fmt.Sprintf("%s-%d", videoID, i)
 						name = fmt.Sprintf("%s %d", title, i)
 					}
-					episodes = append(episodes, library.Episode{ChannelID: channelID, ChannelTitle: channelTitle, VideoID: id, Title: name, Year: year, Number: i, Media: virtual})
+					episodes = append(episodes, library.Episode{ChannelID: channelID, ChannelTitle: channelTitle, VideoID: id, Title: name, Season: year, Number: i, Media: virtual})
 				}
 			}
 			return library.Entries(episodes)

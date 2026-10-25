@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"duplex/internal/config"
@@ -25,10 +26,14 @@ const (
 
 var ErrUnavailable = errors.New("video is unavailable without credentials")
 
+// ErrMissingCollection is an explicitly absent channel tab, not a failed refresh.
+var ErrMissingCollection = errors.New("channel collection does not exist")
+
 var videoID = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
 
 type Entry struct {
 	Group            int     `json:"-"`
+	Position         int     `json:"playlist_index"`
 	ID               string  `json:"id"`
 	Title            string  `json:"title"`
 	Timestamp        float64 `json:"timestamp"`
@@ -36,8 +41,10 @@ type Entry struct {
 	LiveStatus       string  `json:"live_status"`
 }
 type Channel struct {
-	ID    string
-	Title string
+	ID     string
+	Title  string
+	Avatar string
+	Banner string
 	// Entries are complete and newest first within each channel tab (Group).
 	Entries []Entry
 }
@@ -54,6 +61,8 @@ type Format struct {
 	Language           string  `json:"language"`
 	LanguagePreference float64 `json:"language_preference"`
 	Note               string  `json:"format_note"`
+	Revision           string  `json:"-"`
+	VerifiedSize       int64   `json:"-"`
 }
 type Subtitle struct {
 	URL string `json:"url"`
@@ -99,11 +108,11 @@ func (m Metadata) State() string {
 }
 
 func (m Metadata) Date() time.Time {
-	if d, e := time.Parse("20060102", m.UploadDate); e == nil {
-		return d
-	}
 	if m.Timestamp > 0 {
 		return time.Unix(int64(m.Timestamp), 0).UTC()
+	}
+	if d, err := time.Parse("20060102", m.UploadDate); err == nil {
+		return d
 	}
 	return time.Time{}
 }
@@ -115,8 +124,11 @@ type SourceAdapter interface {
 	Resolve(context.Context, string) (Metadata, error)
 }
 type YouTube struct {
-	Executable string
-	Deno       string
+	Executable    string
+	Deno          string
+	init          sync.Once
+	metadataSlots chan struct{}
+	listingSlots  chan struct{}
 }
 type cappedBuffer struct {
 	bytes.Buffer
@@ -131,36 +143,21 @@ func (b *cappedBuffer) Write(p []byte) (int, error) {
 }
 
 func (y *YouTube) run(ctx context.Context, args ...string) ([]byte, error) {
-	binary := y.Executable
-	if binary == "" {
-		binary = "yt-dlp"
+	release, err := y.acquire(ctx, false)
+	if err != nil {
+		return nil, err
 	}
-	deno := y.Deno
-	if deno == "" {
-		deno = "deno"
+	defer release()
+	cmd, err := y.command(ctx, args, true)
+	if err != nil {
+		return nil, err
 	}
-	denoPath, e := exec.LookPath(deno)
-	if e != nil {
-		return nil, errors.New("Deno is unavailable")
-	}
-	deno = denoPath
-	base := []string{"--ignore-config", "--no-warnings", "--no-progress", "--ignore-no-formats-error", "--no-remote-components", "--no-js-runtimes", "--js-runtimes", "deno:" + deno, "--socket-timeout", "20", "--retries", "1", "--extractor-retries", "1", "--skip-download", "--dump-single-json", "--abort-on-error"}
-	cmd := exec.CommandContext(ctx, binary, append(base, args...)...)
 	out := &cappedBuffer{limit: 64 << 20}
 	cmd.Stdout = out
 	stderr := &cappedBuffer{limit: 64 << 10}
 	cmd.Stderr = stderr
 	if e := cmd.Run(); e != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		message := strings.ToLower(stderr.String())
-		for _, marker := range []string{"private video", "members-only", "video unavailable", "video is not available"} {
-			if strings.Contains(message, marker) {
-				return nil, ErrUnavailable
-			}
-		}
-		return nil, errors.New("YouTube source request failed")
+		return nil, resolverError(ctx, stderr.String())
 	}
 	return out.Bytes(), nil
 }
@@ -192,11 +189,12 @@ func (y *YouTube) Check(ctx context.Context) error {
 }
 
 type listing struct {
-	ID        string            `json:"id"`
-	ChannelID string            `json:"channel_id"`
-	Channel   string            `json:"channel"`
-	Title     string            `json:"title"`
-	Entries   []json.RawMessage `json:"entries"`
+	ID         string            `json:"id"`
+	ChannelID  string            `json:"channel_id"`
+	Channel    string            `json:"channel"`
+	Title      string            `json:"title"`
+	Entries    []json.RawMessage `json:"entries"`
+	Thumbnails []ArtworkImage    `json:"thumbnails"`
 }
 
 func decodeChannel(b []byte) (Channel, error) {
@@ -216,6 +214,17 @@ func decodeChannel(b []byte) (Channel, error) {
 		title = l.Title
 	}
 	result := Channel{ID: id, Title: title}
+	for _, image := range l.Thumbnails {
+		if !AllowedURL(image.URL) {
+			continue
+		}
+		if strings.Contains(image.ID, "avatar") || (image.Width > 0 && image.Width == image.Height) {
+			result.Avatar = image.URL
+		}
+		if strings.Contains(image.ID, "banner") || (image.Height > 0 && image.Width/image.Height >= 3) {
+			result.Banner = image.URL
+		}
+	}
 	groupCounter := 0
 	var flatten func([]json.RawMessage, int) error
 	flatten = func(items []json.RawMessage, group int) error {
@@ -295,9 +304,18 @@ func (y *YouTube) Resolve(ctx context.Context, id string) (Metadata, error) {
 	if e != nil {
 		return Metadata{}, e
 	}
+	return DecodeMetadata(b, id)
+}
+
+// DecodeMetadata validates a trusted resolver response and its asset-version evidence.
+func DecodeMetadata(b []byte, id string) (Metadata, error) {
 	var m Metadata
 	if json.Unmarshal(b, &m) != nil || m.ID != id {
 		return Metadata{}, errors.New("invalid video response")
+	}
+	for i := range m.Formats {
+		f := &m.Formats[i]
+		f.Revision, f.VerifiedSize = assetVersion(f.URL, f.ID)
 	}
 	return m, nil
 }

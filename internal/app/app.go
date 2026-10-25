@@ -7,13 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"reflect"
-	"sort"
 	"sync"
 	"time"
 
@@ -28,6 +25,11 @@ import (
 )
 
 type App struct {
+	metadata        map[string]metadataLease
+	leases          map[string]time.Time
+	prepareWake     chan struct{}
+	scanWake        chan struct{}
+	scanPending     bool
 	Measurements    *diagnostics.Recorder
 	Config          *config.Manager
 	Catalog         *catalog.Store
@@ -88,7 +90,7 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 		return nil, e
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	a := &App{Measurements: &diagnostics.Recorder{}, Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, assets: map[string][]library.Entry{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), ctx: ctx, cancel: cancel, original: c}
+	a := &App{Measurements: &diagnostics.Recorder{}, Config: m, Catalog: db, Cache: store, Source: adapter, reps: map[string]media.Representation{}, assets: map[string][]library.Entry{}, queued: map[string]bool{}, attempted: map[string]time.Time{}, jobs: make(chan string, 64), prepareWake: make(chan struct{}, 2), scanWake: make(chan struct{}, 1), metadata: map[string]metadataLease{}, leases: map[string]time.Time{}, ctx: ctx, cancel: cancel, original: c}
 	if checker, ok := adapter.(interface{ Check(context.Context) error }); ok {
 		checkCtx, stop := context.WithTimeout(ctx, 15*time.Second)
 		e = checker.Check(checkCtx)
@@ -111,9 +113,17 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 		a.Close()
 		return nil, e
 	}
-	checkCtx, stop := context.WithTimeout(ctx, 20*time.Second)
-	_ = a.Scan(checkCtx)
-	stop()
+	if e = a.Catalog.ResetPreparations(ctx, visibility(c)); e != nil {
+		return nil, errors.Join(e, a.Close())
+	}
+	for range 2 {
+		a.wg.Add(1)
+		go a.preparationWorker()
+	}
+	a.wg.Add(1)
+	go a.scanWorker()
+	a.wg.Add(1)
+	go a.assetWorker()
 	for i := 0; i < c.Workers; i++ {
 		a.wg.Add(1)
 		go a.worker()
@@ -206,16 +216,16 @@ func (a *App) reconcile() {
 		a.mu.RUnlock()
 		settingsChanged := changed && (!reflect.DeepEqual(priorChannels[ch.ID], ch) || previous.MaxHeight != c.MaxHeight)
 		if settingsChanged || last.IsZero() || time.Since(last) >= time.Duration(c.RefreshMinutes)*time.Minute {
-			_ = a.Queue(ch.ID)
+			a.operationFailure("queue refresh", a.Queue(ch.ID))
 		}
 	}
 	if changed {
-		_ = a.Publish()
+		a.operationFailure("publication", a.Publish())
 	}
 	if changed || time.Since(a.lastIntegration) >= time.Minute {
 		a.lastIntegration = time.Now()
 		ctx, stop := context.WithTimeout(a.ctx, 20*time.Second)
-		_ = a.integration(ctx, false)
+		a.operationFailure("integration health", a.integration(ctx, false))
 		stop()
 	}
 }
@@ -231,14 +241,9 @@ func (a *App) worker() {
 			a.attempted[id] = time.Now()
 			a.mu.Unlock()
 			ctx, cancel := context.WithTimeout(a.ctx, 2*time.Hour)
-			job, e := a.Catalog.StartJob(ctx, id)
-			if e == nil {
-				e = a.Sync(ctx, id)
-			}
+			err := a.Sync(ctx, id)
 			cancel()
-			finishCtx, stop := context.WithTimeout(context.Background(), 5*time.Second)
-			_ = a.Catalog.FinishJob(finishCtx, job, id, e)
-			stop()
+			a.operationFailure("channel discovery", err)
 			a.mu.Lock()
 			delete(a.queued, id)
 			a.mu.Unlock()
@@ -248,7 +253,7 @@ func (a *App) worker() {
 }
 
 func (a *App) prune() {
-	videos, e := a.Catalog.Videos(a.ctx)
+	videos, e := a.Catalog.Episodes(a.ctx)
 	if e != nil {
 		return
 	}
@@ -258,9 +263,9 @@ func (a *App) prune() {
 	}
 	active, assets := map[string]bool{}, map[string]bool{}
 	for _, v := range videos {
-		if v.Exposed && enabled[v.ChannelID] {
+		if enabled[v.OwnerID] {
 			active[v.Revision] = true
-			assets[v.ID] = true
+			assets[v.VideoID] = true
 		}
 	}
 	a.mu.Lock()
@@ -284,8 +289,8 @@ func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected st
 	if limit == 0 {
 		limit = 50
 	}
-	if limit < 1 || limit > 10000 {
-		return errors.New("channel limit must be between 1 and 10000")
+	if limit < 1 {
+		return errors.New("channel limit must be positive")
 	}
 	ctx, stop := context.WithTimeout(ctx, 2*time.Minute)
 	defer stop()
@@ -303,7 +308,8 @@ func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected st
 		}
 	}
 	url := "https://www.youtube.com/channel/" + ch.ID
-	snap.Config.Channels = append(snap.Config.Channels, config.Channel{ID: ch.ID, URL: url, Limit: limit, Enabled: true})
+	selection := config.Selection{Mode: "latest", Limit: limit}
+	snap.Config.Channels = append(snap.Config.Channels, config.Channel{ID: ch.ID, URL: url, Limit: limit, Enabled: true, Indexing: &selection, Playlists: &config.PlaylistPolicy{Enabled: true}})
 	if e = a.Config.Save(snap.Config, expected); e != nil {
 		return e
 	}
@@ -334,85 +340,6 @@ func (a *App) RemoveChannel(id, expected string) error {
 	return a.Publish()
 }
 
-func (a *App) Sync(ctx context.Context, id string) error {
-	defer a.Measurements.Begin("sync")()
-	a.mu.RLock()
-	toolError := a.toolError
-	a.mu.RUnlock()
-	if toolError != "" {
-		return errors.New(toolError)
-	}
-	snap, e := a.Source.Enumerate(ctx, id)
-	if e != nil {
-		return e
-	}
-	if snap.ID != id {
-		return errors.New("channel identity changed")
-	}
-	conf := a.Config.Snapshot().Config
-	limit := 0
-	for _, ch := range conf.Channels {
-		if ch.ID == id && ch.Enabled {
-			limit = ch.Limit
-			seen := map[string]bool{}
-			for _, e := range snap.Entries {
-				seen[e.ID] = true
-			}
-			for _, explicit := range ch.Unlisted {
-				if !seen[explicit] {
-					snap.Entries = append(snap.Entries, source.Entry{ID: explicit, Group: -1})
-				}
-			}
-		}
-	}
-	if limit == 0 {
-		return context.Canceled
-	}
-	// Flat entries retain enumeration order within a tab; dated entries sort first.
-	// Metadata is loaded until the exposed window is filled; identity rows for the
-	// complete enumeration are committed even when their media is not selected.
-	sort.SliceStable(snap.Entries, func(i, j int) bool { return snap.Entries[i].Timestamp > snap.Entries[j].Timestamp })
-	prepared := []catalog.Prepared{}
-	prior, err := a.Catalog.Videos(ctx)
-	if err != nil {
-		return err
-	}
-	previous := map[string]catalog.Video{}
-	for _, v := range prior {
-		previous[v.ID] = v
-	}
-	prepared, e = prepareWindow(ctx, a.Source, snap, limit, func(m source.Metadata) (catalog.Prepared, error) {
-		p, err := a.Prepare(ctx, m, conf.MaxHeight)
-		if err != nil {
-			p = catalog.Prepared{Metadata: m, Fallback: "No verified supported representation"}
-			if old, ok := previous[m.ID]; ok && old.Revision != "" {
-				p.Revision, p.Height, p.Size = old.Revision, old.Height, old.Size
-				p.Fallback = "Source verification failed; previous verified revision retained"
-			}
-		}
-		return p, nil
-	})
-	if e != nil {
-		return e
-	}
-	current := a.Config.Snapshot().Config
-	for _, ch := range current.Channels {
-		if ch.ID == id && ch.Enabled {
-			limit = ch.Limit
-			goto commit
-		}
-	}
-	return context.Canceled
-commit:
-	if e = a.Catalog.CommitSnapshot(ctx, snap, prepared, limit); e != nil {
-		return e
-	}
-	if e = a.Publish(); e != nil {
-		return e
-	}
-	return a.Scan(ctx)
-}
-
 func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (catalog.Prepared, error) {
 	defer a.Measurements.Begin("prepare")()
 	if m.Date().IsZero() {
@@ -430,7 +357,7 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 		attempts++
 		buildCtx, stop := context.WithTimeout(ctx, 5*time.Minute)
 		v, e := diagnostics.Measure(a.Measurements, "media.probe", func() (*media.HTTPSource, error) {
-			return media.OpenHTTP(buildCtx, client, candidate.Video.URL, m.ID+":"+candidate.Video.ID, a.Cache)
+			return media.OpenVersionedHTTP(buildCtx, client, candidate.Video.URL, m.ID+":"+candidate.Video.ID, a.Cache, media.SourceVersion{Key: candidate.Video.Revision, Size: candidate.Video.VerifiedSize})
 		})
 		var rep media.Representation
 		indexPath := ""
@@ -442,7 +369,7 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 			} else {
 				var au *media.HTTPSource
 				au, e = diagnostics.Measure(a.Measurements, "media.probe", func() (*media.HTTPSource, error) {
-					return media.OpenHTTP(buildCtx, client, candidate.Audio.URL, m.ID+":"+candidate.Audio.ID, a.Cache)
+					return media.OpenVersionedHTTP(buildCtx, client, candidate.Audio.URL, m.ID+":"+candidate.Audio.ID, a.Cache, media.SourceVersion{Key: candidate.Audio.Revision, Size: candidate.Audio.VerifiedSize})
 				})
 				if e == nil {
 					var mux *media.VirtualMP4
@@ -508,11 +435,11 @@ func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (ca
 		a.mu.Lock()
 		a.reps[rep.ID()] = rep
 		a.mu.Unlock()
-		assets, _ := diagnostics.Measure(a.Measurements, "assets", func() ([]library.Entry, error) { return a.acquireAssets(ctx, m, candidate), nil })
 		a.mu.Lock()
-		if len(assets) > 0 {
-			a.assets[m.ID] = assets
+		if a.leases == nil {
+			a.leases = map[string]time.Time{}
 		}
+		a.leases[rep.ID()] = leaseExpiry(m)
 		a.mu.Unlock()
 		return catalog.Prepared{Metadata: m, Revision: rep.ID(), Height: candidate.Height, Fallback: failure, Size: rep.Size()}, nil
 	}
@@ -537,73 +464,20 @@ func fallbackReason(e error) string {
 	}
 }
 
-type unavailable struct {
-	id   string
-	size int64
-}
-
-func (r unavailable) ID() string                                         { return r.id }
-func (r unavailable) Size() int64                                        { return r.size }
-func (r unavailable) ReadAt(context.Context, []byte, int64) (int, error) { return 0, media.ErrExpired }
-
 func (a *App) Publish() error {
 	defer a.Measurements.Begin("publish")()
 	a.publishMu.Lock()
 	defer a.publishMu.Unlock()
-	videos, e := a.Catalog.Videos(a.ctx)
+	rows, e := a.Catalog.Episodes(a.ctx)
 	if e != nil {
 		return e
 	}
-	channels, e := a.Catalog.Channels(a.ctx)
-	if e != nil {
-		return e
-	}
-	names := map[string]string{}
-	for _, ch := range channels {
-		names[ch.ID] = ch.Title
-	}
-	enabled := map[string]bool{}
-	for _, ch := range a.Config.Snapshot().Config.Channels {
-		enabled[ch.ID] = ch.Enabled
-	}
-	episodes := []library.Episode{}
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	for _, v := range videos {
-		if !v.Exposed || !enabled[v.ChannelID] {
-			continue
-		}
-		rep := a.reps[v.Revision]
-		if rep == nil {
-			rep = unavailable{id: v.Revision, size: v.Size}
-		}
-		episodes = append(episodes, library.Episode{ChannelID: v.ChannelID, ChannelTitle: names[v.ChannelID], VideoID: v.ID, Title: v.Title, Description: v.Description, Year: v.Year, Number: v.Number, Media: rep, Modified: v.Updated})
-	}
+	episodes := a.publishedEpisodes(rows)
 	entries, e := library.Entries(episodes)
 	if e != nil {
 		return e
 	}
-	posters := map[string]bool{}
-	for _, ep := range episodes {
-		base := path.Join("Channel-"+ep.ChannelID, fmt.Sprintf("Season %04d", ep.Year), fmt.Sprintf("Channel-%s - S%04dE%04d", ep.ChannelID, ep.Year, ep.Number))
-		assets := a.assets[ep.VideoID]
-		if len(assets) == 0 {
-			assets = a.loadAssets(ep.VideoID)
-		}
-		for _, asset := range assets {
-			entry := asset
-			entry.Path = base + asset.Path
-			entry.Modified = ep.Modified
-			entries = append(entries, entry)
-			if asset.Path == ".jpg" && !posters[ep.ChannelID] {
-				poster := asset
-				poster.Path = path.Join("Channel-"+ep.ChannelID, "poster.jpg")
-				poster.Modified = ep.Modified
-				entries = append(entries, poster)
-				posters[ep.ChannelID] = true
-			}
-		}
-	}
+	entries = append(entries, a.episodeAssets(episodes)...)
 	if a.mount != nil {
 		return a.mount.Update(entries)
 	}
@@ -652,18 +526,28 @@ func (a *App) integration(ctx context.Context, scan bool) error {
 	if e == nil && scan {
 		e = c.Scan(ctx, a.Config.Snapshot().Config.Plex.Section)
 	}
-	if e == nil {
+	if e == nil && scan {
 		bindings, err := c.Bindings(ctx, a.Config.Snapshot().Config.Plex.Section)
+		if err != nil {
+			return err
+		}
 		if err == nil {
 			for _, binding := range bindings {
+				if occurrence := plex.OccurrenceID(binding.GUID); occurrence != "" {
+					if err = a.Catalog.BindOccurrence(ctx, occurrence, a.Config.Snapshot().Config.Plex.URL, binding.Key, binding.GUID); err != nil {
+						return err
+					}
+				}
 				if id := plex.SourceID(binding.GUID); id != "" {
-					_ = a.Catalog.Bind(ctx, id, a.Config.Snapshot().Config.Plex.URL, binding.Key, binding.GUID)
+					if bindErr := a.Catalog.Bind(ctx, id, a.Config.Snapshot().Config.Plex.URL, binding.Key, binding.GUID); bindErr != nil {
+						return bindErr
+					}
 				}
 			}
 		}
 	}
 	a.setPlexError(e)
-	return nil
+	return e
 }
 
 func (a *App) setPlexError(e error) {

@@ -62,6 +62,7 @@ func testRecordedSource(t *testing.T, path, videoFormat string, height int, repl
 	for _, f := range info.Formats {
 		urls[f.ID] = f.URL
 	}
+
 	combined := videoFormat == "18"
 	if urls[videoFormat] == "" || (!combined && urls["140"] == "") {
 		t.Fatal("test source lacks the required recorded-media formats")

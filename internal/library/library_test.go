@@ -9,7 +9,7 @@ import (
 )
 
 func TestTitlesDoNotChangeIdentity(t *testing.T) {
-	e := Episode{ChannelID: "UC_source", ChannelTitle: "A & B", VideoID: "video_source", Title: "<old>", Year: 2026, Number: 7, Media: blob{id: "media", data: []byte("test")}}
+	e := Episode{ChannelID: "UC_source", ChannelTitle: "A & B", VideoID: "video_source", Title: "<old>", Season: 2026, Number: 7, Media: blob{id: "media", data: []byte("test")}}
 	a, err := Entries([]Episode{e})
 	if err != nil {
 		t.Fatal(err)

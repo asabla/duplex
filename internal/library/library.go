@@ -10,6 +10,7 @@ import (
 	"io"
 	"path"
 	"regexp"
+	"sort"
 
 	"duplex/internal/media"
 )
@@ -23,7 +24,8 @@ type Entry struct {
 }
 type Episode struct {
 	ChannelID, ChannelTitle, VideoID, Title, Description string
-	Year, Number                                         int
+	Season, Number                                       int
+	SeasonTitle, OccurrenceID                            string
 	Media                                                media.Representation
 	Modified                                             int64
 }
@@ -42,18 +44,28 @@ func (b blob) ReadAt(_ context.Context, p []byte, o int64) (int, error) {
 func Entries(episodes []Episode) ([]Entry, error) {
 	var entries []Entry
 	shows := map[string]bool{}
+	names := map[string]map[int]string{}
+	for _, e := range episodes {
+		if e.SeasonTitle != "" {
+			if names[e.ChannelID] == nil {
+				names[e.ChannelID] = map[int]string{}
+			}
+			names[e.ChannelID][e.Season] = e.SeasonTitle
+		}
+	}
 	seen := map[string]bool{}
 	for _, e := range episodes {
-		if !safeID.MatchString(e.ChannelID) || !safeID.MatchString(e.VideoID) || e.Year < 1 || e.Number < 1 || e.Media == nil {
+		if !safeID.MatchString(e.ChannelID) || !safeID.MatchString(e.VideoID) || e.Season < 1 || e.Number < 1 || e.Media == nil {
 			return nil, fmt.Errorf("invalid library episode")
 		}
 		dir := "Channel-" + e.ChannelID
 		if !shows[e.ChannelID] {
 			show := struct {
-				XMLName xml.Name `xml:"tvshow"`
-				Title   string   `xml:"title"`
-				ID      string   `xml:"id"`
-			}{Title: e.ChannelTitle, ID: "youtube-channel:" + e.ChannelID}
+				XMLName xml.Name      `xml:"tvshow"`
+				Title   string        `xml:"title"`
+				ID      string        `xml:"id"`
+				Seasons []namedSeason `xml:"namedseason"`
+			}{Title: e.ChannelTitle, ID: "youtube-channel:" + e.ChannelID, Seasons: seasonNames(names[e.ChannelID])}
 			b, err := xml.MarshalIndent(show, "", "  ")
 			if err != nil {
 				return nil, err
@@ -65,11 +77,15 @@ func Entries(episodes []Episode) ([]Entry, error) {
 		// Do not append arbitrary source IDs: suffixes such as "-video" can be
 		// interpreted as extras by Plex's modern scanner. The assigned episode
 		// slot is stable; the independent source identity is stored in NFO.
-		base := path.Join(dir, fmt.Sprintf("Season %04d", e.Year), fmt.Sprintf("Channel-%s - S%04dE%04d", e.ChannelID, e.Year, e.Number))
+		base := path.Join(dir, fmt.Sprintf("Season %04d", e.Season), fmt.Sprintf("Channel-%s - S%04dE%04d", e.ChannelID, e.Season, e.Number))
 		if seen[base] {
 			return nil, fmt.Errorf("duplicate library episode")
 		}
 		seen[base] = true
+		identity := e.OccurrenceID
+		if identity == "" {
+			identity = "youtube-video:" + e.VideoID
+		}
 		episode := struct {
 			XMLName xml.Name `xml:"episodedetails"`
 			Title   string   `xml:"title"`
@@ -77,7 +93,7 @@ func Entries(episodes []Episode) ([]Entry, error) {
 			Season  int      `xml:"season"`
 			Episode int      `xml:"episode"`
 			ID      string   `xml:"id"`
-		}{Title: e.Title, Plot: e.Description, Season: e.Year, Episode: e.Number, ID: "youtube-video:" + e.VideoID}
+		}{Title: e.Title, Plot: e.Description, Season: e.Season, Episode: e.Number, ID: identity}
 		b, err := xml.MarshalIndent(episode, "", "  ")
 		if err != nil {
 			return nil, err
@@ -100,4 +116,18 @@ func CopyRange(ctx context.Context, w io.Writer, r media.Representation, offset,
 	}
 	_, err := io.CopyN(w, &media.Seeker{Context: ctx, Source: r, Offset: offset}, length)
 	return err
+}
+
+type namedSeason struct {
+	Number int    `xml:"number,attr"`
+	Title  string `xml:",chardata"`
+}
+
+func seasonNames(names map[int]string) []namedSeason {
+	result := make([]namedSeason, 0, len(names))
+	for number, title := range names {
+		result = append(result, namedSeason{Number: number, Title: title})
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Number < result[j].Number })
+	return result
 }

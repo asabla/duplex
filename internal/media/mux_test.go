@@ -126,24 +126,41 @@ func testVirtualMP4(t *testing.T, fragmented bool) {
 	}
 	ref := filepath.Join(dir, "reference.mp4")
 	run(t, "ffmpeg", "-v", "error", "-i", vp, "-i", ap, "-map", "0:v:0", "-map", "1:a:0", "-c", "copy", ref)
-	packetSignature := func(path string) any {
+	type packet struct {
+		Stream   int    `json:"stream_index"`
+		PTS      string `json:"pts_time"`
+		DTS      string `json:"dts_time"`
+		Duration string `json:"duration_time"`
+		Hash     string `json:"data_hash"`
+	}
+	packetSignature := func(path string) map[int][]packet {
 		b := run(t, "ffprobe", "-v", "error", "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=stream_index,pts_time,dts_time,duration_time,data_hash", "-of", "json", path)
-		var data any
+		var data struct {
+			Packets []packet `json:"packets"`
+		}
 		if err := json.Unmarshal(b, &data); err != nil {
 			t.Fatal(err)
 		}
-		// Container interleaving can differ. Compare each track's ordered packets.
-		tracks := map[float64][]any{}
-		for _, p := range data.(map[string]any)["packets"].([]any) {
-			m := p.(map[string]any)
-			id := m["stream_index"].(float64)
-			tracks[id] = append(tracks[id], m)
+		// Compare the requested packet fields. FFmpeg can also emit container-
+		// specific side-data hints; decoded audio is checked independently below.
+		tracks := map[int][]packet{}
+		for _, p := range data.Packets {
+			tracks[p.Stream] = append(tracks[p.Stream], p)
 		}
 		return tracks
 	}
 	if !reflect.DeepEqual(packetSignature(output), packetSignature(ref)) {
 		t.Fatal("packet payloads or timestamps differ from independent FFmpeg mux")
 	}
+	// Compare the decoded audio across the full video presentation duration,
+	// including its beginning and end, independent of container padding hints.
+	pcm := func(path string) []byte {
+		return run(t, "ffmpeg", "-v", "error", "-i", path, "-t", "30", "-map", "0:a:0", "-c:a", "pcm_s16le", "-f", "s16le", "-")
+	}
+	if !bytes.Equal(pcm(output), pcm(ref)) {
+		t.Fatal("decoded audio differs from independent reference")
+	}
+
 	// Decode the whole virtual file and force timestamp-based seeks at both ends.
 	run(t, "ffmpeg", "-v", "error", "-i", output, "-f", "null", "-")
 	for _, seek := range []string{"1", "27"} {

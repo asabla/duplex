@@ -26,20 +26,23 @@ type (
 )
 
 type Video struct {
-	ID          string `json:"id"`
-	ChannelID   string `json:"channel_id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	State       string `json:"state"`
-	Published   int64  `json:"published"`
-	Year        int    `json:"year"`
-	Number      int    `json:"number"`
-	Exposed     bool   `json:"exposed"`
-	Revision    string `json:"revision"`
-	Height      int    `json:"height"`
-	Fallback    string `json:"fallback,omitempty"`
-	Size        int64  `json:"size"`
-	Updated     int64  `json:"updated"`
+	ID               string `json:"id"`
+	ChannelID        string `json:"channel_id"`
+	Title            string `json:"title"`
+	Description      string `json:"description"`
+	State            string `json:"state"`
+	Published        int64  `json:"published"`
+	Year             int    `json:"year"`
+	Number           int    `json:"number"`
+	Exposed          bool   `json:"exposed"`
+	Revision         string `json:"revision"`
+	Height           int    `json:"height"`
+	Fallback         string `json:"fallback,omitempty"`
+	Size             int64  `json:"size"`
+	Updated          int64  `json:"updated"`
+	Preparation      string `json:"preparation"`
+	PreparationError string `json:"preparation_error,omitempty"`
+	MetadataAt       int64  `json:"metadata_at"`
 }
 type Prepared struct {
 	Metadata source.Metadata
@@ -49,12 +52,15 @@ type Prepared struct {
 	Size     int64
 }
 type Job struct {
-	ID        int64  `json:"id"`
-	ChannelID string `json:"channel_id"`
-	State     string `json:"state"`
-	Started   int64  `json:"started"`
-	Finished  int64  `json:"finished"`
-	Error     string `json:"error,omitempty"`
+	ID         int64  `json:"id"`
+	ChannelID  string `json:"channel_id"`
+	State      string `json:"state"`
+	Started    int64  `json:"started"`
+	Finished   int64  `json:"finished"`
+	Error      string `json:"error,omitempty"`
+	Stage      string `json:"stage,omitempty"`
+	Discovered int    `json:"discovered"`
+	Prepared   int    `json:"prepared"`
 }
 
 func Open(path string) (*Store, error) {
@@ -67,7 +73,7 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1)
 	var version int
-	if e = db.QueryRow(`PRAGMA user_version`).Scan(&version); e != nil || version > 1 {
+	if e = db.QueryRow(`PRAGMA user_version`).Scan(&version); e != nil || version > 2 {
 		db.Close()
 		return nil, errors.New("unsupported catalogue schema version")
 	}
@@ -80,10 +86,13 @@ CREATE TABLE IF NOT EXISTS metadata_revisions(video_id TEXT NOT NULL REFERENCES 
 CREATE TABLE IF NOT EXISTS representations(revision TEXT PRIMARY KEY,video_id TEXT NOT NULL,height INTEGER NOT NULL,size INTEGER NOT NULL,created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS sync_jobs(id INTEGER PRIMARY KEY AUTOINCREMENT,channel_id TEXT NOT NULL,state TEXT NOT NULL,started INTEGER NOT NULL,finished INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS plex_bindings(video_id TEXT NOT NULL,server TEXT NOT NULL,rating_key TEXT NOT NULL,guid TEXT NOT NULL,PRIMARY KEY(video_id,server));
-PRAGMA user_version=1;`)
+`)
 	if e != nil {
 		db.Close()
 		return nil, e
+	}
+	if e = s.migrate(version); e != nil {
+		return nil, errors.Join(e, db.Close())
 	}
 	_, e = db.Exec(`UPDATE sync_jobs SET state='interrupted',finished=?,error='service restarted during sync' WHERE state='running'`, time.Now().Unix())
 	if e != nil {
@@ -110,7 +119,7 @@ func OpenForBackup(path string) (*Store, error) {
 }
 
 func (s *Store) EnsureChannel(ctx context.Context, id, title string) error {
-	_, e := s.DB.ExecContext(ctx, `INSERT INTO channels(id,title) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title`, id, title)
+	_, e := s.DB.ExecContext(ctx, `INSERT INTO channels(id,title) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET title=CASE WHEN excluded.title<>'' THEN excluded.title ELSE channels.title END`, id, title)
 	return e
 }
 
@@ -153,7 +162,7 @@ func (s *Store) Channels(ctx context.Context) ([]Channel, error) {
 }
 
 func (s *Store) Jobs(ctx context.Context) ([]Job, error) {
-	rows, e := s.DB.QueryContext(ctx, `SELECT id,channel_id,state,started,finished,error FROM sync_jobs ORDER BY id DESC LIMIT 100`)
+	rows, e := s.DB.QueryContext(ctx, `SELECT id,channel_id,state,started,finished,error,stage,discovered,prepared FROM sync_jobs ORDER BY id DESC LIMIT 100`)
 	if e != nil {
 		return nil, e
 	}
@@ -165,7 +174,7 @@ func readJobs(rows *sql.Rows) ([]Job, error) {
 	out := []Job{}
 	for rows.Next() {
 		var j Job
-		if e := rows.Scan(&j.ID, &j.ChannelID, &j.State, &j.Started, &j.Finished, &j.Error); e != nil {
+		if e := rows.Scan(&j.ID, &j.ChannelID, &j.State, &j.Started, &j.Finished, &j.Error, &j.Stage, &j.Discovered, &j.Prepared); e != nil {
 			return nil, e
 		}
 		out = append(out, j)
@@ -187,7 +196,7 @@ func (s *Store) JobsPage(ctx context.Context, number, size int) ([]Job, int, err
 		return nil, 0, err
 	}
 	number = max(1, min(number, max(1, (total+size-1)/size)))
-	rows, err := tx.QueryContext(ctx, `SELECT id,channel_id,state,started,finished,error FROM sync_jobs ORDER BY id DESC LIMIT ? OFFSET ?`, size, (number-1)*size)
+	rows, err := tx.QueryContext(ctx, `SELECT id,channel_id,state,started,finished,error,stage,discovered,prepared FROM sync_jobs ORDER BY id DESC LIMIT ? OFFSET ?`, size, (number-1)*size)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -198,7 +207,7 @@ func (s *Store) JobsPage(ctx context.Context, number, size int) ([]Job, int, err
 	return jobs, total, tx.Commit()
 }
 
-const videoColumns = `id,channel_id,title,description,state,published,year,number,exposed,revision,height,fallback,size,updated`
+const videoColumns = `id,channel_id,title,description,state,published,year,number,exposed,revision,height,fallback,size,updated,preparation,preparation_error,metadata_at`
 
 func (s *Store) Videos(ctx context.Context) ([]Video, error) {
 	rows, e := s.DB.QueryContext(ctx, `SELECT `+videoColumns+` FROM videos ORDER BY published DESC,id`)
@@ -209,7 +218,7 @@ func (s *Store) Videos(ctx context.Context) ([]Video, error) {
 	out := []Video{}
 	for rows.Next() {
 		var v Video
-		if e = rows.Scan(&v.ID, &v.ChannelID, &v.Title, &v.Description, &v.State, &v.Published, &v.Year, &v.Number, &v.Exposed, &v.Revision, &v.Height, &v.Fallback, &v.Size, &v.Updated); e != nil {
+		if e = rows.Scan(&v.ID, &v.ChannelID, &v.Title, &v.Description, &v.State, &v.Published, &v.Year, &v.Number, &v.Exposed, &v.Revision, &v.Height, &v.Fallback, &v.Size, &v.Updated, &v.Preparation, &v.PreparationError, &v.MetadataAt); e != nil {
 			return nil, e
 		}
 		out = append(out, v)
