@@ -89,7 +89,7 @@ func (s *Store) PlaylistsPage(ctx context.Context, f PlaylistFilter) (PlaylistPa
 	}
 	result.Page = max(1, min(max(1, f.Page), max(1, (result.Total+result.PerPage-1)/result.PerPage)))
 	args = append(args, result.PerPage, (result.Page-1)*result.PerPage)
-	rows, err := tx.QueryContext(ctx, cte+`SELECT p.id,p.channel_id,p.title,p.description,p.thumbnail,p.season,p.synced_at,p.error,p.policy,p.amount,p.inherited,(SELECT count(*) FROM playlist_members m WHERE m.playlist_id=p.id AND m.selected=1) FROM effective p WHERE `+where+` ORDER BY `+order+` LIMIT ? OFFSET ?`, args...)
+	rows, err := tx.QueryContext(ctx, cte+`SELECT p.id,p.channel_id,p.title,p.description,p.thumbnail,p.season,p.synced_at,p.error,p.available,p.policy,p.amount,p.inherited,(SELECT count(*) FROM playlist_members m WHERE m.playlist_id=p.id AND m.selected=1) FROM effective p WHERE `+where+` ORDER BY `+order+` LIMIT ? OFFSET ?`, args...)
 	if err != nil {
 		return result, err
 	}
@@ -140,7 +140,7 @@ func readPlaylists(rows *sql.Rows) ([]PlaylistRow, error) {
 	result := []PlaylistRow{}
 	for rows.Next() {
 		var p PlaylistRow
-		if err := rows.Scan(&p.ID, &p.ChannelID, &p.Title, &p.Description, &p.Thumbnail, &p.Season, &p.SyncedAt, &p.Error, &p.Mode, &p.Limit, &p.Inherited, &p.Selected); err != nil {
+		if err := rows.Scan(&p.ID, &p.ChannelID, &p.Title, &p.Description, &p.Thumbnail, &p.Season, &p.SyncedAt, &p.Error, &p.Available, &p.Mode, &p.Limit, &p.Inherited, &p.Selected); err != nil {
 			return nil, err
 		}
 		result = append(result, p)

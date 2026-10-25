@@ -14,7 +14,12 @@ func (s *Store) migrate(ctx context.Context, version int) error {
 		}
 	}
 	if version < 3 {
-		return s.migrateProjection(ctx)
+		if err := s.migrateProjection(ctx); err != nil {
+			return err
+		}
+	}
+	if version < 4 {
+		return s.migratePlaylistRoots(ctx)
 	}
 	return nil
 }
@@ -115,6 +120,20 @@ func (s *Store) migrateProjection(ctx context.Context) error {
 		`PRAGMA user_version=3`,
 	}
 	for _, statement := range statements {
+		if _, err = tx.ExecContext(ctx, statement); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (s *Store) migratePlaylistRoots(ctx context.Context) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+	for _, statement := range []string{`ALTER TABLE playlists ADD COLUMN seen_run INTEGER NOT NULL DEFAULT 0`, `ALTER TABLE playlists ADD COLUMN available INTEGER NOT NULL DEFAULT 1`, `PRAGMA user_version=4`} {
 		if _, err = tx.ExecContext(ctx, statement); err != nil {
 			return err
 		}

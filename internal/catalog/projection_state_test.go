@@ -153,7 +153,7 @@ func TestProjectionMigrationPreservesExistingBindings(t *testing.T) {
 	if err = s.BindOccurrence(t.Context(), "youtube-video:a", "server", "42", "guid"); err != nil {
 		t.Fatal(err)
 	}
-	for _, query := range []string{`DROP INDEX video_projection`, `ALTER TABLE videos DROP COLUMN requested_height`, `ALTER TABLE playlist_members DROP COLUMN updated`, `ALTER TABLE playlists DROP COLUMN updated`, `ALTER TABLE channels DROP COLUMN updated`, `PRAGMA user_version=2`} {
+	for _, query := range []string{`DROP INDEX video_projection`, `ALTER TABLE videos DROP COLUMN requested_height`, `ALTER TABLE playlist_members DROP COLUMN updated`, `ALTER TABLE playlists DROP COLUMN updated`, `ALTER TABLE playlists DROP COLUMN seen_run`, `ALTER TABLE playlists DROP COLUMN available`, `ALTER TABLE channels DROP COLUMN updated`, `PRAGMA user_version=2`} {
 		if _, err = s.DB.ExecContext(t.Context(), query); err != nil {
 			t.Fatal(err)
 		}

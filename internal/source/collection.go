@@ -46,7 +46,11 @@ type Collections interface {
 // CollectionReader finds optional collection capabilities through observation.
 func CollectionReader(adapter SourceAdapter) (Collections, bool) {
 	if observed, ok := adapter.(Observed); ok {
-		return CollectionReader(observed.SourceAdapter)
+		reader, ok := CollectionReader(observed.SourceAdapter)
+		if !ok {
+			return nil, false
+		}
+		return observedCollections{Collections: reader, observed: observed}, true
 	}
 	reader, ok := adapter.(Collections)
 	return reader, ok
@@ -86,43 +90,49 @@ func (y *YouTube) Entries(ctx context.Context, s Scope, consume func([]Entry) er
 }
 
 func (y *YouTube) streamEntries(ctx context.Context, args []string, s Scope, consume func([]Entry) error) (Listing, error) {
+	count, err := y.scanProcess(ctx, args, func(ctx context.Context, scanner *bufio.Scanner) (int, error) {
+		result, err := consumeEntries(ctx, scanner, s, consume)
+		return result.Count, err
+	})
+	if count == 0 && s.PlaylistID == "" && errors.Is(err, ErrMissingCollection) {
+		return Listing{Complete: true}, nil
+	}
+	return Listing{Count: count, Complete: err == nil && (s.Count == 0 || count < s.Count)}, err
+}
+
+func (y *YouTube) scanProcess(ctx context.Context, args []string, consume func(context.Context, *bufio.Scanner) (int, error)) (int, error) {
 	release, err := y.acquire(ctx, true)
 	if err != nil {
-		return Listing{}, err
+		return 0, err
 	}
 	defer release()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	command, err := y.command(ctx, args, false)
 	if err != nil {
-		return Listing{}, err
+		return 0, err
 	}
 	stderr := &cappedBuffer{limit: 64 << 10}
 	command.Stderr = stderr
 	pipe, err := command.StdoutPipe()
 	if err != nil {
-		return Listing{}, err
+		return 0, err
 	}
 	if err = command.Start(); err != nil {
-		return Listing{}, errors.Join(err, pipe.Close())
+		return 0, errors.Join(err, pipe.Close())
 	}
-	result, readErr := consumeEntries(ctx, bufio.NewScanner(pipe), s, consume)
+	count, readErr := consume(ctx, bufio.NewScanner(pipe))
 	if readErr != nil {
 		cancel()
 	}
 	waitErr := command.Wait()
 	if readErr != nil {
-		return result, readErr
+		return count, readErr
 	}
 	if waitErr != nil {
-		err = resolverError(ctx, stderr.String())
-		if result.Count == 0 && s.PlaylistID == "" && errors.Is(err, ErrMissingCollection) {
-			return Listing{Complete: true}, nil
-		}
-		return result, err
+		return count, resolverError(ctx, stderr.String())
 	}
-	result.Complete = s.Count == 0 || result.Count < s.Count
-	return result, nil
+	return count, nil
 }
 
 func consumeEntries(ctx context.Context, scanner *bufio.Scanner, s Scope, consume func([]Entry) error) (Listing, error) {
@@ -158,39 +168,76 @@ func consumeEntries(ctx context.Context, scanner *bufio.Scanner, s Scope, consum
 	return result, nil
 }
 
-// Playlists discovers channel-owned playlists without resolving their videos.
+// PlaylistStreamer enumerates root collections without retaining the complete list.
+type PlaylistStreamer interface {
+	StreamPlaylists(context.Context, string, func([]Playlist) error) error
+}
+
+// Playlists returns a compatibility list. The application uses StreamPlaylists.
 func (y *YouTube) Playlists(ctx context.Context, id string) ([]Playlist, error) {
-	u, err := config.ChannelURL("https://www.youtube.com/channel/" + id)
-	if err != nil {
-		return nil, err
-	}
-	b, err := y.run(ctx, "--flat-playlist", "--", u+"/playlists")
-	if err != nil {
-		if errors.Is(err, ErrMissingCollection) {
-			return []Playlist{}, nil
-		}
-		return nil, err
-	}
-	var root struct {
-		Entries []json.RawMessage `json:"entries"`
-	}
-	if json.Unmarshal(b, &root) != nil {
-		return nil, errors.New("invalid playlist listing")
-	}
 	out := []Playlist{}
-	for _, raw := range root.Entries {
-		var p struct {
-			ID          string         `json:"id"`
-			Title       string         `json:"title"`
-			Description string         `json:"description"`
-			Thumbnails  []ArtworkImage `json:"thumbnails"`
-		}
-		if json.Unmarshal(raw, &p) != nil || !config.ValidPlaylistID(p.ID) {
-			return nil, errors.New("incomplete playlist listing")
-		}
-		out = append(out, Playlist{ID: p.ID, ChannelID: id, Title: p.Title, Description: p.Description, Thumbnail: largestImage(p.Thumbnails)})
+	err := y.StreamPlaylists(ctx, id, func(batch []Playlist) error { out = append(out, batch...); return nil })
+	return out, err
+}
+
+// StreamPlaylists enumerates owned collections in bounded batches without media resolution.
+func (y *YouTube) StreamPlaylists(ctx context.Context, id string, consume func([]Playlist) error) error {
+	origin, err := config.ChannelURL("https://www.youtube.com/channel/" + id)
+	if err != nil {
+		return err
 	}
-	return out, nil
+	count, err := y.scanProcess(ctx, []string{"--flat-playlist", "--lazy-playlist", "--dump-json", "--", origin + "/playlists"}, func(ctx context.Context, scanner *bufio.Scanner) (int, error) {
+		return consumePlaylists(ctx, scanner, id, consume)
+	})
+	if count == 0 && errors.Is(err, ErrMissingCollection) {
+		return nil
+	}
+	return err
+}
+
+func consumePlaylists(ctx context.Context, scanner *bufio.Scanner, owner string, consume func([]Playlist) error) (int, error) {
+	scanner.Buffer(make([]byte, 64<<10), 2<<20)
+	count := 0
+	batch := make([]Playlist, 0, 25)
+	for scanner.Scan() {
+		if err := ctx.Err(); err != nil {
+			return count, err
+		}
+		p, err := decodePlaylist(scanner.Bytes(), owner)
+		if err != nil {
+			return count, err
+		}
+		count++
+		batch = append(batch, p)
+		if len(batch) == 25 {
+			if err = consume(batch); err != nil {
+				return count, err
+			}
+			batch = make([]Playlist, 0, 25)
+		}
+	}
+	if scanner.Err() != nil {
+		return count, errors.New("playlist collection response could not be read")
+	}
+	if len(batch) > 0 {
+		if err := consume(batch); err != nil {
+			return count, err
+		}
+	}
+	return count, nil
+}
+
+func decodePlaylist(raw []byte, owner string) (Playlist, error) {
+	var p struct {
+		ID          string         `json:"id"`
+		Title       string         `json:"title"`
+		Description string         `json:"description"`
+		Thumbnails  []ArtworkImage `json:"thumbnails"`
+	}
+	if json.Unmarshal(raw, &p) != nil || !config.ValidPlaylistID(p.ID) {
+		return Playlist{}, errors.New("incomplete playlist listing")
+	}
+	return Playlist{ID: p.ID, ChannelID: owner, Title: p.Title, Description: p.Description, Thumbnail: largestImage(p.Thumbnails)}, nil
 }
 
 func (y *YouTube) command(ctx context.Context, args []string, single bool) (*exec.Cmd, error) {

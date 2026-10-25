@@ -15,6 +15,7 @@ import (
 // Playlist is a channel-owned collection with a persistent Plex season number.
 type Playlist struct {
 	ID          string `json:"id"`
+	Available   bool   `json:"available"`
 	ChannelID   string `json:"channel_id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
@@ -56,20 +57,11 @@ func (s *Store) SavePlaylist(ctx context.Context, p Playlist) error {
 
 // Playlists returns stable collection metadata for one followed channel.
 func (s *Store) Playlists(ctx context.Context, channel string) ([]Playlist, error) {
-	rows, err := s.DB.QueryContext(ctx, `SELECT id,channel_id,title,description,thumbnail,season,synced_at,error FROM playlists WHERE channel_id=? ORDER BY title,id`, channel)
+	rows, err := s.DB.QueryContext(ctx, `SELECT id,channel_id,title,description,thumbnail,season,synced_at,error,available FROM playlists WHERE channel_id=? ORDER BY title,id`, channel)
 	if err != nil {
 		return nil, err
 	}
-	defer closeRows(rows)
-	result := []Playlist{}
-	for rows.Next() {
-		var p Playlist
-		if err = rows.Scan(&p.ID, &p.ChannelID, &p.Title, &p.Description, &p.Thumbnail, &p.Season, &p.SyncedAt, &p.Error); err != nil {
-			return nil, err
-		}
-		result = append(result, p)
-	}
-	return result, rows.Err()
+	return readPlaylistMetadata(rows)
 }
 
 // PlaylistOccurrenceID remains stable when a playlist is renamed or reordered.

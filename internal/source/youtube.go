@@ -325,9 +325,62 @@ func (y *YouTube) Enumerate(ctx context.Context, id string) (Channel, error) {
 	return decodeChannel(b)
 }
 
-// Metadata retrieves video lifecycle and publication data through the resolver.
+// Metadata retrieves catalogue fields with fewer player requests. Playback
+// sources use Resolve; incomplete catalogue data retries the complete profile.
 func (y *YouTube) Metadata(ctx context.Context, id string) (Metadata, error) {
-	return y.Resolve(ctx, id)
+	if !videoID.MatchString(id) {
+		return Metadata{}, errors.New("invalid video ID")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	// These documented options omit manifest and JavaScript format work. All
+	// required catalogue fields are checked; approximate dates are never used.
+	args := "youtube:player_client=web;player_skip=js,configs;skip=hls,dash,translated_subs"
+	raw, err := y.run(ctx, "--extractor-args", args, "--no-playlist", "--", "https://www.youtube.com/watch?v="+id)
+	if err != nil {
+		return Metadata{}, err
+	}
+	metadata, err := DecodeMetadata(raw, id)
+	if err != nil {
+		return Metadata{}, err
+	}
+	if metadataRestricted(metadata) {
+		return Metadata{}, ErrUnavailable
+	}
+	if !completeCatalogueMetadata(metadata) {
+		metadata, err = y.Resolve(ctx, id)
+		if err != nil {
+			return Metadata{}, err
+		}
+		if metadataRestricted(metadata) {
+			return Metadata{}, ErrUnavailable
+		}
+		if !completeCatalogueMetadata(metadata) {
+			return Metadata{}, errors.New("source catalogue metadata is incomplete")
+		}
+	}
+	metadata.Formats = nil
+	metadata.Subtitles = nil
+	metadata.AutomaticCaptions = nil
+	return metadata, nil
+}
+
+func metadataRestricted(m Metadata) bool {
+	return m.Availability != "" && m.Availability != "public" && m.Availability != "unlisted"
+}
+
+func completeCatalogueMetadata(m Metadata) bool {
+	if m.ChannelID == "" || m.Title == "" {
+		return false
+	}
+	switch m.State() {
+	case "upcoming", "active", "processing":
+		return true
+	case "recorded", "replay-ready":
+		return !m.Date().IsZero()
+	default:
+		return false
+	}
 }
 
 // Resolve retrieves and validates fresh playback-source candidates.

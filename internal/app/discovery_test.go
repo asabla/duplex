@@ -379,3 +379,104 @@ func TestAllStreamsEachTabOnceAndKeepsPriorSelectionOnFailure(t *testing.T) {
 		t.Fatal(page.Total, err)
 	}
 }
+
+type streamedCollections struct {
+	*collectionSource
+	rootCalls    int
+	failRoot     bool
+	largestBatch int
+}
+
+func (s *streamedCollections) Playlists(context.Context, string) ([]source.Playlist, error) {
+	panic("unbounded playlist list used by streaming application")
+}
+
+func (s *streamedCollections) StreamPlaylists(ctx context.Context, _ string, consume func([]source.Playlist) error) error {
+	s.rootCalls++
+	for start := 0; start < len(s.lists); start += 25 {
+		batch := s.lists[start:min(start+25, len(s.lists))]
+		s.largestBatch = max(s.largestBatch, len(batch))
+		if err := consume(batch); err != nil {
+			return err
+		}
+		if s.failRoot {
+			return errors.New("interrupted root playlist enumeration")
+		}
+	}
+	return ctx.Err()
+}
+
+func TestStreamedPlaylistRootsPreserveIdentityAcrossRemovalAndFailure(t *testing.T) {
+	fixture := fixtureCollection(1)
+	for n := range 121 {
+		id := fmt.Sprintf("PLfixture%06d", n)
+		fixture.lists = append(fixture.lists, source.Playlist{ID: id, ChannelID: testOwner, Title: id})
+		fixture.entries[id] = []source.Entry{{ID: "video000000"}}
+	}
+	adapter := &streamedCollections{collectionSource: fixture}
+	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "latest", Limit: 1}), adapter)
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	if adapter.rootCalls != 1 || adapter.largestBatch != 25 {
+		t.Fatal(adapter.rootCalls, adapter.largestBatch)
+	}
+	countSelected := func() int {
+		var count int
+		if err := a.Catalog.DB.QueryRowContext(t.Context(), `SELECT count(*) FROM playlist_members WHERE selected=1`).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		return count
+	}
+	if count := countSelected(); count != 121 {
+		t.Fatal(count)
+	}
+	first := fixture.lists[0]
+	adapter.lists = []source.Playlist{{ID: "PLnew00000001", ChannelID: testOwner, Title: "Safe addition"}}
+	adapter.failRoot = true
+	if err := a.Sync(t.Context(), testOwner); err == nil {
+		t.Fatal("incomplete root succeeded")
+	}
+	if count := countSelected(); count != 121 {
+		t.Fatal("partial root removed membership", count)
+	}
+	adapter.failRoot = false
+	adapter.lists = []source.Playlist{first}
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	if count := countSelected(); count != 1 {
+		t.Fatal("removed playlists remained exposed", count)
+	}
+	playlists, err := a.Catalog.Playlists(t.Context(), testOwner)
+	if err != nil || len(playlists) != 122 {
+		t.Fatal("durable playlist identities removed", len(playlists), err)
+	}
+	available := 0
+	for _, p := range playlists {
+		if p.Available {
+			available++
+			if p.ID != first.ID || p.Season != 1 {
+				t.Fatal(p)
+			}
+		}
+	}
+	if available != 1 {
+		t.Fatal("incorrect source availability", available)
+	}
+	// A new playlist cannot reuse any historical season assignment.
+	adapter.lists = append(adapter.lists, source.Playlist{ID: "PLnew00000002", ChannelID: testOwner, Title: "New collection"})
+	adapter.entries["PLnew00000002"] = []source.Entry{{ID: "video000000"}}
+	if err = a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	playlists, err = a.Catalog.Playlists(t.Context(), testOwner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range playlists {
+		if p.ID == "PLnew00000002" && p.Season != 123 {
+			t.Fatal("season number reused", p)
+		}
+	}
+}

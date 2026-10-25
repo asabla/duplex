@@ -342,25 +342,58 @@ func (r *discoveryRun) playlists(ctx context.Context) error {
 	if r.channel.Playlists == nil || !r.channel.Playlists.Enabled {
 		return nil
 	}
+	if err := r.discoverPlaylists(ctx); err != nil {
+		return err
+	}
+	if err := r.current(); err != nil {
+		return err
+	}
+	if err := r.app.Catalog.ReconcilePlaylists(ctx, r.id, r.channel.ID); err != nil {
+		return err
+	}
+	after := ""
+	for {
+		playlists, err := r.app.Catalog.DiscoveredPlaylists(ctx, r.id, r.channel.ID, after, 100)
+		if err != nil {
+			return err
+		}
+		for _, p := range playlists {
+			after = p.ID
+			policy := r.channel.PlaylistSelection(p.ID)
+			if policy.Mode == "skip" {
+				continue
+			}
+			if err = r.playlist(ctx, p.ID, policy); err != nil {
+				return err
+			}
+		}
+		if len(playlists) < 100 {
+			break
+		}
+	}
+	return r.app.Publish()
+}
+
+func (r *discoveryRun) discoverPlaylists(ctx context.Context) error {
+	consume := func(batch []source.Playlist) error {
+		for _, p := range batch {
+			if p.ChannelID != "" && p.ChannelID != r.channel.ID {
+				return errors.New("playlist owner changed")
+			}
+			if err := r.app.Catalog.DiscoverPlaylist(ctx, r.id, catalog.Playlist{ID: p.ID, ChannelID: r.channel.ID, Title: p.Title, Description: p.Description, Thumbnail: p.Thumbnail}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if stream, ok := r.reader.(source.PlaylistStreamer); ok {
+		return stream.StreamPlaylists(ctx, r.channel.ID, consume)
+	}
 	playlists, err := r.reader.Playlists(ctx, r.channel.ID)
 	if err != nil {
 		return err
 	}
-	for _, p := range playlists {
-		if err = r.app.Catalog.SavePlaylist(ctx, catalog.Playlist{ID: p.ID, ChannelID: r.channel.ID, Title: p.Title, Description: p.Description, Thumbnail: p.Thumbnail}); err != nil {
-			return err
-		}
-	}
-	for _, p := range playlists {
-		policy := r.channel.PlaylistSelection(p.ID)
-		if policy.Mode == "skip" {
-			continue
-		}
-		if err = r.playlist(ctx, p.ID, policy); err != nil {
-			return err
-		}
-	}
-	return r.app.Publish()
+	return consume(playlists)
 }
 
 type playlistDiscovery struct {

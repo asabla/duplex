@@ -34,6 +34,9 @@ if test "$1" = --version; then cat "$root/version"; exit; fi
 printf '%s\n' "$@" > "$root/arguments"
 if test -f "$root/stall"; then exec sleep 30; fi
 if test -f "$root/error"; then cat "$root/error" >&2; exit 2; fi
+case "$*" in
+ *"youtube:player_client=web;"*) if test -f "$root/metadata-response"; then cat "$root/metadata-response"; exit; fi ;;
+esac
 cat "$root/response"
 `
 	writeSourceFixture(t, filepath.Join(dir, "yt-dlp"), script, 0o700)
@@ -67,10 +70,10 @@ func TestSourceProcessContract(t *testing.T) {
 		}
 	}
 	reader, ok := CollectionReader(observed)
-	if !ok || reader != y {
+	if !ok || reader == nil {
 		t.Fatal("observed adapter lost collection support")
 	}
-	writeSourceFixture(t, filepath.Join(dir, "response"), `{"id":"aqz-KE-bpKQ","channel_id":"`+fixtureChannel+`","duration":60,"live_status":"not_live"}`, 0o600)
+	writeSourceFixture(t, filepath.Join(dir, "response"), `{"id":"aqz-KE-bpKQ","channel_id":"`+fixtureChannel+`","title":"Recorded fixture","timestamp":1700000000,"duration":60,"live_status":"not_live"}`, 0o600)
 	for _, call := range []func(context.Context, string) (Metadata, error){observed.Metadata, observed.Resolve} {
 		result, err := call(t.Context(), "aqz-KE-bpKQ")
 		if err != nil || result.State() != "recorded" {
@@ -180,12 +183,12 @@ func TestCollectionValidationAndBoundedSlots(t *testing.T) {
 
 func TestSourceVersionsAndPlaylistOwnership(t *testing.T) {
 	y, dir := resolverFixture(t)
-	writeSourceFixture(t, filepath.Join(dir, "response"), `{"entries":[{"id":"PLfixture0001","title":"Curated","thumbnails":[{"url":"https://i.ytimg.com/example.jpg","width":640,"height":360}]}]}`, 0o600)
+	writeSourceFixture(t, filepath.Join(dir, "response"), `{"id":"PLfixture0001","title":"Curated","thumbnails":[{"url":"https://i.ytimg.com/example.jpg","width":640,"height":360}]}`, 0o600)
 	playlists, err := y.Playlists(t.Context(), fixtureChannel)
 	if err != nil || len(playlists) != 1 || playlists[0].ChannelID != fixtureChannel || playlists[0].Thumbnail == "" {
 		t.Fatal(playlists, err)
 	}
-	for _, value := range []string{"{", `{"entries":[null]}`, `{"entries":[{"id":"bad"}]}`} {
+	for _, value := range []string{"{", `null`, `{"id":"bad"}`} {
 		writeSourceFixture(t, filepath.Join(dir, "response"), value, 0o600)
 		if _, err = y.Playlists(t.Context(), fixtureChannel); err == nil {
 			t.Fatal("partial playlist snapshot accepted")
@@ -203,5 +206,59 @@ func TestSourceVersionsAndPlaylistOwnership(t *testing.T) {
 	y.Deno = filepath.Join(dir, "missing")
 	if _, err = y.Resolve(t.Context(), "aqz-KE-bpKQ"); err == nil {
 		t.Fatal("missing runtime accepted")
+	}
+}
+
+func TestPlaylistRootStreamHasNoCollectionCountCap(t *testing.T) {
+	y, dir := resolverFixture(t)
+	var response strings.Builder
+	for n := range 61 {
+		fmt.Fprintf(&response, "{\"id\":\"PLfixture%06d\",\"title\":\"Collection %d\"}\n", n, n)
+	}
+	writeSourceFixture(t, filepath.Join(dir, "response"), response.String(), 0o600)
+	counts := []int{}
+	if err := y.StreamPlaylists(t.Context(), fixtureChannel, func(batch []Playlist) error { counts = append(counts, len(batch)); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(counts) != "[25 25 11]" {
+		t.Fatal(counts)
+	}
+	failure := errors.New("root consumer failed")
+	if err := y.StreamPlaylists(t.Context(), fixtureChannel, func([]Playlist) error { return failure }); !errors.Is(err, failure) {
+		t.Fatal(err)
+	}
+}
+
+func TestMetadataProfileFallsBackWithoutChangingIdentityOrDates(t *testing.T) {
+	y, dir := resolverFixture(t)
+	complete := `{"id":"aqz-KE-bpKQ","channel_id":"` + fixtureChannel + `","title":"Exact publication metadata","timestamp":1700000000,"duration":60,"live_status":"not_live","formats":[{"format_id":"video"}]}`
+	writeSourceFixture(t, filepath.Join(dir, "response"), complete, 0o600)
+	metadata, err := y.Metadata(t.Context(), "aqz-KE-bpKQ")
+	if err != nil || metadata.Timestamp != 1700000000 || len(metadata.Formats) != 0 {
+		t.Fatal(metadata, err)
+	}
+	arguments, err := os.ReadFile(filepath.Join(dir, "arguments")) //nolint:gosec // G304: This reads only a controlled process log in t.TempDir.
+	if err != nil || !bytes.Contains(arguments, []byte("player_skip=js,configs")) {
+		t.Fatal(string(arguments), err)
+	}
+	writeSourceFixture(t, filepath.Join(dir, "metadata-response"), `{"id":"aqz-KE-bpKQ","title":"Incomplete flat-like metadata","duration":60}`, 0o600)
+	metadata, err = y.Metadata(t.Context(), "aqz-KE-bpKQ")
+	if err != nil || metadata.ChannelID != fixtureChannel || metadata.Timestamp != 1700000000 || len(metadata.Formats) != 0 {
+		t.Fatal(metadata, err)
+	}
+	arguments, err = os.ReadFile(filepath.Join(dir, "arguments")) //nolint:gosec // G304: This reads only a controlled process log in t.TempDir.
+	if err != nil || bytes.Contains(arguments, []byte("--extractor-args")) {
+		t.Fatal("incomplete metadata did not use full resolution", string(arguments), err)
+	}
+	writeSourceFixture(t, filepath.Join(dir, "metadata-response"), `{"id":"aqz-KE-bpKQ","availability":"private"}`, 0o600)
+	if _, err = y.Metadata(t.Context(), "aqz-KE-bpKQ"); !errors.Is(err, ErrUnavailable) {
+		t.Fatal(err)
+	}
+	writeSourceFixture(t, filepath.Join(dir, "metadata-response"), `{"id":"k0ILMhbWHNQ"}`, 0o600)
+	if _, err = y.Metadata(t.Context(), "aqz-KE-bpKQ"); err == nil {
+		t.Fatal("changed source identity accepted")
+	}
+	if _, err = y.Metadata(t.Context(), "invalid"); err == nil {
+		t.Fatal("invalid source ID accepted")
 	}
 }
