@@ -80,7 +80,13 @@ establish a stable or passing refactor baseline.
 Before enabling the planned checks, make the pinned tools available, identify a
 stable source revision and any local changes, and run the existing gate. Record
 failures and environmental blockers separately from proposed-rule findings.
-This documentation change does not rerun the application gate or qualify a build.
+The later integrated-source baseline at `b7e3415` passed the complete existing
+gate, including Linux/FUSE tests, both architecture builds, and at least 80%
+statement coverage in every package. The pinned vulnerability scanner was
+available in the existing local tool cache and was added to the command's PATH.
+See the [baseline record](evidence/structure-baseline.json) for versions, source
+fingerprint, coverage, and the separate proposed-rule findings. The isolated live
+Plex qualification test remained skipped; this is not a release acceptance claim.
 
 ## Tests and evidence
 
