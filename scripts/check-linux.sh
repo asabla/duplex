@@ -6,17 +6,23 @@ export GOTOOLCHAIN=go1.27.3
 mkdir -p .cache/linux-fixtures
 source_id=$(./scripts/coverage-source.sh)
 case "$(uname -s)" in
-  Linux) architecture=$("$GO" env GOARCH) ;;
-  Darwin)
-    context=${DUPLEX_DOCKER_CONTEXT:-colima}
-    architecture=$(docker --context "$context" info --format '{{.Architecture}}')
-    ;;
-  *) echo 'Linux qualification requires Linux or a Linux Docker daemon.' >&2; exit 1 ;;
+Linux) architecture=$("$GO" env GOARCH) ;;
+Darwin)
+  context=${DUPLEX_DOCKER_CONTEXT:-colima}
+  architecture=$(docker --context "$context" info --format '{{.Architecture}}')
+  ;;
+*)
+  echo 'Linux qualification requires Linux or a Linux Docker daemon.' >&2
+  exit 1
+  ;;
 esac
 case "$architecture" in
-  aarch64|arm64) architecture=arm64 ;;
-  x86_64|amd64) architecture=amd64 ;;
-  *) echo 'Unsupported qualification architecture.' >&2; exit 1 ;;
+aarch64 | arm64) architecture=arm64 ;;
+x86_64 | amd64) architecture=amd64 ;;
+*)
+  echo 'Unsupported qualification architecture.' >&2
+  exit 1
+  ;;
 esac
 for package in library cache app; do
   rm -f ".cache/$package-linux.cover"
@@ -41,5 +47,8 @@ else
     debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 \
     /bin/sh /run-linux-tests.sh /evidence
 fi
-test "$source_id" = "$(./scripts/coverage-source.sh)" || { echo 'Source changed during Linux qualification.' >&2; exit 1; }
-printf '%s\n' "$source_id" > .cache/linux-coverage-source
+test "$source_id" = "$(./scripts/coverage-source.sh)" || {
+  echo 'Source changed during Linux qualification.' >&2
+  exit 1
+}
+printf '%s\n' "$source_id" >.cache/linux-coverage-source

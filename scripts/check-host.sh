@@ -1,12 +1,25 @@
 #!/bin/sh
 # Read-only setup checks. Run on the Linux daemon host.
 set -eu
-test "$(uname -s)" = Linux || { echo 'Run inside Linux or Colima.' >&2; exit 1; }
+test "$(uname -s)" = Linux || {
+  echo 'Run inside Linux or Colima.' >&2
+  exit 1
+}
 root=${1:-/var/lib/duplex}
-test -c /dev/fuse || { echo '/dev/fuse is missing.' >&2; exit 1; }
-test -d "$root/library" || { echo 'Public mount parent is missing.' >&2; exit 1; }
+test -c /dev/fuse || {
+  echo '/dev/fuse is missing.' >&2
+  exit 1
+}
+test -d "$root/library" || {
+  echo 'Public mount parent is missing.' >&2
+  exit 1
+}
 propagation=$(findmnt -n -o PROPAGATION -T "$root")
-case "$propagation" in *shared*) ;; *) echo 'State mount must have shared propagation.' >&2; exit 1 ;; esac
+case "$propagation" in *shared*) ;; *)
+  echo 'State mount must have shared propagation.' >&2
+  exit 1
+  ;;
+esac
 printf 'Mount propagation: %s\n' "$propagation"
 findmnt -T "$root"
 df -h "$root"

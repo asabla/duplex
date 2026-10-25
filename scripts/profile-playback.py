@@ -20,9 +20,17 @@ import xml.etree.ElementTree as ET
 
 def origin(value):
     parsed = urllib.parse.urlsplit(value)
-    if (parsed.scheme not in ("http", "https") or not parsed.hostname
-            or parsed.username or parsed.password or parsed.query or parsed.fragment):
-        raise argparse.ArgumentTypeError("Use an HTTP origin without credentials or query parameters")
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise argparse.ArgumentTypeError(
+            "Use an HTTP origin without credentials or query parameters"
+        )
     return value.rstrip("/")
 
 
@@ -32,7 +40,9 @@ class SameOriginRedirect(urllib.request.HTTPRedirectHandler):
         after = urllib.parse.urlsplit(target)
         if (before.scheme, before.netloc) != (after.scheme, after.netloc):
             raise RuntimeError("Cross-origin authenticated redirect rejected")
-        return super().redirect_request(request, response, code, message, headers, target)
+        return super().redirect_request(
+            request, response, code, message, headers, target
+        )
 
 
 class Probe:
@@ -42,7 +52,9 @@ class Probe:
         self.output.mkdir(mode=0o700)
         self.plex_opener = urllib.request.build_opener(SameOriginRedirect())
         self.duplex_opener = urllib.request.build_opener(
-            SameOriginRedirect(), urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+            SameOriginRedirect(),
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
+        )
         self.token = args.token_file.read_text().strip()
         if not self.token or "\n" in self.token or "\r" in self.token:
             raise ValueError("Invalid token file")
@@ -52,15 +64,19 @@ class Probe:
         self.session_csrf = None
 
     def plex(self, path):
-        request = urllib.request.Request(self.args.plex_url + path,
-                                         headers={"X-Plex-Token": self.token})
+        request = urllib.request.Request(
+            self.args.plex_url + path, headers={"X-Plex-Token": self.token}
+        )
         with self.plex_opener.open(request, timeout=self.args.timeout) as response:
             return ET.fromstring(response.read())
 
     def duplex_json(self, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
-        request = urllib.request.Request(self.args.duplex_url + path, data=data,
-                                         headers={"Content-Type": "application/json"})
+        request = urllib.request.Request(
+            self.args.duplex_url + path,
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
         with self.duplex_opener.open(request, timeout=self.args.timeout) as response:
             return json.load(response)
 
@@ -68,17 +84,26 @@ class Probe:
         if not self.args.duplex_url:
             return
         session = self.duplex_json("/api/v1/session")
-        self.duplex_json("/api/v1/login", {
-            "username": "admin", "password": self.args.duplex_password_file.read_text().strip(),
-            "csrf": session["csrf"],
-        })
+        self.duplex_json(
+            "/api/v1/login",
+            {
+                "username": "admin",
+                "password": self.args.duplex_password_file.read_text().strip(),
+                "csrf": session["csrf"],
+            },
+        )
         self.session_csrf = self.duplex_json("/api/v1/session")["csrf"]
 
     def close(self):
         if self.session_csrf:
-            request = urllib.request.Request(self.args.duplex_url + "/logout", data=b"",
-                                             headers={"X-CSRF-Token": self.session_csrf})
-            with self.duplex_opener.open(request, timeout=self.args.timeout) as response:
+            request = urllib.request.Request(
+                self.args.duplex_url + "/logout",
+                data=b"",
+                headers={"X-CSRF-Token": self.session_csrf},
+            )
+            with self.duplex_opener.open(
+                request, timeout=self.args.timeout
+            ) as response:
                 response.read()
 
     def metrics(self):
@@ -93,17 +118,39 @@ class Probe:
     def decode(self, url, offset, phase):
         started = time.monotonic()
         row = {"phase": phase, "offset_seconds": offset}
-        command = [self.args.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
-                   "-ss", str(offset), "-i", url, "-map", "0:v:0", "-frames:v", "1",
-                   "-an", "-f", "framemd5", "-"]
+        command = [
+            self.args.ffmpeg,
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            str(offset),
+            "-i",
+            url,
+            "-map",
+            "0:v:0",
+            "-frames:v",
+            "1",
+            "-an",
+            "-f",
+            "framemd5",
+            "-",
+        ]
         try:
-            result = subprocess.run(command, capture_output=True, timeout=self.args.timeout,
-                                    check=False)
+            result = subprocess.run(
+                command, capture_output=True, timeout=self.args.timeout, check=False
+            )
             row["exit_code"] = result.returncode
-            frames = [line for line in result.stdout.decode().splitlines()
-                      if line and not line.startswith("#")]
+            frames = [
+                line
+                for line in result.stdout.decode().splitlines()
+                if line and not line.startswith("#")
+            ]
             digest = frames[-1].rsplit(",", 1)[-1].strip() if frames else ""
-            row["decoded"] = result.returncode == 0 and bool(re.fullmatch(r"[0-9a-f]{32}", digest))
+            row["decoded"] = result.returncode == 0 and bool(
+                re.fullmatch(r"[0-9a-f]{32}", digest)
+            )
             if digest:
                 row["frame_md5"] = digest
         except subprocess.TimeoutExpired:
@@ -114,20 +161,52 @@ class Probe:
 
     def decode_av(self, url, offset):
         started = time.monotonic()
-        row = {"phase": "audio_video", "offset_seconds": offset,
-               "content_seconds": self.args.av_seconds}
-        command = [self.args.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
-                   "-ss", str(offset), "-i", url, "-map", "0:v:0", "-map", "0:a:0",
-                   "-t", str(self.args.av_seconds), "-progress", "pipe:1", "-f", "null", "-"]
+        row = {
+            "phase": "audio_video",
+            "offset_seconds": offset,
+            "content_seconds": self.args.av_seconds,
+        }
+        command = [
+            self.args.ffmpeg,
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            str(offset),
+            "-i",
+            url,
+            "-map",
+            "0:v:0",
+            "-map",
+            "0:a:0",
+            "-t",
+            str(self.args.av_seconds),
+            "-progress",
+            "pipe:1",
+            "-f",
+            "null",
+            "-",
+        ]
         try:
-            result = subprocess.run(command, capture_output=True, timeout=self.args.timeout,
-                                    check=False)
-            progress = dict(line.split("=", 1) for line in result.stdout.decode().splitlines()
-                            if "=" in line)
-            row.update(exit_code=result.returncode, frames=int(progress.get("frame", "0")),
-                       output_microseconds=int(progress.get("out_time_us", "0")))
-            row["decoded"] = (result.returncode == 0 and row["frames"] > 0
-                              and row["output_microseconds"] >= (self.args.av_seconds - 0.1) * 1e6)
+            result = subprocess.run(
+                command, capture_output=True, timeout=self.args.timeout, check=False
+            )
+            progress = dict(
+                line.split("=", 1)
+                for line in result.stdout.decode().splitlines()
+                if "=" in line
+            )
+            row.update(
+                exit_code=result.returncode,
+                frames=int(progress.get("frame", "0")),
+                output_microseconds=int(progress.get("out_time_us", "0")),
+            )
+            row["decoded"] = (
+                result.returncode == 0
+                and row["frames"] > 0
+                and row["output_microseconds"] >= (self.args.av_seconds - 0.1) * 1e6
+            )
         except subprocess.TimeoutExpired:
             row.update(decoded=False, error_class="TimeoutExpired")
         row["seconds"] = time.monotonic() - started
@@ -149,9 +228,14 @@ class Probe:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         url = "http://127.0.0.1:" + str(server.server_port) + "/media.mp4"
-        report = {"schema": 1, "method": "One decoded video frame through Plex HTTP part; not browser rendering",
-                  "duration_seconds": duration, "view_offset_before": video.get("viewOffset"),
-                  "before": self.metrics(), "sequential": []}
+        report = {
+            "schema": 1,
+            "method": "One decoded video frame through Plex HTTP part; not browser rendering",
+            "duration_seconds": duration,
+            "view_offset_before": video.get("viewOffset"),
+            "before": self.metrics(),
+            "sequential": [],
+        }
         try:
             offsets = [0, round(duration / 2, 3), round(max(0, duration - 45), 3)]
             for phase in ("first_read", "repeat"):
@@ -161,14 +245,25 @@ class Probe:
             if self.args.av_seconds:
                 report["audio_video"] = self.decode_av(url, round(duration * 0.45, 3))
             if self.args.clients > 1:
-                offsets = [round(duration * n / self.args.clients, 3)
-                           for n in range(self.args.clients)]
-                with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.clients) as pool:
-                    report["concurrent"] = list(pool.map(
-                        lambda offset: self.decode(url, offset, "concurrent"), offsets))
+                offsets = [
+                    round(duration * n / self.args.clients, 3)
+                    for n in range(self.args.clients)
+                ]
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=self.args.clients
+                ) as pool:
+                    report["concurrent"] = list(
+                        pool.map(
+                            lambda offset: self.decode(url, offset, "concurrent"),
+                            offsets,
+                        )
+                    )
             report["after"] = self.metrics()
-            report["view_offset_after"] = self.plex(
-                "/library/metadata/" + str(self.args.item)).find("Video").get("viewOffset")
+            report["view_offset_after"] = (
+                self.plex("/library/metadata/" + str(self.args.item))
+                .find("Video")
+                .get("viewOffset")
+            )
         finally:
             server.shutdown()
             server.server_close()
@@ -179,9 +274,10 @@ class Probe:
         rows = report["sequential"] + report.get("concurrent", [])
         if "audio_video" in report:
             rows.append(report["audio_video"])
-        return (all(row["decoded"] for row in rows)
-                and not any(row.get("safety_byte_limit") or row.get("error_class")
-                            for row in report["requests"]))
+        return all(row["decoded"] for row in rows) and not any(
+            row.get("safety_byte_limit") or row.get("error_class")
+            for row in report["requests"]
+        )
 
 
 def handler(probe):
@@ -213,13 +309,24 @@ def handler(probe):
                 headers = {"X-Plex-Token": probe.token, "Accept-Encoding": "identity"}
                 if byte_range:
                     headers["Range"] = byte_range
-                request = urllib.request.Request(probe.part_url, headers=headers,
-                                                 method="HEAD" if head else "GET")
-                with probe.plex_opener.open(request, timeout=probe.args.timeout) as upstream:
-                    row.update(status=upstream.status, headers_seconds=time.monotonic() - started)
+                request = urllib.request.Request(
+                    probe.part_url, headers=headers, method="HEAD" if head else "GET"
+                )
+                with probe.plex_opener.open(
+                    request, timeout=probe.args.timeout
+                ) as upstream:
+                    row.update(
+                        status=upstream.status,
+                        headers_seconds=time.monotonic() - started,
+                    )
                     self.send_response(upstream.status)
                     for key, value in upstream.headers.items():
-                        if key.lower() not in ("connection", "transfer-encoding", "server", "date"):
+                        if key.lower() not in (
+                            "connection",
+                            "transfer-encoding",
+                            "server",
+                            "date",
+                        ):
                             self.send_header(key, value)
                     self.end_headers()
                     sent_headers = True
@@ -227,7 +334,9 @@ def handler(probe):
                         self.copy_payload(upstream, row, started)
             except (BrokenPipeError, ConnectionResetError):
                 row["client_closed"] = True
-            except Exception as error:  # Retain failures without upstream URLs or credentials.
+            except (
+                Exception
+            ) as error:  # Retain failures without upstream URLs or credentials.
                 row["error_class"] = type(error).__name__
                 if not sent_headers:
                     self.send_error(502, "Playback request failed")
@@ -266,11 +375,19 @@ def arguments():
     parser.add_argument("--timeout", type=int, default=90)
     parser.add_argument("--ffmpeg", default=shutil.which("ffmpeg"))
     args = parser.parse_args()
-    if (args.item < 1 or args.clients not in range(1, 5) or args.av_seconds not in range(0, 11)
-            or args.timeout not in range(1, 181)
-            or not args.ffmpeg or args.output.exists() or not args.output.is_absolute()
-            or bool(args.duplex_url) != bool(args.duplex_password_file)):
-        parser.error("Use a valid item, 1-4 clients, 0-10 A/V seconds, 1-180 second timeout, installed FFmpeg, new absolute output path, and both Duplex options together")
+    if (
+        args.item < 1
+        or args.clients not in range(1, 5)
+        or args.av_seconds not in range(0, 11)
+        or args.timeout not in range(1, 181)
+        or not args.ffmpeg
+        or args.output.exists()
+        or not args.output.is_absolute()
+        or bool(args.duplex_url) != bool(args.duplex_password_file)
+    ):
+        parser.error(
+            "Use a valid item, 1-4 clients, 0-10 A/V seconds, 1-180 second timeout, installed FFmpeg, new absolute output path, and both Duplex options together"
+        )
     return args
 
 
