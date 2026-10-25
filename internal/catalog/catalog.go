@@ -151,11 +151,25 @@ func (s *Store) FinishJob(ctx context.Context, id int64, ch string, err error) e
 		state = "failed"
 		msg = "source or representation refresh failed; previous complete catalogue retained"
 	}
-	_, e := s.DB.ExecContext(ctx, `UPDATE sync_jobs SET state=?,finished=?,error=? WHERE id=?`, state, time.Now().Unix(), msg, id)
-	if e == nil && err != nil {
-		_, e = s.DB.ExecContext(ctx, `UPDATE channels SET error=? WHERE id=?`, msg, ch)
+	tx, e := s.DB.BeginTx(ctx, nil)
+	if e != nil {
+		return e
 	}
-	return e
+	defer rollback(tx)
+	if _, e = tx.ExecContext(ctx, `UPDATE sync_jobs SET state=?,finished=?,error=? WHERE id=?`, state, time.Now().Unix(), msg, id); e != nil {
+		return e
+	}
+	if err != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE channels SET error=? WHERE id=?`, msg, ch); e != nil {
+			return e
+		}
+	}
+	// Durable selections and preparation jobs are the restart checkpoint. Flat
+	// enumeration is repeated after interruption, so completed staging is unused.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM discovery_items WHERE run_id=?`, id); e != nil {
+		return e
+	}
+	return tx.Commit()
 }
 
 // Channels returns known source channels, including uploaders of curated entries.

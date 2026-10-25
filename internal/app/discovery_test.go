@@ -182,6 +182,11 @@ func TestAllAndPlaylistLatestOrdering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	var got []string
 	for rows.Next() {
 		var id string
@@ -190,6 +195,9 @@ func TestAllAndPlaylistLatestOrdering(t *testing.T) {
 			t.Fatal(err)
 		}
 		got = append(got, id)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatal(err)
 	}
 	if err = rows.Close(); err != nil {
 		t.Fatal(err)
@@ -337,5 +345,38 @@ func TestUnavailableCuratedEntryCanAcquireItsActualUploader(t *testing.T) {
 	current, err := a.Catalog.Video(t.Context(), id)
 	if err != nil || current.ChannelID != uploader || current.Preparation != "queued" {
 		t.Fatal(current, err)
+	}
+}
+
+func TestAllStreamsEachTabOnceAndKeepsPriorSelectionOnFailure(t *testing.T) {
+	s := fixtureCollection(80)
+	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "all"}), s)
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range s.calls {
+		if scope.Count != 0 || scope.Start != 1 {
+			t.Fatalf("All paged the provider: %+v", scope)
+		}
+	}
+	if len(s.calls) != 3 {
+		t.Fatalf("source tabs enumerated %d times", len(s.calls))
+	}
+	s.entries["videos"] = s.entries["videos"][:1]
+	s.fail = "streams"
+	if err := a.Sync(t.Context(), testOwner); err == nil {
+		t.Fatal("incomplete enumeration succeeded")
+	}
+	page, err := a.Videos(t.Context(), catalog.VideoFilter{Inclusion: "selected"})
+	if err != nil || page.Total != 80 {
+		t.Fatal(page.Total, err)
+	}
+	s.fail = ""
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+	page, err = a.Videos(t.Context(), catalog.VideoFilter{Inclusion: "selected"})
+	if err != nil || page.Total != 1 {
+		t.Fatal(page.Total, err)
 	}
 }
