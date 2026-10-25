@@ -1,5 +1,9 @@
 # Performance evidence
 
+For playback start, distant seeks, and source binding through Plex and YouTube,
+see the [media-path measurements](playback-performance.md). The catalogue
+benchmarks below measure separate query and allocation work.
+
 Each measurement states its platform and workload. The historical cleanup
 measurements use an isolated Colima container. They do not measure a native
 Linux installation. Raw profiles and source responses remain outside Git
