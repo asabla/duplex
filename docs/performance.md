@@ -1,8 +1,84 @@
 # Performance evidence
 
-The cleanup measurements below use an isolated Colima container. They do not
-measure a native Linux installation. Raw profiles and source responses remain
-outside Git because they can contain local data or signed source URLs.
+Each measurement states its platform and workload. The historical cleanup
+measurements use an isolated Colima container. They do not measure a native
+Linux installation. Raw profiles and source responses remain outside Git
+because they can contain local data or signed source URLs.
+
+## Local catalogue read profile, 2026-10-25
+
+This separate measurement uses native macOS, an Apple M3 Max, Go 1.27.3,
+and GOMAXPROCS=16. Each fixture has one channel and 1,000 or 10,000 synthetic
+ready recordings in one year season. It has no playlists or optional assets.
+The Latest 50 case selects 50 rows from the same durable catalogue.
+
+The baseline supplies `internal/catalog/query.go` from `0bc73ba` through a Go
+build overlay. Both versions use the new benchmark fixtures. Before and after
+benchmarks run in sequence, without profiles, for three one-second samples.
+The table shows median time per application call, including the other queries
+in `App.Summary`. These are not HTTP or browser measurements.
+
+| Operation | Recordings | Before | After | Reduction |
+| --- | ---: | ---: | ---: | ---: |
+| Summary, all selected | 1,000 | 2.238 ms | 1.067 ms | 52.3% |
+| Summary, all selected | 10,000 | 23.463 ms | 10.608 ms | 54.8% |
+| Summary, Latest 50 | 1,000 | 0.807 ms | 0.309 ms | 61.8% |
+| Summary, Latest 50 | 10,000 | 6.550 ms | 2.065 ms | 68.5% |
+| Selected video page, 25 rows | 10,000 | 24.612 ms | 24.713 ms | No material change |
+| All video page, 25 rows | 10,000 | 7.840 ms | 7.934 ms | No material change |
+
+The original summary plan built the selected-video set, then used three
+correlated membership checks across the video table. The new query joins the
+unique selected IDs to video records and counts them once. A separate scalar
+count retains the complete discovered total in the same SQLite statement.
+Shared playlist occurrences still count as one video. Tests cover empty
+catalogues, empty visibility, overlapping uploads and playlists, skipped
+playlists, failed preparation, and unavailable media.
+
+Summary allocation at 10,000 selected recordings fell from a median 8,544 to
+8,125 bytes per call. Allocation count stayed near 164. This is a query latency
+improvement; it does not establish a service memory reduction.
+
+An exploratory change from `EXISTS` to `IN` for the selected-video filter
+increased its 10,000-row median from 25.24 to 29.24 ms. It was removed.
+
+### Remaining measured work
+
+- A page of 128 filesystem entries took a median 3.123 ms at 1,000 recordings
+  and 21.776 ms at 10,000. Both allocated about 275 KB. The query plan sorts
+  formatted file names in a temporary B-tree. The filesystem also reads season
+  aggregates. Test an indexed lexical file key and fewer aggregate reads while
+  retaining exact names, playlist visibility, and order above episode 9,999.
+- The selected video page remains about three times as slow as the all-video
+  page. Test the count and page query plans separately, including sparse
+  selections, shared playlists, and later pages, before changing membership
+  queries or indexes.
+- Allocation profiling attributes the largest filesystem allocation to loading
+  episode rows, followed by child entries and path construction. A directory
+  query that returns only identity and file-number fields is a candidate for a
+  separate measured change.
+
+CPU captures locate the application work in SQLite. macOS runtime wakeups and
+SQLite system calls contribute substantially to these captures. Profile totals
+are not a matched whole-process CPU comparison. Background writes, mixed
+playlists, long descriptions, artwork, Linux FUSE, resolver subprocesses,
+concurrent playback, and first rendered frame remain outside this measurement.
+The running containers were not changed.
+
+Run the current read benchmarks with:
+
+```sh
+go test ./internal/app -run '^$' \
+  -bench 'BenchmarkCatalogueReads|BenchmarkCatalogueSummaryLatest50' \
+  -benchmem -count=3 -benchtime=1s
+go test ./internal/app -run '^$' \
+  -bench 'BenchmarkCatalogueFilesystemPage|BenchmarkPublish' \
+  -benchmem -count=3 -benchtime=1s
+```
+
+The [structured results](evidence/catalogue-profile.json) retain sample ranges,
+allocation counts, fixture scope, and the rejected experiment. Raw local
+profiles and logs are in `.cache/profiling-20261025/` and are not committed.
 
 ## Baseline
 

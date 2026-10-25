@@ -168,6 +168,8 @@ func readVideos(rows *sql.Rows) ([]Video, error) {
 func (s *Store) Summary(ctx context.Context, v Visibility) (Counts, error) {
 	cte, args := selectedCTE(v)
 	var c Counts
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT count(*),COALESCE(sum(EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0),COALESCE(sum(v.preparation='ready' AND v.state IN ('recorded','replay-ready') AND EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0),COALESCE(sum(v.preparation='failed' AND EXISTS(SELECT 1 FROM selected x WHERE x.id=v.id)),0) FROM videos v`, args...).Scan(&c.Discovered, &c.Selected, &c.Ready, &c.Failed)
+	// selected contains unique video IDs, including recordings shared by several
+	// playlists. Aggregate it once instead of probing it for each count and video.
+	err := s.DB.QueryRowContext(ctx, cte+`SELECT (SELECT count(*) FROM videos),count(*),COALESCE(sum(v.preparation='ready' AND v.state IN ('recorded','replay-ready')),0),COALESCE(sum(v.preparation='failed'),0) FROM selected x JOIN videos v ON v.id=x.id`, args...).Scan(&c.Discovered, &c.Selected, &c.Ready, &c.Failed)
 	return c, err
 }
