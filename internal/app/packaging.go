@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"time"
 
+	"duplex/internal/cache"
 	"duplex/internal/catalog"
 	"duplex/internal/config"
 	"duplex/internal/diagnostics"
@@ -151,4 +153,22 @@ func (a *App) persistRepresentation(m source.Metadata, candidate source.Candidat
 		return err
 	}
 	return config.AtomicWrite(filepath.Join(a.original.IndexDir, representation.ID()+".description.json"), data, 0o600)
+}
+
+func fallbackReason(e error) string {
+	var pathError *os.PathError
+	switch {
+	case errors.Is(e, context.DeadlineExceeded):
+		return "A higher-quality index exceeded its work limit"
+	case errors.Is(e, media.ErrUnsupported):
+		return "A higher-quality format is unsupported"
+	case errors.Is(e, media.ErrExpired):
+		return "A higher-quality source locator was rejected"
+	case errors.Is(e, cache.ErrFull):
+		return "The media cache has no reclaimable space"
+	case errors.As(e, &pathError):
+		return "A higher-quality index could not be saved"
+	default:
+		return "A higher-quality source could not be verified"
+	}
 }

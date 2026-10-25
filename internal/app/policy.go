@@ -84,3 +84,23 @@ func (a *App) Channels(ctx context.Context, f catalog.ChannelFilter, mode, state
 	}
 	return a.Catalog.ChannelsPage(ctx, f)
 }
+
+func visibility(c config.Config) catalog.Visibility {
+	var v catalog.Visibility
+	for _, ch := range c.Channels {
+		if !ch.Enabled {
+			continue
+		}
+		v.Channels = append(v.Channels, ch.ID)
+		if ch.Playlists == nil || !ch.Playlists.Enabled {
+			continue
+		}
+		v.PlaylistChannels = append(v.PlaylistChannels, ch.ID)
+		for id, p := range ch.Playlists.Overrides {
+			if p.Mode == "skip" {
+				v.SkippedPlaylists = append(v.SkippedPlaylists, id)
+			}
+		}
+	}
+	return v
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"html"
@@ -11,13 +12,13 @@ import (
 	"image/color"
 	"image/draw"
 	"image/jpeg"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"duplex/internal/artwork"
 
@@ -25,10 +26,6 @@ import (
 	"duplex/internal/library"
 	"duplex/internal/source"
 )
-
-func httpRequest(ctx context.Context, raw string) (*http.Request, error) {
-	return http.NewRequestWithContext(ctx, http.MethodGet, raw, nil)
-}
 
 func (a *App) acquireAssets(ctx context.Context, m source.Metadata, c source.Candidate) ([]library.Entry, error) {
 	existing := a.loadAssets(m.ID)
@@ -259,4 +256,45 @@ func VTTtoSRT(raw []byte) []byte {
 		}
 	}
 	return []byte(out.String())
+}
+
+func (a *App) assetWorker(ctx context.Context) {
+	defer a.wg.Done()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		id, err := a.Catalog.NextAsset(ctx)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			a.operationFailure("asset queue", err)
+			continue
+		}
+		workCtx, stop := context.WithTimeout(ctx, time.Minute)
+		m, err := a.playbackMetadata(workCtx, id, false)
+		if err == nil {
+			candidates := source.Candidates(m, a.Config.Snapshot().Config.MaxHeight)
+			if len(candidates) == 0 {
+				err = errors.New("no supported asset language")
+			} else {
+				assets, assetErr := a.acquireAssets(workCtx, m, candidates[0])
+				err = assetErr
+				if len(assets) > 0 {
+					err = errors.Join(err, a.Publish())
+					a.requestScan()
+				}
+			}
+		}
+		stop()
+		a.operationFailure("optional assets", err)
+		if finishErr := a.Catalog.FinishAsset(ctx, id, err); finishErr != nil {
+			a.operationFailure("asset result", finishErr)
+		}
+	}
 }

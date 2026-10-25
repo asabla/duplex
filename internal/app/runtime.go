@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"net/url"
+	"strconv"
 	"time"
 
 	"duplex/internal/catalog"
@@ -219,4 +221,76 @@ func (a *App) recordBindingFailure(ctx context.Context, episode catalog.Episode,
 		return a.Catalog.SetPreparation(cleanup, episode.VideoID, "waiting", "Waiting for an available completed recording")
 	}
 	return a.Catalog.SetPreparation(cleanup, episode.VideoID, "failed", preparationReason(failure))
+}
+
+type metadataLease struct {
+	value   source.Metadata
+	expires time.Time
+}
+
+func (a *App) metadataFresh(v catalog.Video, entry source.Entry) bool {
+	return time.Since(time.Unix(v.MetadataAt, 0)) < 6*time.Hour && (entry.Title == "" || entry.Title == v.Title)
+}
+
+func (a *App) remember(m source.Metadata) {
+	if len(m.Formats) == 0 {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.metadata == nil {
+		a.metadata = map[string]metadataLease{}
+	}
+	if len(a.metadata) >= 8 {
+		for id := range a.metadata {
+			delete(a.metadata, id)
+			break
+		}
+	}
+	a.metadata[m.ID] = metadataLease{m, leaseExpiry(m)}
+}
+
+func leaseExpiry(m source.Metadata) time.Time {
+	until := time.Now().Add(5 * time.Minute)
+	found := false
+	for _, f := range m.Formats {
+		u, err := url.Parse(f.URL)
+		if err != nil {
+			continue
+		}
+		expiry, err := strconv.ParseInt(u.Query().Get("expire"), 10, 64)
+		if err != nil {
+			continue
+		}
+		t := time.Unix(expiry, 0).Add(-time.Minute)
+		if !found || t.Before(until) {
+			until = t
+			found = true
+		}
+	}
+	return until
+}
+
+func (a *App) playbackMetadata(ctx context.Context, id string, force bool) (source.Metadata, error) {
+	a.mu.RLock()
+	lease, ok := a.metadata[id]
+	a.mu.RUnlock()
+	if !force && ok && time.Now().Before(lease.expires) {
+		return lease.value, nil
+	}
+	m, err := a.Source.Resolve(ctx, id)
+	if err == nil {
+		a.remember(m)
+	}
+	return m, err
+}
+
+func (a *App) usable(ctx context.Context, id string) (bool, error) {
+	revision, state, err := a.Catalog.RepresentationState(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return (state == "recorded" || state == "replay-ready") && a.reps[revision] != nil && time.Now().Before(a.leases[revision]), nil
 }
