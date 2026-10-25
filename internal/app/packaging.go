@@ -89,7 +89,7 @@ func (a *App) prepareCandidate(ctx context.Context, m source.Metadata, candidate
 	if err = a.persistRepresentation(m, candidate, inspected, indexPath); err != nil {
 		return catalog.Prepared{}, nil, err
 	}
-	a.cacheRepresentation(representation, leaseExpiry(m))
+	a.cacheRepresentation(representation, selectedLeaseExpiry(candidate), m.ID)
 	return catalog.Prepared{RequestedHeight: maxHeight, Metadata: m, Revision: representation.ID(), Height: inspected.Details().Height, Size: representation.Size()}, representation, nil
 }
 

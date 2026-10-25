@@ -85,11 +85,11 @@ func leaseExpiry(m source.Metadata) time.Time {
 	return until
 }
 
-func (a *App) playbackMetadata(ctx context.Context, id string) (source.Metadata, error) {
+func (a *App) playbackMetadata(ctx context.Context, id string, force bool) (source.Metadata, error) {
 	a.mu.RLock()
 	lease, ok := a.metadata[id]
 	a.mu.RUnlock()
-	if ok && time.Now().Before(lease.expires) {
+	if !force && ok && time.Now().Before(lease.expires) {
 		return lease.value, nil
 	}
 	m, err := a.Source.Resolve(ctx, id)
@@ -214,7 +214,7 @@ func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) 
 	started := a.startPreparation(task, cancel)
 	var err error
 	if started {
-		err = a.prepareRecording(workContext, task.VideoID)
+		err = a.prepareRecording(workContext, task.VideoID, task.Priority == renewalPriority)
 		a.endPreparation(task.VideoID)
 	}
 	if ctx.Err() != nil {
@@ -233,7 +233,7 @@ func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) 
 	}
 }
 
-func (a *App) resolveRecording(ctx context.Context, id string) (source.Metadata, bool, error) {
+func (a *App) resolveRecording(ctx context.Context, id string, force bool) (source.Metadata, bool, error) {
 	a.mu.RLock()
 	toolError := a.toolError
 	a.mu.RUnlock()
@@ -251,13 +251,13 @@ func (a *App) resolveRecording(ctx context.Context, id string) (source.Metadata,
 	if err != nil {
 		return source.Metadata{}, true, err
 	}
-	if usable {
+	if usable && !force {
 		return source.Metadata{}, true, a.Catalog.SetPreparation(ctx, id, "ready", "")
 	}
 	if err = a.Catalog.SetPreparation(ctx, id, "resolving", ""); err != nil {
 		return source.Metadata{}, true, err
 	}
-	m, err := a.playbackMetadata(ctx, id)
+	m, err := a.playbackMetadata(ctx, id, force)
 	if errors.Is(err, source.ErrUnavailable) {
 		return source.Metadata{}, true, a.unavailableRecording(ctx, id)
 	}
@@ -276,8 +276,8 @@ func (a *App) resolveRecording(ctx context.Context, id string) (source.Metadata,
 	return m, false, nil
 }
 
-func (a *App) prepareRecording(ctx context.Context, id string) error {
-	m, done, err := a.resolveRecording(ctx, id)
+func (a *App) prepareRecording(ctx context.Context, id string, force bool) error {
+	m, done, err := a.resolveRecording(ctx, id, force)
 	if done || err != nil {
 		return err
 	}
@@ -370,7 +370,7 @@ func (a *App) assetWorker(ctx context.Context) {
 			continue
 		}
 		workCtx, stop := context.WithTimeout(ctx, time.Minute)
-		m, err := a.playbackMetadata(workCtx, id)
+		m, err := a.playbackMetadata(workCtx, id, false)
 		if err == nil {
 			candidates := source.Candidates(m, a.Config.Snapshot().Config.MaxHeight)
 			if len(candidates) == 0 {

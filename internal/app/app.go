@@ -26,6 +26,8 @@ import (
 
 // App coordinates catalogue discovery, media preparation, publication, and integration.
 type App struct {
+	runtimeVideos   map[string]string
+	renewAfter      map[string]time.Time
 	runtimeUsed     map[string]time.Time
 	prepareSlots    chan struct{}
 	preparations    map[string]*preparationRun
@@ -191,6 +193,7 @@ func (a *App) schedule(ctx context.Context) {
 		case <-ticker.C:
 			a.Config.Reload()
 			a.reconcile(ctx)
+			a.renewCachedSources(ctx)
 		}
 	}
 }
@@ -255,6 +258,7 @@ func (a *App) worker(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case id := <-a.jobs:
+			before := a.Config.Snapshot().Config
 			a.mu.Lock()
 			a.attempted[id] = time.Now()
 			a.mu.Unlock()
@@ -264,9 +268,26 @@ func (a *App) worker(ctx context.Context) {
 			a.operationFailure("channel discovery", err)
 			a.mu.Lock()
 			delete(a.queued, id)
+			a.attempted[id] = time.Now()
 			a.mu.Unlock()
+			if ctx.Err() == nil && a.discoverySettingsChanged(before, id) {
+				a.operationFailure("updated discovery settings", a.Queue(id))
+			}
 		}
 	}
+}
+
+func (a *App) discoverySettingsChanged(before config.Config, id string) bool {
+	current, err := a.followed(id)
+	if err != nil {
+		return false
+	}
+	for _, previous := range before.Channels {
+		if previous.ID == id {
+			return !reflect.DeepEqual(previous, current) || before.MaxHeight != a.Config.Snapshot().Config.MaxHeight
+		}
+	}
+	return true
 }
 
 // AddChannel preserves the original numeric-limit API. New clients can use Follow.
@@ -281,6 +302,9 @@ func (a *App) AddChannel(ctx context.Context, raw string, limit int, expected st
 func (a *App) Follow(ctx context.Context, raw string, selection config.Selection, include bool, expected string) error {
 	if err := selection.ValidateUploads(); err != nil {
 		return err
+	}
+	if a.Config.Snapshot().Revision != expected {
+		return config.ErrConflict
 	}
 	ctx, stop := context.WithTimeout(ctx, 2*time.Minute)
 	defer stop()
@@ -355,8 +379,7 @@ func (a *App) Publish() error {
 	return a.ctx.Err()
 }
 
-func (a *App) plexClient() (*plex.Client, error) {
-	p := a.Config.Snapshot().Config.Plex
+func (a *App) plexClientFor(p config.Plex) (*plex.Client, error) {
 	if p.URL == "" {
 		return nil, errors.New("plex connection is not configured")
 	}
@@ -389,7 +412,7 @@ func (a *App) integration(ctx context.Context, scan bool) (err error) {
 		return errors.New("library mount is unavailable")
 	}
 	connection := a.Config.Snapshot().Config.Plex
-	client, err := a.plexClient()
+	client, err := a.plexClientFor(connection)
 	if err != nil {
 		return err
 	}

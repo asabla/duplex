@@ -56,12 +56,14 @@ func (a *App) endPreparation(id string) {
 }
 
 // interruptBackgroundLocked leaves capacity for requested work. Callers hold a.mu.
-func (a *App) interruptBackgroundLocked(keep int) {
+func (a *App) interruptBackgroundLocked(keep int) { a.interruptBackgroundBelowLocked(1000, keep) }
+
+func (a *App) interruptBackgroundBelowLocked(priority, keep int) {
 	for {
 		count := 0
 		var candidate *preparationRun
 		for _, task := range a.preparations {
-			if task.priority >= 1000 || task.interrupted {
+			if task.priority >= priority || task.interrupted {
 				continue
 			}
 			count++

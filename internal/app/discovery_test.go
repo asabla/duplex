@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -261,7 +262,7 @@ func TestPreparationWaitingAndSelectionCancellation(t *testing.T) {
 	m := s.metadata["video000000"]
 	m.LiveStatus = "is_live"
 	s.metadata[m.ID] = m
-	if err := a.prepareRecording(t.Context(), m.ID); err != nil {
+	if err := a.prepareRecording(t.Context(), m.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	v, err := a.Catalog.Video(t.Context(), m.ID)
@@ -273,7 +274,7 @@ func TestPreparationWaitingAndSelectionCancellation(t *testing.T) {
 	if err = a.Config.Save(snap.Config, snap.Revision); err != nil {
 		t.Fatal(err)
 	}
-	if err = a.prepareRecording(t.Context(), m.ID); err != nil {
+	if err = a.prepareRecording(t.Context(), m.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	v, err = a.Catalog.Video(t.Context(), m.ID)
@@ -478,5 +479,81 @@ func TestStreamedPlaylistRootsPreserveIdentityAcrossRemovalAndFailure(t *testing
 		if p.ID == "PLnew00000002" && p.Season != 123 {
 			t.Fatal("season number reused", p)
 		}
+	}
+}
+
+type delayedDiscoverySource struct {
+	*collectionSource
+	entered chan struct{}
+	release chan struct{}
+	visits  atomic.Int32
+}
+
+func (s *delayedDiscoverySource) Entries(ctx context.Context, scope source.Scope, consume func([]source.Entry) error) (source.Listing, error) {
+	if scope.Tab == "videos" && s.visits.Add(1) == 1 {
+		close(s.entered)
+		select {
+		case <-ctx.Done():
+			return source.Listing{}, ctx.Err()
+		case <-s.release:
+		}
+	}
+	return s.collectionSource.Entries(ctx, scope, consume)
+}
+
+func TestChangedPoliciesRunAfterAnInFlightDiscoveryCompletes(t *testing.T) {
+	adapter := &delayedDiscoverySource{collectionSource: fixtureCollection(3), entered: make(chan struct{}), release: make(chan struct{})}
+	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "latest", Limit: 3}), adapter)
+	a.queued = map[string]bool{}
+	a.attempted = map[string]time.Time{}
+	a.jobs = make(chan string, 4)
+	t.Cleanup(func() { a.cancel(); a.wg.Wait() })
+	a.wg.Add(1)
+	go a.worker(a.ctx)
+	if err := a.Queue(testOwner); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-adapter.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("discovery did not start")
+	}
+	snapshot := a.Config.Snapshot()
+	snapshot.Config.Channels[0].Indexing = &config.Selection{Mode: "latest", Limit: 1}
+	if err := a.Config.Save(snapshot.Config, snapshot.Revision); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a job which exceeded its interval. Its next automatic attempt must
+	// be measured from completion, and changed policy must get one fresh job.
+	a.mu.Lock()
+	a.attempted[testOwner] = time.Now().Add(-time.Hour)
+	a.mu.Unlock()
+	close(adapter.release)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		jobs, err := a.Catalog.Jobs(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(jobs) == 2 && jobs[0].State == "complete" {
+			page, err := a.Videos(t.Context(), catalog.VideoFilter{Inclusion: "selected"})
+			if err != nil || page.Total != 1 {
+				t.Fatal(page.Total, err)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("changed policy was not reconciled", jobs)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	a.mu.RLock()
+	attempted := a.attempted[testOwner]
+	a.mu.RUnlock()
+	if time.Since(attempted) > time.Minute {
+		t.Fatal("refresh interval still starts at the old job's start")
+	}
+	if adapter.visits.Load() != 2 {
+		t.Fatal("changed policy triggered repeated jobs", adapter.visits.Load())
 	}
 }

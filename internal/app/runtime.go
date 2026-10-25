@@ -39,7 +39,7 @@ func (a *App) acquirePreparation(ctx context.Context) (func(), error) {
 	}
 }
 
-func (a *App) cacheRepresentation(rep media.Representation, expires time.Time) {
+func (a *App) cacheRepresentation(rep media.Representation, expires time.Time, videoID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.reps == nil {
@@ -51,6 +51,13 @@ func (a *App) cacheRepresentation(rep media.Representation, expires time.Time) {
 	if a.runtimeUsed == nil {
 		a.runtimeUsed = map[string]time.Time{}
 	}
+	if a.runtimeVideos == nil {
+		a.runtimeVideos = map[string]string{}
+	}
+	if a.renewAfter == nil {
+		a.renewAfter = map[string]time.Time{}
+	}
+	a.runtimeVideos[rep.ID()] = videoID
 	a.reps[rep.ID()] = rep
 	a.leases[rep.ID()] = expires
 	a.runtimeUsed[rep.ID()] = time.Now()
@@ -64,6 +71,8 @@ func (a *App) cacheRepresentation(rep media.Representation, expires time.Time) {
 		delete(a.reps, oldest)
 		delete(a.leases, oldest)
 		delete(a.runtimeUsed, oldest)
+		delete(a.runtimeVideos, oldest)
+		delete(a.renewAfter, oldest)
 	}
 }
 
@@ -129,7 +138,7 @@ func (a *App) bindUncachedEpisode(ctx context.Context, episode catalog.Episode) 
 	if !selected {
 		return nil, fs.ErrNotExist
 	}
-	m, err := a.playbackMetadata(ctx, episode.VideoID)
+	m, err := a.playbackMetadata(ctx, episode.VideoID, false)
 	if err != nil {
 		return nil, err
 	}

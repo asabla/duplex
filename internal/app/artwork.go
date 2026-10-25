@@ -271,12 +271,13 @@ func (a *App) refreshArtwork(ctx context.Context, channel string) error {
 	if a.mount == nil || a.Config.Snapshot().Config.Plex.URL == "" {
 		return nil
 	}
-	client, err := a.plexClient()
+	connection := a.Config.Snapshot().Config.Plex
+	client, err := a.plexClientFor(connection)
 	if err != nil {
 		a.setPlexError(err)
 		return err
 	}
-	if err = client.RefreshShow(ctx, a.Config.Snapshot().Config.Plex.Section, channel); err != nil {
+	if err = client.RefreshShow(ctx, connection.Section, channel); err != nil {
 		a.setPlexError(err)
 		return err
 	}

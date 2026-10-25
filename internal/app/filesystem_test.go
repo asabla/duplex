@@ -62,14 +62,14 @@ func TestCatalogueFilesystemUsesDurableSizesAndStableHandles(t *testing.T) {
 		t.Fatal(info, err, adapter.resolved)
 	}
 	rep := mountedBytes{id: prepared.Revision, data: []byte("immutable bytes!")}
-	a.cacheRepresentation(rep, time.Now().Add(time.Hour))
+	a.cacheRepresentation(rep, time.Now().Add(time.Hour), prepared.Metadata.ID)
 	handle, _, err := provider.Open(t.Context(), base+".mp4")
 	if err != nil || handle.ID() != prepared.Revision {
 		t.Fatal(handle, err)
 	}
 	// Eviction removes only the cache reference. An open handle keeps its bytes.
 	for n := range 140 {
-		a.cacheRepresentation(mountedBytes{id: fmt.Sprintf("other-%d", n), data: []byte("other")}, time.Now().Add(time.Hour))
+		a.cacheRepresentation(mountedBytes{id: fmt.Sprintf("other-%d", n), data: []byte("other")}, time.Now().Add(time.Hour), fmt.Sprintf("video%06d", n))
 	}
 	if len(a.reps) > runtimeRepresentations || a.reps[prepared.Revision] != nil {
 		t.Fatal("runtime cache is unbounded or did not evict")
