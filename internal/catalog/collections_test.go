@@ -230,13 +230,23 @@ func TestPartialMembershipWindowDoesNotDeleteUnseenIdentity(t *testing.T) {
 	}
 }
 
-func TestMetadataCannotDetachAnEstablishedUploader(t *testing.T){
- s:=collectionStore(t);ctx:=t.Context()
- m:=source.Metadata{ID:"pending",ChannelID:"uploader",Title:"Pending",LiveStatus:"post_live"}
- if err:=s.SaveMetadata(ctx,m);err!=nil{t.Fatal(err)}
- m.ChannelID=""
- if err:=s.SaveMetadata(ctx,m);err==nil{t.Fatal("missing uploader accepted")}
- m.ChannelID="owner"
- if err:=s.SaveMetadata(ctx,m);err==nil{t.Fatal("uploader changed before media preparation")}
- v,err:=s.Video(ctx,m.ID);if err!=nil || v.ChannelID!="uploader"{t.Fatal(v,err)}
+func TestMetadataCannotDetachAnEstablishedUploader(t *testing.T) {
+	s := collectionStore(t)
+	ctx := t.Context()
+	m := source.Metadata{ID: "pending", ChannelID: "uploader", Title: "Pending", LiveStatus: "post_live"}
+	if err := s.SaveMetadata(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	m.ChannelID = ""
+	if err := s.SaveMetadata(ctx, m); err == nil {
+		t.Fatal("missing uploader accepted")
+	}
+	m.ChannelID = "owner"
+	if err := s.SaveMetadata(ctx, m); err == nil {
+		t.Fatal("uploader changed before media preparation")
+	}
+	v, err := s.Video(ctx, m.ID)
+	if err != nil || v.ChannelID != "uploader" {
+		t.Fatal(v, err)
+	}
 }

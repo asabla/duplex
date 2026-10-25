@@ -194,6 +194,11 @@ func (a *App) reconcile() {
 	a.mu.Lock()
 	changed := snap.Revision != a.appliedRevision
 	previous := a.applied
+	if changed && previous.MaxHeight != c.MaxHeight {
+		for revision := range a.leases {
+			a.leases[revision] = time.Time{}
+		}
+	}
 	a.applied = c
 	a.appliedRevision = snap.Revision
 	a.restart = c.Listen != a.original.Listen || c.DataDir != a.original.DataDir || c.CacheDir != a.original.CacheDir || c.IndexDir != a.original.IndexDir || c.Mountpoint != a.original.Mountpoint || c.Workers != a.original.Workers

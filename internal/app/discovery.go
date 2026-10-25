@@ -31,12 +31,6 @@ type (
 
 func (a *App) Sync(ctx context.Context, id string) error {
 	defer a.Measurements.Begin("sync")()
-	a.mu.RLock()
-	toolError := a.toolError
-	a.mu.RUnlock()
-	if toolError != "" {
-		return errors.New(toolError)
-	}
 	ch, err := a.followed(id)
 	if err != nil {
 		return err
@@ -64,6 +58,12 @@ func (a *App) followed(id string) (config.Channel, error) {
 }
 
 func (r *discoveryRun) execute(ctx context.Context) error {
+	r.app.mu.RLock()
+	toolError := r.app.toolError
+	r.app.mu.RUnlock()
+	if toolError != "" {
+		return errors.New(toolError)
+	}
 	if err := r.app.Catalog.EnsureChannel(ctx, r.channel.ID, ""); err != nil {
 		return err
 	}
@@ -189,7 +189,6 @@ func (r *discoveryRun) metadata(ctx context.Context, entry source.Entry, owned b
 		if err = r.app.Catalog.SaveMetadata(ctx, m); err != nil {
 			return m, err
 		}
-		r.app.remember(m)
 	}
 	return m, nil
 }
@@ -230,6 +229,7 @@ func (r *discoveryRun) uploads(ctx context.Context, cursors []*uploadCursor) err
 		if err := r.app.Catalog.MarkUploadedSelection(ctx, m.ID); err != nil {
 			return err
 		}
+		r.app.remember(m)
 		if err := r.app.queuePreparation(ctx, m.ID, 100-selected); err != nil {
 			return err
 		}
@@ -318,6 +318,7 @@ func (r *discoveryRun) playlist(ctx context.Context, id string, policy config.Se
 					if e = r.app.Catalog.AddPlaylistMember(ctx, id, m.ID, entry.Position, true); e != nil {
 						return e
 					}
+					r.app.remember(m)
 					if e = r.app.queuePreparation(ctx, m.ID, 0); e != nil {
 						return e
 					}
