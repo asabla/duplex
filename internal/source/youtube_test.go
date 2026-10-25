@@ -4,10 +4,12 @@ import "testing"
 
 func TestCompleteNestedSnapshot(t *testing.T) {
 	b := []byte(`{"channel_id":"UCSMOQeBJ2RAnuFungnQOxLg","channel":"Example","entries":[{"id":"uploads","entries":[{"id":"aqz-KE-bpKQ","title":"Upload"}]},{"id":"streams","entries":[{"id":"k0ILMhbWHNQ","title":"Replay"}]}]}`)
+
 	c, e := decodeChannel(b)
 	if e != nil || len(c.Entries) != 2 || c.Entries[0].Group == c.Entries[1].Group {
 		t.Fatal(c, e)
 	}
+
 	if _, e = decodeChannel([]byte(`{"channel_id":"UCSMOQeBJ2RAnuFungnQOxLg","entries":[null]}`)); e == nil {
 		t.Fatal("partial snapshot accepted")
 	}
@@ -19,6 +21,7 @@ func TestMediaURLRestrictions(t *testing.T) {
 			t.Fatal("accepted", u)
 		}
 	}
+
 	if !AllowedURL("https://r1.googlevideo.com/videoplayback?expire=1") {
 		t.Fatal("valid media host rejected")
 	}
@@ -46,10 +49,12 @@ func TestHighestQualityUsesOriginalAudio(t *testing.T) {
 		{ID: "dub", URL: "https://r1.googlevideo.com/a", Protocol: "https", Ext: "m4a", VCodec: "none", ACodec: "mp4a", LanguagePreference: 10},
 		{ID: "original", URL: "https://r1.googlevideo.com/a2", Protocol: "https", Ext: "m4a", VCodec: "none", ACodec: "mp4a", Note: "Original audio"},
 	}}
+
 	c := Candidates(m, 2160)
 	if len(c) != 2 || c[0].Height != 2160 || c[0].Audio.ID != "original" {
 		t.Fatal(c)
 	}
+
 	c = Candidates(m, 1080)
 	if len(c) != 1 || c[0].Height != 1080 {
 		t.Fatal(c)

@@ -13,6 +13,7 @@ type Observed struct {
 
 func (s Observed) elapsed(operation string) func() {
 	start := time.Now()
+
 	return func() {
 		if s.Record != nil {
 			s.Record(operation, time.Since(start))
@@ -61,12 +62,15 @@ func (s observedCollections) Playlists(ctx context.Context, channel string) ([]P
 
 func (s observedCollections) StreamPlaylists(ctx context.Context, channel string, consume func([]Playlist) error) error {
 	defer s.observed.elapsed("source.playlists")()
+
 	if stream, ok := s.Collections.(PlaylistStreamer); ok {
 		return stream.StreamPlaylists(ctx, channel, consume)
 	}
+
 	playlists, err := s.Collections.Playlists(ctx, channel)
 	if err != nil {
 		return err
 	}
+
 	return consume(playlists)
 }

@@ -15,15 +15,18 @@ func AllowedURL(raw string) bool {
 	if e != nil || u.Scheme != "https" || u.User != nil || u.Port() != "" && u.Port() != "443" {
 		return false
 	}
+
 	h := strings.ToLower(u.Hostname())
 	if h == "yt3.googleusercontent.com" {
 		return true
 	}
+
 	for _, suffix := range []string{"googlevideo.com", "ytimg.com", "ggpht.com", "youtube.com"} {
 		if h == suffix || strings.HasSuffix(h, "."+suffix) {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -33,6 +36,7 @@ func HTTPClient() *http.Client {
 		if len(via) > 5 || !AllowedURL(r.URL.String()) {
 			return errors.New("source redirect rejected")
 		}
+
 		return nil
 	}}
 }

@@ -31,10 +31,12 @@ func (y *YouTube) ResolveChannel(ctx context.Context, raw string) (Channel, erro
 	if e != nil {
 		return Channel{}, e
 	}
+
 	b, e := y.run(ctx, "--flat-playlist", "--playlist-end", "1", "--", u)
 	if e != nil {
 		return Channel{}, e
 	}
+
 	return decodeChannel(b)
 }
 
@@ -44,10 +46,12 @@ func (y *YouTube) Enumerate(ctx context.Context, id string) (Channel, error) {
 	if e != nil {
 		return Channel{}, e
 	}
+
 	b, e := y.run(ctx, "--flat-playlist", "--", u)
 	if e != nil {
 		return Channel{}, e
 	}
+
 	return decodeChannel(b)
 }
 
@@ -57,37 +61,46 @@ func (y *YouTube) Metadata(ctx context.Context, id string) (Metadata, error) {
 	if !videoID.MatchString(id) {
 		return Metadata{}, errors.New("invalid video ID")
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	// These documented options omit manifest and JavaScript format work. All
 	// required catalogue fields are checked; approximate dates are never used.
 	args := "youtube:player_client=web;player_skip=js,configs;skip=hls,dash,translated_subs"
+
 	raw, err := y.run(ctx, "--extractor-args", args, "--no-playlist", "--", "https://www.youtube.com/watch?v="+id)
 	if err != nil {
 		return Metadata{}, err
 	}
+
 	metadata, err := DecodeMetadata(raw, id)
 	if err != nil {
 		return Metadata{}, err
 	}
+
 	if metadataRestricted(metadata) {
 		return Metadata{}, ErrUnavailable
 	}
+
 	if !completeCatalogueMetadata(metadata) {
 		metadata, err = y.Resolve(ctx, id)
 		if err != nil {
 			return Metadata{}, err
 		}
+
 		if metadataRestricted(metadata) {
 			return Metadata{}, ErrUnavailable
 		}
+
 		if !completeCatalogueMetadata(metadata) {
 			return Metadata{}, errors.New("source catalogue metadata is incomplete")
 		}
 	}
+
 	metadata.Formats = nil
 	metadata.Subtitles = nil
 	metadata.AutomaticCaptions = nil
+
 	return metadata, nil
 }
 
@@ -96,9 +109,11 @@ func (y *YouTube) Resolve(ctx context.Context, id string) (Metadata, error) {
 	if !videoID.MatchString(id) {
 		return Metadata{}, errors.New("invalid video ID")
 	}
+
 	b, e := y.run(ctx, "--extractor-args", "youtube:formats=duplicate", "--no-playlist", "--", "https://www.youtube.com/watch?v="+id)
 	if e != nil {
 		return Metadata{}, e
 	}
+
 	return DecodeMetadata(b, id)
 }

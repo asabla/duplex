@@ -16,29 +16,36 @@ func assetVersion(raw, format string) (string, int64) {
 	if !valid {
 		return "", 0
 	}
+
 	signed := map[string]bool{}
 	for _, key := range strings.Split(q.Get("sparams"), ",") {
 		signed[key] = true
 	}
+
 	for _, key := range []string{"clen", "lmt", "mime", "dur"} {
 		if !signed[key] || q.Get(key) == "" {
 			return "", 0
 		}
 	}
+
 	size, err := strconv.ParseInt(q.Get("clen"), 10, 64)
 	if err != nil || size <= 0 {
 		return "", 0
 	}
+
 	modified, err := strconv.ParseUint(q.Get("lmt"), 10, 64)
 	if err != nil || modified == 0 {
 		return "", 0
 	}
+
 	itag := q.Get("itag")
 	if itag == "" || (format != itag && !strings.HasPrefix(format, itag+"-")) {
 		return "", 0
 	}
+
 	data := strings.Join([]string{format, q.Get("clen"), q.Get("lmt"), q.Get("mime"), q.Get("dur")}, "\x00")
 	h := sha256.Sum256([]byte(data))
+
 	return hex.EncodeToString(h[:]), size
 }
 
@@ -47,9 +54,11 @@ func assetLeaseValues(raw string) (url.Values, bool) {
 	if err != nil || !AllowedURL(raw) || !strings.HasSuffix(strings.ToLower(u.Hostname()), ".googlevideo.com") || u.Path != "/videoplayback" {
 		return nil, false
 	}
+
 	values := u.Query()
 	if values.Get("sig") == "" && values.Get("signature") == "" {
 		return nil, false
 	}
+
 	return values, true
 }

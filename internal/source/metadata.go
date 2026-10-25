@@ -89,15 +89,19 @@ func (m Metadata) State() string {
 	case "post_live":
 		return "processing"
 	}
+
 	if (m.Availability != "" && m.Availability != "public" && m.Availability != "unlisted") || m.Duration <= 0 {
 		return "unavailable"
 	}
+
 	if m.LiveStatus == "was_live" {
 		return "replay-ready"
 	}
+
 	if m.LiveStatus == "not_live" || m.LiveStatus == "" {
 		return "recorded"
 	}
+
 	return "unavailable"
 }
 
@@ -106,9 +110,11 @@ func (m Metadata) Date() time.Time {
 	if m.Timestamp > 0 {
 		return time.Unix(int64(m.Timestamp), 0).UTC()
 	}
+
 	if d, err := time.Parse("20060102", m.UploadDate); err == nil {
 		return d
 	}
+
 	return time.Time{}
 }
 
@@ -120,6 +126,7 @@ func completeCatalogueMetadata(m Metadata) bool {
 	if m.ChannelID == "" || m.Title == "" {
 		return false
 	}
+
 	switch m.State() {
 	case "upcoming", "active", "processing":
 		return true
@@ -136,9 +143,11 @@ func DecodeMetadata(b []byte, id string) (Metadata, error) {
 	if json.Unmarshal(b, &m) != nil || m.ID != id {
 		return Metadata{}, errors.New("invalid video response")
 	}
+
 	for i := range m.Formats {
 		f := &m.Formats[i]
 		f.Revision, f.VerifiedSize = assetVersion(f.URL, f.ID)
 	}
+
 	return m, nil
 }

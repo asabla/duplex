@@ -82,6 +82,17 @@ run boundary in `discovery.go`, with upload cursors, playlist selection, and
 metadata resolution next to their corresponding operations. Season artwork
 rendering is separate from channel branding and final publication.
 
+Catalogue connection setup stays in `catalog.go`; canonical video and prepared
+records are in `records.go`, discovery job operations in `jobs.go`, and online
+backup in `backup.go`. Queries and Plex binding writes remain with their existing
+catalogue operations. `Prepared` retains `source.Metadata` to preserve the current
+boundary types; this review did not add a shared types package or change APIs.
+
+The source adapter keeps resolver operation order in `youtube.go`, subprocess
+limits and cleanup in `process.go`, boundary metadata in `metadata.go`, and
+streaming collection operations in `collection.go`. Channel decoding, candidate
+selection, and network policy have separate code locations within `source`.
+
 ## Intended direction for later refactors
 
 These are design constraints for future work, not completed extractions:
