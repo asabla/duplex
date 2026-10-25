@@ -14,11 +14,16 @@ golangci-lint version | awk '$4 == "2.15.0" { found=1 } END { exit !found }'
 test "$(gitleaks version)" = 8.30.1
 govulncheck -version | awk '/v1.9.0/ { found=1 } END { exit !found }'
 mkdir -p .cache
-golangci-lint fmt --diff >.cache/format.diff
+format_status=0
+golangci-lint fmt --diff >.cache/format.diff || format_status=$?
 if test -s .cache/format.diff; then
   cat .cache/format.diff
   printf '%s\n' 'Formatting differs. Run golangci-lint fmt and review the changes.' >&2
   exit 1
+fi
+if test "$format_status" -ne 0; then
+  printf 'Formatting check failed with status %s.\n' "$format_status" >&2
+  exit "$format_status"
 fi
 golangci-lint run ./...
 gitleaks dir --redact=100 --no-banner .
