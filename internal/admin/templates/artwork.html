@@ -1,37 +1,58 @@
 {{define "artwork-page"}}
-<h1>Artwork</h1>
-<p>{{.ChannelName .Artwork.ChannelID}} · {{.Artwork.Label}} · {{if .Artwork.Override}}Manual override{{else}}Automatic{{end}}</p>
-<form action="/artwork" method="get" class="filters">
-  <input type="hidden" name="channel" value="{{.Artwork.ChannelID}}"><input type="hidden" name="scope" value="{{.Artwork.Scope}}">
-  <label>Find season <input name="q" value="{{.Filters.Get "q"}}" maxlength="200" placeholder="Playlist title or year"></label>
-  <button class="secondary">Find</button><a href="/artwork?channel={{.Artwork.ChannelID}}&amp;scope={{.Artwork.Scope}}">Clear season filter</a>
-</form>
-{{template "pagination" .SeasonPagination}}
-<form action="/artwork" method="get" class="filters">
-  <input type="hidden" name="channel" value="{{.Artwork.ChannelID}}"><input type="hidden" name="q" value="{{.Filters.Get "q"}}"><input type="hidden" name="page" value="{{.SeasonPagination.Number}}"><input type="hidden" name="per_page" value="{{.SeasonPagination.Size}}">
-  <label>Show or season <select name="scope">
-    <option value="show" {{if eq .Artwork.Scope "show"}}selected{{end}}>Channel show</option>
-    {{if and (ne .Artwork.Scope "show") (not .CurrentSeasonOnPage)}}<option value="{{.Artwork.Scope}}" selected>{{.Artwork.Label}} (current selection)</option>{{end}}
-    {{range .SeasonRows}}<option value="{{.Scope}}" {{if eq .Scope $.Artwork.Scope}}selected{{end}}>{{.Title}}{{if eq .Kind "playlist"}} · Season {{.Number}}{{end}}</option>{{end}}
-  </select></label><button class="secondary">Preview</button>
-</form>
-<div class="artwork-editor">
-  <div class="artwork-preview">
-    {{if .Artwork.Reference}}<img src="/assets/artwork?channel={{.Artwork.ChannelID}}&amp;scope={{.Artwork.Scope}}&amp;v={{.Artwork.Reference}}" width="1000" height="1500" alt="Current show or season poster">
-    {{else}}<p>Automatic artwork is queued. It appears after media preparation begins.</p>{{end}}
+  {{if .Channel.ID}}<h2>Artwork</h2>{{else}}<h1>Artwork</h1>{{end}}
+  <p>{{.Artwork.Label}} · {{if .Artwork.Override}}Manual override{{else}}Automatic{{end}}</p>
+  <details class="artwork-selector editor" {{if or (.Filters.Get "q") (.Filters.Get "page")}}open{{end}}>
+    <summary>Change show or season</summary>
+  <form action="/artwork" method="get" class="toolbar">
+    <input type="hidden" name="back" value="{{.BackURL}}">
+    <input type="hidden" name="channel" value="{{.Artwork.ChannelID}}">
+    <input type="hidden" name="scope" value="{{.Artwork.Scope}}">
+    <label>Find season <input name="q" value="{{.Filters.Get "q"}}" maxlength="200" placeholder="Playlist title or year">
+    </label>
+    <button class="secondary">Find</button>
+    <a href="{{.ChannelLink "/artwork"}}&amp;scope={{.Artwork.Scope}}">Clear season filter</a>
+  </form>
+  {{template "compact-pagination" .SeasonPagination}}
+  <form action="/artwork" method="get" class="toolbar">
+    <input type="hidden" name="back" value="{{.BackURL}}">
+    <input type="hidden" name="channel" value="{{.Artwork.ChannelID}}">
+    <input type="hidden" name="q" value="{{.Filters.Get "q"}}">
+    <input type="hidden" name="page" value="{{.SeasonPagination.Number}}">
+    <input type="hidden" name="per_page" value="{{.SeasonPagination.Size}}">
+    <label>Edit poster for <select name="scope">
+        <option value="show" {{if eq .Artwork.Scope "show"}}selected{{end}}>Channel show</option>
+        {{if and (ne .Artwork.Scope "show") (not .CurrentSeasonOnPage)}}<option value="{{.Artwork.Scope}}" selected>{{.Artwork.Label}} (current selection)</option>{{end}}
+        {{range .SeasonRows}}<option value="{{.Scope}}" {{if eq .Scope $.Artwork.Scope}}selected{{end}}>{{.Title}}{{if eq .Kind "playlist"}} · Season {{.Number}}{{end}}</option>{{end}}
+      </select>
+    </label>
+    <button class="secondary">Show poster</button>
+  </form>
+  </details>
+  <div class="artwork-editor editor">
+    <div class="artwork-preview">
+      {{if .Artwork.Reference}}<img src="/assets/artwork?channel={{.Artwork.ChannelID}}&amp;scope={{.Artwork.Scope}}&amp;v={{.Artwork.Reference}}" width="1000" height="1500" alt="Current show or season poster">
+      {{else}}<p>Automatic artwork is queued. It appears after media preparation begins.</p>{{end}}
+    </div>
+    <section>
+      <h3>Replace poster</h3>
+      <p>JPEG or PNG, up to 10 MiB and 24 megapixels. The complete image is fitted into a 2:3 poster. Overrides survive refreshes and restarts.</p>
+      <form action="/actions/artwork" method="post" enctype="multipart/form-data" hx-post="/actions/artwork" hx-encoding="multipart/form-data" hx-target="#notice" hx-disabled-elt="find button" class="stack" id="artwork-form">
+        <input type="hidden" name="_form" value="artwork-form">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="revision" value="{{.Revision}}">
+        <input type="hidden" name="id" value="{{.Artwork.ChannelID}}">
+        <input type="hidden" name="scope" value="{{.Artwork.Scope}}">
+        <label for="artwork-form-image">Poster image</label>
+        <input id="artwork-form-image" name="image" type="file" accept="image/jpeg,image/png" required>
+        <button>Upload poster</button>
+      </form>
+      <form action="/actions/artwork/reset" method="post" hx-post="/actions/artwork/reset" hx-target="#notice">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="revision" value="{{.Revision}}">
+        <input type="hidden" name="id" value="{{.Artwork.ChannelID}}">
+        <input type="hidden" name="scope" value="{{.Artwork.Scope}}">
+        <button class="secondary" {{if not .Artwork.Override}}disabled{{end}}>Reset to automatic</button>
+      </form>
+    </section>
   </div>
-  <section>
-    <h2>Replace poster</h2>
-    <p>JPEG or PNG, up to 10 MiB and 24 megapixels. The complete image is fitted into a 2:3 poster. Overrides survive refreshes and restarts.</p>
-    <form action="/actions/artwork" method="post" enctype="multipart/form-data" hx-post="/actions/artwork" hx-encoding="multipart/form-data" hx-target="#notice" hx-disabled-elt="find button" class="stack">
-      <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Revision}}"><input type="hidden" name="id" value="{{.Artwork.ChannelID}}"><input type="hidden" name="scope" value="{{.Artwork.Scope}}">
-      <label for="poster-image">Poster image</label><input id="poster-image" name="image" type="file" accept="image/jpeg,image/png" required>
-      <button>Upload poster</button>
-    </form>
-    <form action="/actions/artwork/reset" method="post" hx-post="/actions/artwork/reset" hx-target="#notice">
-      <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Revision}}"><input type="hidden" name="id" value="{{.Artwork.ChannelID}}"><input type="hidden" name="scope" value="{{.Artwork.Scope}}">
-      <button class="secondary" {{if not .Artwork.Override}}disabled{{end}}>Reset to automatic</button>
-    </form>
-  </section>
-</div>
 {{end}}

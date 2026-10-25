@@ -1,43 +1,98 @@
 {{define "playlist-page"}}
-<h1>Playlists</h1>
-<p>Playlists appear as named seasons. Shared videos use separate Plex progress in each season.</p>
-<form method="get" action="/playlists" class="filters">
-  <label>Find <input name="q" value="{{.Filters.Get "q"}}" placeholder="Title or playlist ID"></label>
-  {{template "channel-filter" .}}
-  <label>Effective policy <select name="policy"><option value="">All policies</option>{{range states "latest" "all" "skip"}}<option {{if eq . ($.Filters.Get "policy")}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-  <label>Source <select name="availability"><option value="">Available and missing</option><option value="available" {{if eq (.Filters.Get "availability") "available"}}selected{{end}}>Available</option><option value="missing" {{if eq (.Filters.Get "availability") "missing"}}selected{{end}}>Missing from source</option></select></label>
-  <label>Failures <select name="failure"><option value="">All results</option><option value="failed" {{if eq (.Filters.Get "failure") "failed"}}selected{{end}}>Failed refresh</option></select></label>
-  <button>Filter</button><a href="/playlists">Clear filters</a>
-</form>
-{{template "pagination" .Pagination}}
-<div class="table-wrap"><table>
-  <caption class="sr-only">Discovered playlists matching the current filters</caption>
-  <thead><tr><th scope="col" aria-sort="{{sortaria .Filters "title" "title_desc" "title"}}"><a href="{{sortlink .Filters "/playlists" "title"}}">Playlist</a></th><th scope="col">Channel</th><th scope="col" aria-sort="{{sortaria .Filters "season" "season_desc" "title"}}"><a href="{{sortlink .Filters "/playlists" "season"}}">Season</a></th><th scope="col">Policy</th><th scope="col">Selected</th><th scope="col" aria-sort="{{sortaria .Filters "updated_oldest" "updated" "title"}}"><a href="{{sortlink .Filters "/playlists" "updated"}}">Last discovery</a></th></tr></thead>
-  <tbody>
-  {{range .PlaylistRows}}
-    <tr>
-      <td><strong>{{.Title}}</strong><small>{{.ID}}</small>{{if not .Available}}<small class="warning">Missing from the last complete discovery</small>{{end}}<a href="/catalogue?playlist={{.ID}}">Videos</a> · <a href="/artwork?channel={{.ChannelID}}&amp;scope=playlist:{{.ID}}">Artwork</a></td>
-      <td>{{$.ChannelName .ChannelID}}</td><td>{{.Season}}</td>
-      <td>
-        <details class="policy-editor"><summary>{{if .Inherited}}Inherited: {{else}}Override: {{end}}{{if eq .Mode "latest"}}Latest {{.Limit}}{{else}}{{.Mode}}{{end}}</summary>
-        <form action="/actions/policy" method="post" hx-post="/actions/policy" hx-target="#notice" class="policy-form">
-          <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="revision" value="{{$.Revision}}"><input type="hidden" name="id" value="{{.ChannelID}}"><input type="hidden" name="playlist" value="{{.ID}}">
-          <label>Policy <select name="mode" data-policy>
-            <option value="inherit" {{if .Inherited}}selected{{end}}>Inherit</option>
-            <option value="latest" {{if and (not .Inherited) (eq .Mode "latest")}}selected{{end}}>Latest N</option>
-            <option value="all" {{if and (not .Inherited) (eq .Mode "all")}}selected{{end}}>All</option>
-            <option value="skip" {{if and (not .Inherited) (eq .Mode "skip")}}selected{{end}}>Skip</option>
-          </select></label>
-          <label data-limit {{if or .Inherited (ne .Mode "latest")}}hidden{{end}}>N <input type="number" name="limit" min="1" value="{{if .Limit}}{{.Limit}}{{else}}50{{end}}"></label>
-          <button class="secondary">Save policy</button>
-        </form>
-        </details>
-      </td>
-      <td>{{if eq .Mode "skip"}}0{{else}}{{.Selected}}{{end}}</td>
-      <td>{{when .SyncedAt}}{{if .Error}}<small class="warning">{{.Error}}</small>{{end}}</td>
-    </tr>
-  {{else}}<tr><td colspan="6" class="empty">No matching playlists. Enable playlists in the channel policy, then refresh the channel.</td></tr>{{end}}
-  </tbody>
-</table></div>
-{{template "pagination" .Pagination}}
+  {{if .Channel.ID}}<h2>Playlists</h2>{{else}}<div class="page-heading">
+      <div>
+        <h1>Playlists</h1>
+        <p class="muted">Manage named seasons and their selection overrides.</p>
+      </div>
+  </div>{{end}}
+  <form method="get" action="/playlists" class="toolbar" role="search" aria-label="Filter playlists">
+    {{template "context-fields" .}}
+    <label>Search playlists<input type="search" name="q" value="{{.Filters.Get "q"}}" maxlength="200" placeholder="Playlist title">
+    </label>
+    {{if not .Channel.ID}}{{template "channel-filter" .}}{{end}}
+    <label>Effective selection<select name="policy">
+        <option value="">All policies</option>
+        <option value="latest" {{if eq (.Filters.Get "policy") "latest"}}selected{{end}}>Latest videos</option>
+        <option value="all" {{if eq (.Filters.Get "policy") "all"}}selected{{end}}>All videos</option>
+        <option value="skip" {{if eq (.Filters.Get "policy") "skip"}}selected{{end}}>Skipped</option>
+      </select>
+    </label>
+    <details class="filter-more" {{if or (.Filters.Get "availability") (.Filters.Get "failure")}}open{{end}}>
+      <summary>More filters</summary>
+      <div class="filter-fields">
+        <label>Source availability<select name="availability">
+            <option value="">Available and missing</option>
+            <option value="available" {{if eq (.Filters.Get "availability") "available"}}selected{{end}}>Available</option>
+            <option value="missing" {{if eq (.Filters.Get "availability") "missing"}}selected{{end}}>Missing from source</option>
+          </select>
+        </label>
+        <label>Refresh result<select name="failure">
+            <option value="">All results</option>
+            <option value="failed" {{if eq (.Filters.Get "failure") "failed"}}selected{{end}}>Needs attention</option>
+          </select>
+        </label>
+      </div>
+    </details>
+    <input type="hidden" name="per_page" value="{{.Pagination.Size}}">
+    <button class="secondary">Apply filters</button>{{if .Filtered}}<a href="{{.ClearURL}}">Clear filters</a>{{end}}
+  </form>
+  {{template "compact-pagination" .Pagination}}
+  <div class="table-wrap">
+    <table>
+      <caption class="sr-only">Discovered playlists matching the current filters</caption>
+      <thead>
+        <tr>
+          <th scope="col" aria-sort="{{sortaria .Filters "title" "title_desc" "title"}}">
+            <a href="{{sortlink .Filters "/playlists" "title"}}">Playlist</a>
+          </th>{{if not .Channel.ID}}<th scope="col">Channel</th>{{end}}<th scope="col" aria-sort="{{sortaria .Filters "season" "season_desc" "title"}}">
+            <a href="{{sortlink .Filters "/playlists" "season"}}">Season</a>
+          </th>
+          <th scope="col">Selection</th>
+          <th scope="col" class="numeric">Selected videos</th>
+          <th scope="col" aria-sort="{{sortaria .Filters "updated_oldest" "updated" "title"}}">
+            <a href="{{sortlink .Filters "/playlists" "updated"}}">Last refresh</a>
+          </th>
+          <th scope="col">
+            <span class="sr-only">Actions</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody>{{range .PlaylistRows}}{{$form:=$.PolicyForm .ChannelID .ID}}
+          <tr>
+            <th scope="row">
+              <a class="item-title" href="{{channelLink "/catalogue" .ChannelID $.CurrentURL}}&amp;playlist={{.ID}}">{{.Title}}</a>{{if not .Available}}<small class="text-danger">Missing from source</small>{{end}}</th>{{if not $.Channel.ID}}<td>
+                <a href="{{$.ChannelRowLink .ChannelID}}">{{$.ChannelName .ChannelID}}</a>
+            </td>{{end}}<td class="numeric">{{.Season}}</td>
+            <td>{{template "policy-summary" $form}}</td>
+            <td class="numeric"><span id="count-{{$form.ID}}">{{if eq .Mode "skip"}}0{{else}}{{.Selected}}{{end}}</span></td>
+            <td title="{{when .SyncedAt}}">{{age .SyncedAt}}{{if .Error}}<small class="text-danger">Refresh failed</small>{{end}}</td>
+            <td>
+              <details class="row-menu">
+                <summary aria-label="Actions for {{.Title}}">Actions</summary>
+                <div class="row-menu-content">
+                  <a href="{{channelLink "/artwork" .ChannelID $.CurrentURL}}&amp;scope=playlist:{{.ID}}">Edit artwork</a>
+                  <details class="policy-editor">
+                    <summary>Edit selection</summary>{{template "policy-form" ($.PolicyForm .ChannelID .ID)}}</details>
+                  <details class="technical-details">
+                    <summary>Playlist identity</summary>
+                    <code>{{.ID}}</code>{{if .Error}}<p class="text-danger">{{.Error}}</p>{{end}}</details>
+                </div>
+              </details>
+            </td>
+          </tr>
+        {{else}}<tr>
+            <td colspan="{{if .Channel.ID}}6{{else}}7{{end}}" class="empty">
+              <strong>No matching playlists</strong>
+              <p>{{if .Filtered}}Change the filters to inspect other playlists.{{else}}Include playlists in a channel's settings, then refresh that channel.{{end}}</p>
+            </td>
+      </tr>{{end}}</tbody>
+    </table>
+  </div>
+  {{template "pagination" .Pagination}}
+  <p class="hint table-note">Playlists appear as named seasons. A shared video has separate Plex progress in each season.</p>
+{{end}}
+
+{{define "policy-summary"}}
+  <span id="selection-{{.ID}}" {{if .OOB}}hx-swap-oob="outerHTML"{{end}}>{{.Summary}}</span>
+  {{if and .OOB (eq .EffectiveMode "skip")}}<span id="count-{{.ID}}" hx-swap-oob="outerHTML">0</span>{{end}}
 {{end}}

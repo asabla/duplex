@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"duplex/internal/config"
 )
@@ -17,7 +16,7 @@ func (s *Server) actions(w http.ResponseWriter, r *http.Request) bool {
 	}
 	switch r.URL.Path {
 	case "/actions/policy":
-		limit, err := strconv.Atoi(r.FormValue("limit"))
+		limit, err := wholeNumber(r, "limit", 1, int(^uint(0)>>1))
 		mode := r.FormValue("mode")
 		if mode != "latest" {
 			limit = 0
@@ -26,11 +25,11 @@ func (s *Server) actions(w http.ResponseWriter, r *http.Request) bool {
 		if err == nil {
 			err = s.App.UpdatePolicy(r.FormValue("id"), r.FormValue("playlist"), r.FormValue("revision"), config.Selection{Mode: mode, Limit: limit}, r.FormValue("include_playlists") == "on")
 		}
-		s.result(w, r, err, "Policy saved. Refresh queued. Reload before another settings edit.")
+		s.result(w, r, err, "Selection saved. A channel refresh is queued when following is enabled.")
 	case "/actions/prepare":
 		s.result(w, r, s.App.PrepareNow(r.Context(), r.FormValue("id")), "Recording moved to the front of the preparation queue.")
 	case "/actions/settings":
-		s.result(w, r, s.saveSettings(r), "Settings saved. Reload before another edit.")
+		s.result(w, r, s.saveSettings(r), "Settings saved.")
 	case "/actions/artwork":
 		s.artworkUpload(w, r)
 	case "/actions/artwork/reset":
@@ -45,13 +44,21 @@ func (s *Server) actions(w http.ResponseWriter, r *http.Request) bool {
 func (s *Server) saveSettings(r *http.Request) error {
 	snapshot := s.App.Config.Snapshot()
 	c := snapshot.Config
-	settings := map[string]*int{"cache_gib": &c.CacheGiB, "refresh_minutes": &c.RefreshMinutes, "max_height": &c.MaxHeight}
-	for field, destination := range settings {
-		value, err := strconv.Atoi(r.FormValue(field))
-		if err != nil {
-			return errors.New("settings require valid whole numbers")
+	settings := []struct {
+		name        string
+		destination *int
+		max         int
+	}{{"cache_gib", &c.CacheGiB, 1048576}, {"refresh_minutes", &c.RefreshMinutes, 10080}, {"max_height", &c.MaxHeight, 2160}}
+	for _, field := range settings {
+		minValue := 1
+		if field.name == "max_height" {
+			minValue = 144
 		}
-		*destination = value
+		value, err := wholeNumber(r, field.name, minValue, field.max)
+		if err != nil {
+			return err
+		}
+		*field.destination = value
 	}
 	c.Plex.URL = r.FormValue("plex_url")
 	c.Plex.Section = r.FormValue("plex_section")
@@ -73,7 +80,7 @@ func (s *Server) artworkUpload(w http.ResponseWriter, r *http.Request) {
 	}()
 	file, _, err := r.FormFile("image")
 	if err != nil {
-		s.result(w, r, errors.New("select a JPEG or PNG image"), "")
+		s.result(w, r, fieldFailure{"image", "Select a JPEG or PNG image."}, "")
 		return
 	}
 	err = s.App.SaveArtwork(r.Context(), r.FormValue("id"), r.FormValue("scope"), r.FormValue("revision"), file)
@@ -119,7 +126,7 @@ func actionReturnURL(r *http.Request) string {
 	candidate, err := url.Parse(location)
 	if err == nil && candidate.User == nil && (candidate.Host == "" || candidate.Host == r.Host) && (candidate.Scheme == "" || candidate.Scheme == "http" || candidate.Scheme == "https") && len(candidate.RawQuery) <= 8192 {
 		switch candidate.Path {
-		case "/channels", "/playlists", "/catalogue", "/jobs", "/settings", "/artwork", "/diagnostics":
+		case "/channels", "/channel", "/follow", "/video", "/playlists", "/catalogue", "/jobs", "/settings", "/artwork", "/diagnostics":
 			return candidate.RequestURI()
 		}
 	}

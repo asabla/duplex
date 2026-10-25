@@ -31,34 +31,42 @@ type Server struct {
 	templates *template.Template
 }
 type page struct {
-	Page                string
-	CSRF                string
-	Error               string
-	Notice              string
-	ReturnURL           string
-	Status              app.Status
-	YAML                string
-	Revision            string
-	Query               string
-	Total, Matches      int
-	Pagination          pagination
-	ChannelRows         []config.Channel
-	ChannelData         []catalog.Channel
-	ChannelSettings     map[string]config.Channel
-	PlaylistRows        []catalog.PlaylistRow
-	Counts              catalog.Counts
-	Filters             url.Values
-	Artwork             app.ArtworkPreview
-	SeasonRows          []catalog.ArtworkSeason
-	SeasonPagination    pagination
-	CurrentSeasonOnPage bool
-	PlaylistOptions     []catalog.PlaylistRow
-	PlaylistFallback    string
+	Page                     string
+	CSRF                     string
+	Error                    string
+	Notice                   string
+	ReturnURL                string
+	Status                   app.Status
+	YAML                     string
+	Revision                 string
+	Query                    string
+	Total, Matches           int
+	Pagination               pagination
+	ChannelRows              []config.Channel
+	ChannelData              []catalog.Channel
+	ChannelSettings          map[string]config.Channel
+	PlaylistRows             []catalog.PlaylistRow
+	Counts                   catalog.Counts
+	Filters                  url.Values
+	Artwork                  app.ArtworkPreview
+	SeasonRows               []catalog.ArtworkSeason
+	SeasonPagination         pagination
+	CurrentSeasonOnPage      bool
+	PlaylistOptions          []catalog.PlaylistRow
+	PlaylistFallback         string
+	Channel                  config.Channel
+	ChannelInfo              catalog.Channel
+	ChannelTotals            map[string]catalog.Counts
+	CurrentURL, BackURL, Tab string
+	VideoBackURL             string
+	OOB                      bool
+	ErrorFieldID             string
+	Video                    catalog.Video
 }
 
 // New parses the embedded templates and binds the shared application services.
 func New(a *app.App, auth *Auth) (*Server, error) {
-	t, e := template.New("duplex").Funcs(template.FuncMap{"states": func(values ...string) []string { return values }, "heights": func(values ...int) []int { return values }, "sortlink": sortLink, "sortaria": sortARIA, "gib": func(n int64) string { return strconv.FormatFloat(float64(n)/(1<<30), 'f', 2, 64) }, "day": func(n int64) string {
+	t, e := template.New("duplex").Funcs(template.FuncMap{"states": func(values ...string) []string { return values }, "heights": func(values ...int) []int { return values }, "sortlink": sortLink, "sortaria": sortARIA, "playback": playback, "stage": stageLabel, "channelLink": channelLink, "gib": func(n int64) string { return strconv.FormatFloat(float64(n)/(1<<30), 'f', 2, 64) }, "day": func(n int64) string {
 		if n == 0 {
 			return "Unknown"
 		}
@@ -79,7 +87,7 @@ func New(a *app.App, auth *Auth) (*Server, error) {
 		}
 		elapsed := time.Since(time.Unix(n, 0))
 		if elapsed < time.Minute {
-			return "Just refreshed"
+			return "Just now"
 		}
 		if elapsed < time.Hour {
 			return strconv.Itoa(int(elapsed.Minutes())) + " minutes ago"
@@ -215,7 +223,7 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) render(w http.ResponseWriter, name string, v page) {
+func (s *Server) render(w http.ResponseWriter, name string, v any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	var rendered bytes.Buffer
 	if err := s.templates.ExecuteTemplate(&rendered, name, v); err != nil {
@@ -274,7 +282,7 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, e error, message
 	}
 	if e != nil {
 		w.WriteHeader(400)
-		s.render(w, "notice", page{Error: safeError(e), ReturnURL: actionReturnURL(r)})
+		s.render(w, "notice", page{Error: safeError(e), ErrorFieldID: errorField(r, e), ReturnURL: actionReturnURL(r)})
 		return
 	}
 	if r.Header.Get("HX-Request") != "true" {
@@ -283,6 +291,7 @@ func (s *Server) result(w http.ResponseWriter, r *http.Request, e error, message
 	}
 	w.Header().Set("HX-Trigger", "channelsChanged")
 	s.render(w, "notice", page{Notice: message, ReturnURL: actionReturnURL(r)})
+	s.savedForm(w, r)
 }
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {

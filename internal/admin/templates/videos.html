@@ -1,69 +1,139 @@
 {{define "video-page"}}
-<h1>Videos</h1>
-<form method="get" action="/catalogue" class="filters">
-  <label>Find <input name="q" value="{{.Filters.Get "q"}}" maxlength="200" placeholder="Title or video ID"></label>
-  {{template "channel-filter" .}}
-  <label>Find playlist <input name="playlist_q" value="{{.Filters.Get "playlist_q"}}" maxlength="200" placeholder="Playlist title or ID" hx-get="/fragments/playlist-options" hx-trigger="input changed delay:300ms" hx-sync="this:replace" hx-include="closest form" hx-target="#playlist-picker" hx-swap="outerHTML"></label>
-  {{template "playlist-filter" .}}
-  <label>Lifecycle <select name="lifecycle">
-    <option value="">All states</option>
-    {{range states "recorded" "replay-ready" "upcoming" "active" "processing" "unavailable" "discovered"}}<option {{if eq . ($.Filters.Get "lifecycle")}}selected{{end}}>{{.}}</option>{{end}}
-  </select></label>
-  <label>Preparation <select name="preparation">
-    <option value="">All states</option>
-    {{range states "discovered" "queued" "resolving" "preparing" "ready" "waiting" "failed" "skipped"}}<option {{if eq . ($.Filters.Get "preparation")}}selected{{end}}>{{.}}</option>{{end}}
-  </select></label>
-  <label>Library <select name="inclusion">
-    <option value="selected" {{if or (eq (.Filters.Get "inclusion") "selected") (eq (.Filters.Get "inclusion") "")}}selected{{end}}>Selected</option>
-    <option value="all" {{if eq (.Filters.Get "inclusion") "all"}}selected{{end}}>All discovered</option>
-    <option value="outside" {{if eq (.Filters.Get "inclusion") "outside"}}selected{{end}}>Outside selection</option>
-  </select></label>
-  <label>Sort <select name="sort">
-    <option value="newest" {{if or (eq (.Filters.Get "sort") "") (eq (.Filters.Get "sort") "newest")}}selected{{end}}>Newest first</option>
-    <option value="oldest" {{if eq (.Filters.Get "sort") "oldest"}}selected{{end}}>Oldest first</option>
-    <option value="title" {{if eq (.Filters.Get "sort") "title"}}selected{{end}}>Title A to Z</option>
-    <option value="title_desc" {{if eq (.Filters.Get "sort") "title_desc"}}selected{{end}}>Title Z to A</option>
-    <option value="updated" {{if eq (.Filters.Get "sort") "updated"}}selected{{end}}>Recently updated</option>
-    <option value="updated_oldest" {{if eq (.Filters.Get "sort") "updated_oldest"}}selected{{end}}>Least recently updated</option>
-  </select></label>
-  <input type="hidden" name="per_page" value="{{.Pagination.Size}}">
-  <button>Filter</button><a href="/catalogue">Clear filters</a>
-</form>
-<p class="result-count">{{.Total}} discovered records · <span>{{.Matches}} {{if eq .Matches 1}}match{{else}}matches{{end}}</span></p>
-{{template "pagination" .Pagination}}
-<div class="table-wrap">
-<table>
-  <caption class="sr-only">Videos matching the current filters</caption>
-  <thead><tr>
-    <th scope="col" aria-sort="{{sortaria .Filters "title" "title_desc" "newest"}}"><a href="{{sortlink .Filters "/catalogue" "title"}}">Video</a></th>
-    <th scope="col" aria-sort="{{sortaria .Filters "oldest" "newest" "newest"}}"><a href="{{sortlink .Filters "/catalogue" "newest"}}">Published</a></th>
-    <th scope="col">Lifecycle</th><th scope="col">Preparation</th><th scope="col">Quality</th><th scope="col">Library</th><th scope="col">Action</th>
-  </tr></thead>
-  <tbody>
-  {{range .Status.Videos}}
-    <tr>
-      <td><strong>{{.Title}}</strong><small>{{.ID}} · {{$.ChannelName .ChannelID}}</small></td>
-      <td class="date" title="{{when .Published}}">{{day .Published}}</td>
-      <td>{{.State}}</td>
-      <td><span class="state state-{{.Preparation}}">{{.Preparation}}</span>{{if .PreparationError}}<details class="cell-note"><summary>Details</summary><p class="warning">{{.PreparationError}}</p></details>{{end}}</td>
-      <td>{{height .Height}}{{if .Fallback}}<small>{{.Fallback}}</small>{{end}}</td>
-      <td>{{if .Exposed}}Selected{{else}}Outside selection{{end}}{{if .Number}}<small>Year {{.Year}} · Episode {{.Number}}</small>{{end}}</td>
-      <td>{{if .Exposed}}<form action="/actions/prepare" method="post" hx-post="/actions/prepare" hx-target="#notice">
-        <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="secondary">Prepare now</button>
-      </form>{{end}}</td>
-    </tr>
-  {{else}}<tr><td colspan="7" class="empty">No matching videos. Change the filters or follow a channel.</td></tr>{{end}}
-  </tbody>
-</table>
-</div>
-{{template "pagination" .Pagination}}
+  {{if .Channel.ID}}<h2>Videos</h2>{{else}}<div class="page-heading">
+      <div>
+        <h1>Videos</h1>
+        <p class="muted">Inspect selected recordings and preparation failures.</p>
+      </div>
+  </div>{{end}}
+  <form method="get" action="/catalogue" class="toolbar" role="search" aria-label="Filter videos">
+    {{template "context-fields" .}}
+    <label>Search videos<input name="q" value="{{.Filters.Get "q"}}" maxlength="200" placeholder="Video title" type="search">
+    </label>
+    {{if not .Channel.ID}}{{template "channel-filter" .}}{{end}}
+    <label>Library selection<select name="inclusion">
+        <option value="selected" {{if or (eq (.Filters.Get "inclusion") "selected") (eq (.Filters.Get "inclusion") "")}}selected{{end}}>Selected videos</option>
+        <option value="all" {{if eq (.Filters.Get "inclusion") "all"}}selected{{end}}>All discovered videos</option>
+        <option value="outside" {{if eq (.Filters.Get "inclusion") "outside"}}selected{{end}}>Excluded videos</option>
+      </select>
+    </label>
+    <details class="filter-more" {{if or (.Filters.Get "preparation") (.Filters.Get "lifecycle") (.Filters.Get "playlist")}}open{{end}}>
+      <summary>More filters</summary>
+      <div class="filter-fields">
+        <div class="playlist-combobox" data-playlist-picker>
+          <label for="playlist-search">Playlist</label>
+        <input id="playlist-search" name="playlist_q" value="{{.Filters.Get "playlist_q"}}" maxlength="200" placeholder="Search playlists" autocomplete="off" hx-get="/fragments/playlist-options" hx-trigger="input changed delay:300ms" hx-sync="this:replace" hx-include="closest form" hx-target="#playlist-picker" hx-swap="outerHTML">{{template "playlist-filter" .}}</div>
+        <label>Preparation<select name="preparation">
+            <option value="">All preparation states</option>{{range states "discovered" "queued" "resolving" "preparing" "ready" "waiting" "failed" "skipped"}}<option value="{{.}}" {{if eq . ($.Filters.Get "preparation")}}selected{{end}}>{{stage .}}</option>{{end}}</select>
+        </label>
+        <label>YouTube status<select name="lifecycle">
+            <option value="">All source states</option>{{range states "recorded" "replay-ready" "upcoming" "active" "processing" "unavailable" "discovered"}}<option value="{{.}}" {{if eq . ($.Filters.Get "lifecycle")}}selected{{end}}>{{stage .}}</option>{{end}}</select>
+        </label>
+      </div>
+    </details>
+    <input type="hidden" name="per_page" value="{{.Pagination.Size}}">
+    <input type="hidden" name="sort" value="{{.Filters.Get "sort"}}">
+    <button class="secondary">Apply filters</button>{{if .Filtered}}<a href="{{.ClearURL}}">Clear filters</a>{{end}}
+  </form>
+  {{template "videos" .}}
+{{end}}
+
+{{define "videos"}}
+  <section id="video-list" hx-get="{{.Pagination.FragmentURL}}" hx-trigger="every 10s, channelsChanged from:body" hx-swap="outerHTML" data-live data-preserve-edits>
+    {{template "compact-pagination" .Pagination}}
+    <div class="table-wrap">
+      <table>
+        <caption class="sr-only">Videos matching the current filters</caption>
+        <thead>
+          <tr>
+            <th scope="col" aria-sort="{{sortaria .Filters "title" "title_desc" "newest"}}">
+              <a href="{{sortlink .Filters "/catalogue" "title"}}">Video</a>
+            </th>
+            <th scope="col" aria-sort="{{sortaria .Filters "oldest" "newest" "newest"}}">
+              <a href="{{sortlink .Filters "/catalogue" "newest"}}">Published</a>
+            </th>
+            <th scope="col">Availability</th>
+            <th scope="col">Last verified quality</th>
+            <th scope="col">Selection</th>
+          </tr>
+        </thead>
+        <tbody>{{range .Status.Videos}}{{$state:=playback .}}
+            <tr>
+              <th scope="row">
+                <a class="item-title" href="{{$.VideoLink .ID}}">{{.Title}}</a>{{if not $.Channel.ID}}<small>{{$.ChannelName .ChannelID}}</small>{{end}}</th>
+              <td class="date" title="{{when .Published}}">{{day .Published}}</td>
+              <td>
+                <span class="status status-{{$state.Tone}}">{{$state.Label}}</span>
+              </td>
+              <td>{{if .Height}}{{height .Height}}{{if ne .Preparation "ready"}}<small>Previous verification</small>{{end}}{{else}}<span class="muted">Not verified</span>{{end}}</td>
+              <td>{{if .Exposed}}Selected{{else}}Excluded{{end}}</td>
+            </tr>
+          {{else}}<tr>
+              <td colspan="5" class="empty">
+                <strong>No matching videos</strong>
+                <p>{{if .Filtered}}Clear or change the filters to inspect other recordings.{{else}}Follow a channel and refresh it to discover recordings.{{end}}</p>
+                <a href="{{.ClearURL}}">Reset this view</a>
+              </td>
+        </tr>{{end}}</tbody>
+      </table>
+    </div>{{template "pagination" .Pagination}}
+  </section>
 {{end}}
 
 {{define "playlist-filter"}}
-<div id="playlist-picker" data-preserve-edits>
-  <label>Playlist <select name="playlist"><option value="">All playlists</option>
-    {{if .PlaylistFallback}}<option value="{{.Filters.Get "playlist"}}" selected>{{.PlaylistFallback}}</option>{{end}}
-    {{range .PlaylistOptions}}<option value="{{.ID}}" {{if eq .ID ($.Filters.Get "playlist")}}selected{{end}}>{{.Title}} · {{$.ChannelName .ChannelID}}{{if not .Available}} (missing){{end}}</option>{{end}}
-  </select></label>
-</div>
+  <div id="playlist-picker" data-preserve-edits>
+    <label class="playlist-fallback">Choose playlist<select name="playlist">
+        <option value="">All playlists</option>{{if .PlaylistFallback}}<option value="{{.Filters.Get "playlist"}}" selected>{{.PlaylistFallback}}</option>{{end}}{{range .PlaylistOptions}}<option value="{{.ID}}" {{if eq .ID ($.Filters.Get "playlist")}}selected{{end}}>{{.Title}} · {{$.ChannelName .ChannelID}}{{if not .Available}} (missing){{end}}</option>{{end}}</select>
+    </label>
+  </div>
+{{end}}
+
+{{define "video-inspection"}}
+  <a class="back-link" href="{{.VideoBackURL}}">Back to video results</a>
+  <div class="page-heading">
+    <div>
+      <h1>{{.Video.Title}}</h1>
+      <p class="muted">{{.ChannelName .Video.ChannelID}}</p>
+    </div>
+    <a href="https://www.youtube.com/watch?v={{.Video.ID}}" target="_blank" rel="noreferrer">View on YouTube</a>
+  </div>
+  {{$state:=playback .Video}}
+  <section class="editor">
+    <div class="section-heading">
+      <h2>Availability</h2>
+      <span class="status status-{{$state.Tone}}">{{$state.Label}}</span>
+    </div>
+    <p>{{$state.Detail}}</p>
+    {{if $state.Retry}}<form action="/actions/prepare" method="post" hx-post="/actions/prepare" hx-target="#notice" hx-disabled-elt="find button">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="id" value="{{.Video.ID}}">
+        <button>{{if eq .Video.Preparation "failed"}}Retry preparation{{else}}Prepare next{{end}}</button>
+        <span class="htmx-indicator">Queuing…</span>
+    </form>{{end}}
+    <p class="hint">A prepared media file is separate from Plex discovery. Service health and Plex scans can still prevent playback.</p>
+  </section>
+  <dl class="details editor">
+    <dt>YouTube status</dt>
+    <dd>{{stage .Video.State}}</dd>
+    <dt>Preparation</dt>
+    <dd>{{stage .Video.Preparation}}</dd>
+    <dt>Last verified quality</dt>
+    <dd>{{if .Video.Height}}{{height .Video.Height}}{{else}}Not verified{{end}}{{if .Video.Fallback}} · {{.Video.Fallback}}{{end}}</dd>
+    <dt>Library selection</dt>
+    <dd>{{if .Video.Exposed}}Selected{{else}}Excluded by current policy{{end}}</dd>
+    <dt>Published</dt>
+    <dd>{{when .Video.Published}}</dd>
+  </dl>
+  <details class="technical-details">
+    <summary>Recording identity</summary>
+    <dl class="details">
+      <dt>YouTube video ID</dt>
+      <dd>
+        <code>{{.Video.ID}}</code>
+      </dd>
+      <dt>Representation revision</dt>
+      <dd>
+        <code>{{.Video.Revision}}</code>
+      </dd>
+    </dl>
+  </details>
 {{end}}

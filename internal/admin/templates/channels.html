@@ -1,58 +1,250 @@
 {{define "channel-page"}}
-<h1>Channels</h1>
-<details class="panel" open>
-  <summary>Follow a channel</summary>
-  <form action="/actions/follow" method="post" hx-post="/actions/follow" hx-target="#notice" hx-disabled-elt="find button" class="filters">
-    <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Revision}}">
-    <label>YouTube channel URL <input type="url" name="url" placeholder="https://www.youtube.com/@channel" required></label>
-    <label>Uploads <select name="mode" data-policy><option value="latest">Latest N</option><option value="all">All</option></select></label>
-    <label data-limit>N <input type="number" name="limit" min="1" value="50" required></label>
-    <label class="checkbox"><input type="checkbox" name="include_playlists" checked> Include playlists</label>
-    <button>Follow</button>
+  <div class="page-heading">
+    <div>
+      <h1>Channels</h1>
+      <p class="muted">Manage followed channels and their library selection.</p>
+    </div>
+    <a class="button" href="/follow">Follow channel</a>
+  </div>
+  <form method="get" action="/channels" class="toolbar" role="search" aria-label="Filter channels">
+    <label>Search channels<input name="q" value="{{.Filters.Get "q"}}" placeholder="Channel name" maxlength="200" type="search">
+    </label>
+    <label>Following<select name="state">
+        <option value="">All channels</option>
+        <option value="enabled" {{if eq (.Filters.Get "state") "enabled"}}selected{{end}}>Following</option>
+        <option value="paused" {{if eq (.Filters.Get "state") "paused"}}selected{{end}}>Paused</option>
+      </select>
+    </label>
+    <details class="filter-more" {{if or (.Filters.Get "policy") (.Filters.Get "failure")}}open{{end}}>
+      <summary>More filters</summary>
+      <div class="filter-fields">
+        <label>Upload selection<select name="policy">
+            <option value="">All policies</option>
+            <option value="latest" {{if eq (.Filters.Get "policy") "latest"}}selected{{end}}>Latest videos</option>
+            <option value="all" {{if eq (.Filters.Get "policy") "all"}}selected{{end}}>All videos</option>
+          </select>
+        </label>
+        <label>Refresh result<select name="failure">
+            <option value="">All results</option>
+            <option value="failed" {{if eq (.Filters.Get "failure") "failed"}}selected{{end}}>Needs attention</option>
+          </select>
+        </label>
+      </div>
+    </details>
+    <input type="hidden" name="per_page" value="{{.Pagination.Size}}">
+    <button class="secondary">Apply filters</button>{{if .Filtered}}<a href="/channels">Clear filters</a>{{end}}
   </form>
-  <p>Each playlist inherits the channel policy unless it has an override.</p>
-</details>
-<form method="get" action="/channels" class="filters">
-  <label>Find <input name="q" value="{{.Filters.Get "q"}}" placeholder="Name or channel ID"></label>
-  <label>Policy <select name="policy"><option value="">All policies</option>{{range states "latest" "all"}}<option {{if eq . ($.Filters.Get "policy")}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-  <label>Following <select name="state"><option value="">All channels</option>{{range states "enabled" "paused"}}<option {{if eq . ($.Filters.Get "state")}}selected{{end}}>{{.}}</option>{{end}}</select></label>
-  <label>Failures <select name="failure"><option value="">All results</option><option value="failed" {{if eq (.Filters.Get "failure") "failed"}}selected{{end}}>Failed refresh</option></select></label>
-  <button>Filter</button><a href="/channels">Clear filters</a>
-</form>
-{{template "channels" .}}
+  {{template "channels" .}}
 {{end}}
 
 {{define "channels"}}
-<section id="channel-list" hx-get="{{.Pagination.FragmentURL}}" hx-trigger="channelsChanged from:body" hx-swap="outerHTML" data-preserve-edits>
-{{template "pagination" .Pagination}}
-<div class="table-wrap"><table>
-  <caption class="sr-only">Followed channels matching the current filters</caption>
-  <thead><tr><th scope="col" aria-sort="{{sortaria .Filters "title" "title_desc" "title"}}"><a href="{{sortlink .Filters "/channels" "title"}}">Channel</a></th><th scope="col">Policy</th><th scope="col" aria-sort="{{sortaria .Filters "updated_oldest" "updated" "title"}}"><a href="{{sortlink .Filters "/channels" "updated"}}">Last discovery</a></th><th scope="col">Actions</th></tr></thead>
-  <tbody>
-  {{range .ChannelData}}{{$settings:=index $.ChannelSettings .ID}}{{$selection:=$settings.Selection}}
-    <tr>
-      <td><strong>{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</strong><small>{{.ID}}</small>{{if not $settings.Enabled}}<small>Paused</small>{{end}}<a href="/artwork?channel={{.ID}}&amp;scope=show">Show and season artwork</a></td>
-      <td>
-        <details class="policy-editor"><summary>{{if eq $selection.Mode "latest"}}Latest {{$selection.Limit}}{{else}}All uploads{{end}} · {{if $settings.Playlists}}{{if $settings.Playlists.Enabled}}Playlists included{{else}}Playlists skipped{{end}}{{else}}Playlists skipped{{end}}</summary>
-        <form action="/actions/policy" method="post" hx-post="/actions/policy" hx-target="#notice" class="policy-form">
-          <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="revision" value="{{$.Revision}}"><input type="hidden" name="id" value="{{.ID}}">
-          <label>Uploads <select name="mode" data-policy><option value="latest" {{if eq $selection.Mode "latest"}}selected{{end}}>Latest N</option><option value="all" {{if eq $selection.Mode "all"}}selected{{end}}>All</option></select></label>
-          <label data-limit {{if ne $selection.Mode "latest"}}hidden{{end}}>N <input type="number" name="limit" min="1" value="{{if $selection.Limit}}{{$selection.Limit}}{{else}}50{{end}}"></label>
-          <label class="checkbox"><input name="include_playlists" type="checkbox" {{if $settings.Playlists}}{{if $settings.Playlists.Enabled}}checked{{end}}{{end}}> Include playlists</label>
-          <button class="secondary">Save policy</button>
+  <section id="channel-list" hx-get="{{.Pagination.FragmentURL}}" hx-trigger="every 10s, channelsChanged from:body" hx-swap="outerHTML" data-live data-preserve-edits>
+    {{template "compact-pagination" .Pagination}}
+    <div class="table-wrap">
+      <table class="channel-table">
+        <caption class="sr-only">Followed channels matching the current filters</caption>
+        <thead>
+          <tr>
+            <th scope="col" aria-sort="{{sortaria .Filters "title" "title_desc" "title"}}">
+              <a href="{{sortlink .Filters "/channels" "title"}}">Channel</a>
+            </th>
+            <th scope="col">Selection</th>
+            <th scope="col" class="numeric">Prepared</th>
+            <th scope="col" class="numeric">Needs attention</th>
+            <th scope="col" aria-sort="{{sortaria .Filters "updated_oldest" "updated" "title"}}">
+              <a href="{{sortlink .Filters "/channels" "updated"}}">Last refresh</a>
+            </th>
+            <th scope="col">
+              <span class="sr-only">Actions</span>
+            </th>
+          </tr>
+        </thead>
+        <tbody>{{range .ChannelData}}{{$settings:=index $.ChannelSettings .ID}}{{$selection:=$settings.Selection}}{{$counts:=$.ChannelCounts .ID}}
+            <tr>
+              <th scope="row">
+                <a class="item-title" href="{{$.ChannelRowLink .ID}}">{{if .Title}}{{.Title}}{{else}}{{.ID}}{{end}}</a>{{if not $settings.Enabled}}<small>Paused</small>{{end}}</th>
+              <td>{{if eq $selection.Mode "latest"}}Latest {{$selection.Limit}}{{else}}All videos{{end}}<small>{{if $settings.Playlists}}{{if $settings.Playlists.Enabled}}Includes playlists{{else}}Playlists skipped{{end}}{{else}}Playlists skipped{{end}}</small>
+              </td>
+              <td class="numeric">
+                <a href="{{channelLink "/catalogue" .ID $.CurrentURL}}&amp;preparation=ready">{{$counts.Ready}}</a>
+                <span class="muted"> / {{$counts.Selected}}</span>
+              </td>
+              <td class="numeric">{{if $counts.Failed}}<a class="text-danger" href="{{channelLink "/catalogue" .ID $.CurrentURL}}&amp;preparation=failed">{{$counts.Failed}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
+              <td>
+                <span title="{{when .SyncedAt}}">{{age .SyncedAt}}</span>{{if .Error}}<small class="text-danger">Refresh failed</small>{{end}}</td>
+              <td>
+                <form action="/actions/sync" method="post" hx-post="/actions/sync" hx-target="#notice" hx-disabled-elt="find button">
+                  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button class="secondary" aria-label="Refresh {{.Title}}">Refresh</button>
+                </form>
+              </td>
+            </tr>
+          {{else}}<tr>
+              <td colspan="6" class="empty">
+                <strong>No matching channels</strong>
+                <p>Change the filters or follow a YouTube channel.</p>
+                <a href="/follow">Follow channel</a>
+              </td>
+        </tr>{{end}}</tbody>
+      </table>
+    </div>
+    {{template "pagination" .Pagination}}
+  </section>
+{{end}}
+
+{{define "follow-page"}}
+  <a class="back-link" href="/channels">Back to channels</a>
+  <div class="page-heading">
+    <div>
+      <h1>Follow channel</h1>
+      <p class="muted">Add a YouTube channel to the Plex library.</p>
+    </div>
+  </div>
+  <form id="follow-form" action="/actions/follow" method="post" hx-post="/actions/follow" hx-target="#notice" hx-disabled-elt="find button" class="editor stack">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="revision" value="{{.Revision}}">
+    <input type="hidden" name="_form" value="follow-form">
+    <label for="follow-form-url">YouTube channel URL</label>
+    <input id="follow-form-url" type="url" name="url" placeholder="https://www.youtube.com/@channel" required aria-describedby="follow-url-hint">
+    <p id="follow-url-hint" class="hint">Use a channel handle or channel URL. Public and unlisted recordings are supported.</p>
+    <label for="follow-form-mode">Upload selection</label>
+    <select id="follow-form-mode" name="mode" data-policy>
+      <option value="latest">Latest videos</option>
+      <option value="all">All videos</option>
+    </select>
+    <label data-limit for="follow-form-limit">Number of latest videos<input id="follow-form-limit" type="number" name="limit" min="1" value="50" required>
+    </label>
+    <label class="checkbox">
+    <input type="checkbox" name="include_playlists" checked> Include this channel's playlists</label>
+    <p class="hint">Playlists inherit the upload selection. Each playlist can have its own override.</p>
+    <div class="form-actions">
+      <button>Follow channel</button>
+      <a href="/channels">Cancel</a>
+      <span class="htmx-indicator" role="status">Checking channel…</span>
+    </div>
+  </form>
+{{end}}
+
+{{define "channel-context"}}
+  {{if .Channel.ID}}
+    {{if ne .Page "/video"}}
+      <a class="back-link" href="{{.BackURL}}">Back to results</a>
+      <div class="page-heading">
+        <div>
+          <h1>{{.ChannelName .Channel.ID}}</h1>
+          <p class="muted">{{if .Channel.Enabled}}Following{{else}}Paused{{end}} · Last refresh: <span title="{{when .ChannelInfo.SyncedAt}}">{{age .ChannelInfo.SyncedAt}}</span>
+          </p>
+        </div>
+        <a href="{{.Channel.URL}}" target="_blank" rel="noreferrer">View on YouTube</a>
+      </div>
+    {{else}}
+      <p class="breadcrumb"><a href="{{.ChannelLink "/channel"}}">{{.ChannelName .Channel.ID}}</a> / Video</p>
+    {{end}}
+    <nav class="context-tabs" aria-label="Channel navigation">
+      <a href="{{.ChannelLink "/channel"}}" {{if and (eq .Page "/channel") (ne .Tab "settings")}}aria-current="page"{{end}}>Overview</a>
+      <a href="{{.ChannelLink "/catalogue"}}" {{if eq .Page "/catalogue"}}aria-current="page"{{end}}>Videos</a>
+      <a href="{{.ChannelLink "/playlists"}}" {{if eq .Page "/playlists"}}aria-current="page"{{end}}>Playlists</a>
+      <a href="{{.ChannelLink "/jobs"}}" {{if eq .Page "/jobs"}}aria-current="page"{{end}}>Activity</a>
+      <a href="{{.ChannelLink "/artwork"}}" {{if eq .Page "/artwork"}}aria-current="page"{{end}}>Artwork</a>
+      <a href="{{.ChannelLink "/channel"}}&amp;tab=settings" {{if eq .Tab "settings"}}aria-current="page"{{end}}>Settings</a>
+    </nav>
+  {{end}}
+{{end}}
+
+{{define "channel-detail"}}
+  {{if eq .Tab "settings"}}
+    <h2>Library selection</h2>
+    <p class="hint">Changes apply to uploads and inherited playlists. Existing episode identities are retained.</p>
+    {{template "policy-form" (.PolicyForm .Channel.ID "")}}
+    <details class="danger-zone">
+      <summary>Unfollow channel</summary>
+      <p>This removes the channel from the published library. Its identity records are retained. Plex watch-history retention depends on keeping library trash disabled.</p>
+      <form action="/actions/remove" method="post" hx-post="/actions/remove" hx-target="#notice" data-confirm="Unfollow this channel and remove its media files from the published library? Durable identity records will be retained.">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="revision" value="{{.Revision}}">
+        <input type="hidden" name="id" value="{{.Channel.ID}}">
+        <button class="danger">Unfollow channel</button>
+      </form>
+    </details>
+  {{else}}
+    {{template "channel-overview" .}}
+  {{end}}
+{{end}}
+
+{{define "channel-overview"}}
+  <section id="channel-overview" hx-get="{{.ChannelLink "/fragments/channel"}}" hx-trigger="every 5s, channelsChanged from:body" hx-swap="outerHTML" data-live data-preserve-edits>
+    {{$counts:=.ChannelCounts .Channel.ID}}
+    {{if .ChannelInfo.Error}}<section class="inline-alert danger" role="status">
+        <strong>Channel refresh failed</strong>
+        <p>{{.ChannelInfo.Error}}</p>
+        <a href="{{.ChannelLink "/jobs"}}">Inspect activity</a>
+    </section>{{end}}
+    {{range .Status.Jobs}}{{if and (eq .ChannelID $.Channel.ID) (eq .State "running")}}<p class="inline-alert">Discovering recordings · {{stage .Stage}} · {{.Discovered}} entries found</p>{{end}}{{end}}
+    {{if not .ChannelInfo.SyncedAt}}<p class="hint">Waiting for the first successful channel refresh. Inspect Activity if discovery does not progress.</p>{{end}}
+    <dl class="overview-counts">
+      <div>
+        <dt>Selected recordings</dt>
+        <dd>{{$counts.Selected}}</dd>
+      </div>
+      <div>
+        <dt>Prepared media files</dt>
+        <dd>
+          <a href="{{.ChannelLink "/catalogue"}}&amp;preparation=ready">{{$counts.Ready}}</a>
+        </dd>
+      </div>
+      <div>
+        <dt>Need attention</dt>
+        <dd>
+          <a href="{{.ChannelLink "/catalogue"}}&amp;preparation=failed">{{$counts.Failed}}</a>
+        </dd>
+      </div>
+    </dl>
+    <section class="editor">
+      <h2>Discovery and playback</h2>
+      <p>Recordings appear in Videos during discovery. Selected recordings are prepared in the background. Plex scans the prepared media files.</p>
+      <p>Prepared media and successful Plex playback are separate checks.</p>
+      <div class="form-actions">
+        <form action="/actions/sync" method="post" hx-post="/actions/sync" hx-target="#notice" hx-disabled-elt="find button">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="id" value="{{.Channel.ID}}">
+          <button>Refresh channel</button>
         </form>
-        </details>
-      </td>
-      <td>{{age .SyncedAt}}<small>{{when .SyncedAt}}</small>{{if .Error}}<small class="warning">{{.Error}}</small>{{end}}</td>
-      <td class="actions">
-        <form action="/actions/sync" method="post" hx-post="/actions/sync" hx-target="#notice"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="secondary">Refresh</button></form>
-        <a href="/catalogue?channel={{.ID}}">Videos</a><a href="/playlists?channel={{.ID}}">Playlists</a>
-        <form action="/actions/remove" method="post" hx-post="/actions/remove" hx-target="#notice"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="revision" value="{{$.Revision}}"><input type="hidden" name="id" value="{{.ID}}"><button class="danger">Unfollow</button></form>
-      </td>
-    </tr>
-  {{else}}<tr><td colspan="4" class="empty">No matching channels.</td></tr>{{end}}
-  </tbody>
-</table></div>
-{{template "pagination" .Pagination}}
-</section>
+        <a href="{{.ChannelLink "/catalogue"}}">Inspect videos</a>
+        <a href="{{.ChannelLink "/jobs"}}">View activity</a>
+      </div>
+    </section>
+    <details class="technical-details">
+      <summary>Channel identity</summary>
+      <dl class="details">
+        <dt>YouTube channel ID</dt>
+        <dd>
+          <code>{{.Channel.ID}}</code>
+        </dd>
+        <dt>Channel URL</dt>
+        <dd>{{.Channel.URL}}</dd>
+      </dl>
+    </details>
+  </section>
+{{end}}
+
+{{define "policy-form"}}
+  <form id="{{.ID}}" {{if .OOB}}hx-swap-oob="outerHTML"{{end}} action="/actions/policy" method="post" hx-post="/actions/policy" hx-target="#notice" hx-disabled-elt="find button" class="editor policy-form">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="revision" value="{{.Revision}}">
+    <input type="hidden" name="_form" value="{{.ID}}">
+    <input type="hidden" name="id" value="{{.ChannelID}}">
+    <input type="hidden" name="playlist" value="{{.PlaylistID}}">
+    <label for="{{.ID}}-mode">{{if .PlaylistID}}Playlist selection{{else}}Upload selection{{end}}<select id="{{.ID}}-mode" name="mode" data-policy>
+        {{if .PlaylistID}}<option value="inherit" {{if .Inherited}}selected{{end}}>Inherit channel selection</option>{{end}}
+        <option value="latest" {{if eq .Mode "latest"}}selected{{end}}>Latest videos</option>
+        <option value="all" {{if eq .Mode "all"}}selected{{end}}>All videos</option>{{if .PlaylistID}}<option value="skip" {{if eq .Mode "skip"}}selected{{end}}>Skip playlist</option>{{end}}
+      </select>
+    </label>
+    <label data-limit {{if ne .Mode "latest"}}hidden{{end}} for="{{.ID}}-limit">Number of latest videos<input id="{{.ID}}-limit" type="number" name="limit" min="1" value="{{.Limit}}">
+    </label>
+    {{if not .PlaylistID}}<label class="checkbox">
+    <input name="include_playlists" type="checkbox" {{if .Include}}checked{{end}}> Include this channel's playlists</label>{{end}}
+    <button>Save selection</button>
+  </form>
 {{end}}

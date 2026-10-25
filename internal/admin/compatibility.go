@@ -1,8 +1,8 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"duplex/internal/config"
@@ -22,6 +22,9 @@ func (s *Server) legacyAction(w http.ResponseWriter, r *http.Request) bool {
 	}
 	if p == "/actions/remove" && r.Method == "POST" {
 		e := s.App.RemoveChannel(r.FormValue("id"), r.FormValue("revision"))
+		if e == nil && r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("HX-Redirect", "/channels")
+		}
 		s.result(w, r, e, "Channel removed from the library. Its identity records are retained.")
 		return true
 	}
@@ -30,7 +33,10 @@ func (s *Server) legacyAction(w http.ResponseWriter, r *http.Request) bool {
 		if e == nil {
 			e = s.App.Config.Save(c, r.FormValue("revision"))
 		}
-		s.result(w, r, e, "Settings saved. Reload this page before making another edit.")
+		if e != nil && !errors.Is(e, config.ErrConflict) {
+			e = fieldFailure{"yaml", safeError(e)}
+		}
+		s.result(w, r, e, "Configuration saved.")
 		return true
 	}
 
@@ -45,10 +51,19 @@ func (s *Server) followAction(w http.ResponseWriter, r *http.Request) {
 	limit := 0
 	var err error
 	if mode == "latest" {
-		limit, err = strconv.Atoi(r.FormValue("limit"))
+		limit, err = wholeNumber(r, "limit", 1, int(^uint(0)>>1))
 	}
 	if err == nil {
-		err = s.App.Follow(r.Context(), r.FormValue("url"), config.Selection{Mode: mode, Limit: limit}, r.FormValue("include_playlists") == "on", r.FormValue("revision"))
+		var id string
+		id, err = s.App.FollowChannel(r.Context(), r.FormValue("url"), config.Selection{Mode: mode, Limit: limit}, r.FormValue("include_playlists") == "on", r.FormValue("revision"))
+		if err == nil && r.FormValue("_form") == "follow-form" {
+			location := channelLink("/channel", id, "/channels")
+			if r.Header.Get("HX-Request") != "true" {
+				http.Redirect(w, r, location, http.StatusSeeOther)
+				return
+			}
+			w.Header().Set("HX-Redirect", location)
+		}
 	}
 	s.result(w, r, err, "Channel followed. A refresh is queued.")
 }

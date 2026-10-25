@@ -45,9 +45,7 @@ func (s *Server) readPage(w http.ResponseWriter, r *http.Request) {
 		s.artworkImage(w, r)
 		return
 	}
-	switch path {
-	case "/", "/channels", "/playlists", "/catalogue", "/jobs", "/settings", "/diagnostics", "/artwork", "/fragments/channels", "/fragments/status", "/fragments/jobs", "/fragments/playlist-options":
-	default:
+	if !validReadPage(path) {
 		http.NotFound(w, r)
 		return
 	}
@@ -65,11 +63,27 @@ func (s *Server) readPage(w http.ResponseWriter, r *http.Request) {
 	for _, ch := range status.Config.Config.Channels {
 		v.ChannelSettings[ch.ID] = ch
 	}
+	v.channelContext(r)
+	if (path == "/channel" || path == "/fragments/channel") && v.Channel.ID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if path == "/" {
+		v.Page = "/channels"
+	}
 	if err = s.pageData(r, &v); err != nil {
 		http.Error(w, "cannot read this page: invalid filters or unavailable catalogue", http.StatusBadRequest)
 		return
 	}
+	s.renderPage(w, path, v)
+}
+
+func (s *Server) renderPage(w http.ResponseWriter, path string, v page) {
 	switch path {
+	case "/fragments/channel":
+		s.render(w, "channel-overview", v)
+	case "/fragments/catalogue":
+		s.render(w, "videos", v)
 	case "/fragments/channels":
 		s.render(w, "channels", v)
 	case "/fragments/status":
@@ -86,11 +100,20 @@ func (s *Server) readPage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pageData(r *http.Request, v *page) error {
 	path := r.URL.Path
 	switch path {
-	case "/catalogue":
+	case "/channel", "/fragments/channel":
+		v.Tab = r.URL.Query().Get("tab")
+		totals, err := s.App.ChannelCounts(r.Context(), []string{v.Channel.ID})
+		v.ChannelTotals = totals
+		return err
+	case "/video":
+		video, err := s.App.Video(r.Context(), r.URL.Query().Get("id"))
+		v.Video = video
+		return err
+	case "/catalogue", "/fragments/catalogue":
 		return s.videoPageData(r, v)
 	case "/fragments/playlist-options":
 		return s.playlistOptions(r, v)
-	case "/channels", "/fragments/channels":
+	case "/", "/channels", "/fragments/channels":
 		q := r.URL.Query()
 		filter := catalog.ChannelFilter{Query: q.Get("q"), Failure: q.Get("failure"), Sort: q.Get("sort"), Page: number(r, "page"), PerPage: number(r, "per_page")}
 		result, err := s.App.Channels(r.Context(), filter, q.Get("policy"), q.Get("state"))
@@ -99,6 +122,12 @@ func (s *Server) pageData(r *http.Request, v *page) error {
 		}
 		v.ChannelData = result.Items
 		v.Pagination = paginate(q, "/channels", "Channels", result.Total)
+		ids := make([]string, 0, len(result.Items))
+		for _, ch := range result.Items {
+			ids = append(ids, ch.ID)
+		}
+		v.ChannelTotals, err = s.App.ChannelCounts(r.Context(), ids)
+		return err
 	case "/playlists":
 		result, err := s.App.Playlists(r.Context(), playlistFilter(r))
 		if err != nil {
@@ -106,7 +135,7 @@ func (s *Server) pageData(r *http.Request, v *page) error {
 		}
 		v.PlaylistRows = result.Items
 		v.Pagination = paginate(r.URL.Query(), path, "Playlists", result.Total)
-	case "/", "/jobs", "/fragments/jobs":
+	case "/jobs", "/fragments/jobs":
 		result, err := s.App.Catalog.FilterJobs(r.Context(), jobFilter(r))
 		if err != nil {
 			return err
@@ -195,4 +224,13 @@ func (s *Server) artworkPageData(r *http.Request, v *page) error {
 		}
 	}
 	return nil
+}
+
+func validReadPage(path string) bool {
+	switch path {
+	case "/", "/follow", "/channel", "/video", "/channels", "/playlists", "/catalogue", "/jobs", "/settings", "/diagnostics", "/artwork", "/fragments/channel", "/fragments/catalogue", "/fragments/channels", "/fragments/status", "/fragments/jobs", "/fragments/playlist-options":
+		return true
+	default:
+		return false
+	}
 }
