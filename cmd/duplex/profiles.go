@@ -20,6 +20,17 @@ func startProfile(ctx context.Context, application *app.App, directory, kind str
 		if err != nil {
 			return err
 		}
-		return config.AtomicWrite(filepath.Join(directory, kind+"-measurements.json"), b, 0o600)
+		if err = config.AtomicWrite(filepath.Join(directory, kind+"-measurements.json"), b, 0o600); err != nil {
+			return err
+		}
+		counters := application.Measurements.Counters()
+		if len(counters) == 0 {
+			return nil
+		}
+		encoded, err := json.MarshalIndent(counters, "", "  ")
+		if err != nil {
+			return err
+		}
+		return config.AtomicWrite(filepath.Join(directory, kind+"-counters.json"), encoded, 0o600)
 	})
 }

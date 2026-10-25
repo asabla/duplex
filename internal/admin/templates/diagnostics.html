@@ -60,6 +60,13 @@
   <a href="/api/v1/diagnostics">Diagnostic JSON</a>
 </section>
 <section class="panel">
+  <h2>Media counters</h2>
+  <p>Request attempts and payload bytes received by the media HTTP client. Resolver and artwork traffic are separate. Values restart with the process.</p>
+  <div class="table-wrap"><table><thead><tr><th scope="col">Counter</th><th scope="col">Value</th></tr></thead><tbody>
+    {{range .Status.Counters}}<tr><td>{{.Name}}</td><td>{{.Value}}</td></tr>{{else}}<tr><td colspan="2">No media requests yet.</td></tr>{{end}}
+  </tbody></table></div>
+</section>
+<section class="panel">
   <h2>Stage measurements</h2>
   <div class="table-wrap"><table><thead><tr><th scope="col">Operation</th><th scope="col">Count</th><th scope="col">Total</th><th scope="col">Maximum</th></tr></thead><tbody>
     {{range .Status.Measurements}}<tr><td>{{.Operation}}</td><td>{{.Count}}</td><td>{{.Total}}</td><td>{{.Maximum}}</td></tr>{{else}}<tr><td colspan="4">No measurements yet.</td></tr>{{end}}

@@ -60,10 +60,17 @@ func (a *App) prepareWithRepresentation(ctx context.Context, m source.Metadata, 
 }
 
 func (a *App) mediaClient() *http.Client {
-	if a.httpClient != nil {
-		return a.httpClient
+	client := a.httpClient
+	if client == nil {
+		client = source.HTTPClient()
 	}
-	return source.HTTPClient()
+	measured := *client
+	transport := client.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	measured.Transport = measuredTransport{base: transport, recorder: a.Measurements}
+	return &measured
 }
 
 func (a *App) openTrack(ctx context.Context, id string, f source.Format) (*media.HTTPSource, error) {

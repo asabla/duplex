@@ -3,6 +3,9 @@
 The JSON API and HTML forms use the same application services. Configuration,
 catalogue, jobs, policies, artwork, and diagnostics require an administrator session.
 Responses exclude tokens, passwords, source locators, and raw resolver output.
+Status includes optional `measurements` and `counters` arrays. Counter items have
+`name` and cumulative integer `value`; media counters reset with the process.
+See [measurement fields](performance.md#current-measurement-fields) for scope and units.
 
 ## Session and CSRF
 

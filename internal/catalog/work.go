@@ -82,6 +82,7 @@ func (s *Store) ClaimPreparation(ctx context.Context) (string, error) {
 type PreparationTask struct {
 	VideoID  string
 	Priority int
+	QueuedAt int64
 }
 
 // ClaimPreparationTask reserves the highest-priority queued item transactionally.
@@ -92,7 +93,7 @@ func (s *Store) ClaimPreparationTask(ctx context.Context) (PreparationTask, erro
 		return task, err
 	}
 	defer rollback(tx)
-	if err = tx.QueryRowContext(ctx, `SELECT video_id,priority FROM preparation_jobs WHERE state='queued' ORDER BY priority DESC,updated,video_id LIMIT 1`).Scan(&task.VideoID, &task.Priority); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT video_id,priority,updated FROM preparation_jobs WHERE state='queued' ORDER BY priority DESC,updated,video_id LIMIT 1`).Scan(&task.VideoID, &task.Priority, &task.QueuedAt); err != nil {
 		return task, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE preparation_jobs SET state='resolving' WHERE video_id=?`, task.VideoID); err != nil {

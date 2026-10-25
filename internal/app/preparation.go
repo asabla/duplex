@@ -204,6 +204,9 @@ func (a *App) waitPreparation(ctx context.Context, tick <-chan time.Time) bool {
 }
 
 func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) {
+	if task.QueuedAt > 0 {
+		a.Measurements.Add("preparation.queue", max(time.Duration(0), time.Since(time.Unix(task.QueuedAt, 0))))
+	}
 	if task.Priority >= 1000 {
 		finished := a.beginForeground()
 		defer finished()

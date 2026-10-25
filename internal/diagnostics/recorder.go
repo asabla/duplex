@@ -17,8 +17,9 @@ type Measurement struct {
 
 // Recorder contains one aggregate per known operation.
 type Recorder struct {
-	mu     sync.Mutex
-	values map[string]Measurement
+	mu       sync.Mutex
+	values   map[string]Measurement
+	counters map[string]int64
 }
 
 // Add records an operation's wall time.
@@ -31,7 +32,10 @@ func (r *Recorder) Add(operation string, elapsed time.Duration) {
 	if r.values == nil {
 		r.values = make(map[string]Measurement)
 	}
-	m := r.values[operation]
+	m, exists := r.values[operation]
+	if !exists && len(r.values) >= 128 {
+		return
+	}
 	m.Operation = operation
 	m.Count++
 	m.Total += elapsed

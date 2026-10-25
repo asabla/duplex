@@ -85,6 +85,7 @@ type Status struct {
 	Jobs            []catalog.Job             `json:"jobs"`
 	Config          config.Snapshot           `json:"configuration"`
 	Measurements    []diagnostics.Measurement `json:"measurements,omitempty"`
+	Counters        []diagnostics.Counter     `json:"counters,omitempty"`
 }
 
 // Open initializes storage and starts bounded workers under the supplied context.
@@ -388,7 +389,7 @@ func (a *App) Publish() error {
 
 // Status is the compatibility diagnostic snapshot; Summary is intended for polling.
 func (a *App) Status(ctx context.Context) (Status, error) {
-	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot()}
+	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot(), Counters: a.Measurements.Counters()}
 	var e error
 	if s.Channels, e = a.Catalog.Channels(ctx); e != nil {
 		return s, e

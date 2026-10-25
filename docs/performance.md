@@ -97,3 +97,17 @@ latency guarantee. The complete discovery-to-playback comparison remains open.
 The incremental pipeline, SQL read pages, separate preparation workers, Plex
 publication, and complete playback workloads still require matched before/after
 measurements. No release acceptance is claimed by the results above.
+
+## Current measurement fields
+
+Authenticated status and diagnostics include bounded cumulative counters for
+`media.http_requests` and `media.upstream_bytes`. These count media-client request
+attempts and received response payload bytes. They exclude resolver subprocess
+and artwork traffic. They restart with the process. Private profile captures
+also retain a separate counters JSON file when media traffic occurred.
+
+`preparation.queue` measures the interval from the durable enqueue timestamp to
+claim. Its timestamp resolution is one second. `preparation.wait` measures a
+request's wait for the shared preparation slots. Source-operation counts record
+resolver calls separately. CPU, allocations, and blocking use separate profile
+captures; no profiling listener is exposed.

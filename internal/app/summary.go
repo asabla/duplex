@@ -9,7 +9,7 @@ import (
 // Summary is used for health checks and small progress regions. Status remains
 // the legacy JSON catalogue view; polling never needs its unbounded video array.
 func (a *App) Summary(ctx context.Context) (Status, catalog.Counts, error) {
-	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot()}
+	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot(), Counters: a.Measurements.Counters()}
 	counts, err := a.Catalog.Summary(ctx, visibility(s.Config.Config))
 	if err != nil {
 		return s, counts, err
