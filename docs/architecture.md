@@ -208,6 +208,11 @@ Asset manifests retain a modification timestamp for each content-addressed file.
 Changed content advances that timestamp even within the same second; unchanged
 content retains it. Older manifests without a timestamp use the file timestamp.
 
+Caption lookup uses the selected original audio language. Explicit subtitle
+tracks take priority. Automatic caption lookup checks exact and base-language
+original tracks before other matching tracks: for example, `en-US` can use
+`en-orig`. It does not fall back to an unrelated language.
+
 Preparation state is independent of source lifecycle. An upcoming broadcast is
 not a failed MP4 preparation. Completed discovery also does not mean all selected
 media is ready. Long work and item results remain durable through restarts.
