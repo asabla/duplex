@@ -30,7 +30,7 @@ func (v *VirtualMP4) SaveIndex(path string) error {
 		return e
 	}
 
-	return config.AtomicWrite(path, envelope, 0o600)
+	return config.AtomicWriteIfChanged(path, envelope, 0o600)
 }
 
 // LoadIndex verifies a saved index against freshly opened immutable source identities.

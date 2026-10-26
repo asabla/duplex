@@ -183,7 +183,7 @@ func (a *App) persistRepresentation(m source.Metadata, candidate source.Candidat
 		return err
 	}
 
-	return config.AtomicWrite(filepath.Join(a.original.IndexDir, representation.ID()+".description.json"), data, 0o600)
+	return config.AtomicWriteIfChanged(filepath.Join(a.original.IndexDir, representation.ID()+".description.json"), data, 0o600)
 }
 
 func fallbackReason(e error) string {
