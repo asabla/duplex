@@ -32,31 +32,3 @@ services:
       interval: 10s
       timeout: 6s
       retries: 6
-
-  # Optional isolated Plex instance. Start only after the mount is ready, then
-  # configure a dedicated NFO Series library and save its section in config.yaml.
-  plex:
-    profiles: [plex]
-    image: plexinc/pms-docker@sha256:01bdf0ad6d53198da4331540c1e73ab65db7a72e961fff97ecb0847d46055c5f
-    restart: unless-stopped
-    depends_on:
-      duplex-mount:
-        condition: service_healthy
-        restart: true
-    ports:
-      - 127.0.0.1:${PLEX_PORT:-32499}:32400
-    environment:
-      TZ: Europe/Stockholm
-    volumes:
-      - plex-config:/config
-      - plex-transcode:/transcode
-      - type: bind
-        source: ${DUPLEX_HOST_DIR:-/var/lib/duplex}/library
-        target: /data
-        read_only: true
-        bind:
-          propagation: rslave
-          create_host_path: false
-volumes:
-  plex-config:
-  plex-transcode:

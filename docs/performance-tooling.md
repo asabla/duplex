@@ -52,8 +52,8 @@ benchmarks to compare latency and allocation per operation.
 - `*-source/` and `*-linux.test`: the source and binary used for each version.
 
 Keep raw profiles and source snapshots outside Git. For the default private
-output location, `.cache` is already ignored. Retain sanitized measurements
-and source identities in `docs/evidence` when recording a result.
+output location, `.cache` is already ignored. Review and sanitize measurements
+and source identities before including a result in project documentation.
 
 These are catalogue query measurements inside Linux containers. They do not
 measure native-host Linux storage, HTTP response time, Plex scanning, live

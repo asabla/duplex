@@ -7,9 +7,9 @@ duplex runs on Linux. It keeps a catalogue in SQLite and exposes verified media
 through a read-only FUSE mount. It fetches byte ranges for playback and seeking;
 it does not prepare a complete video file first.
 
-**Status:** the cleanup release is under qualification. The implementation and
-its acceptance evidence are tracked separately in the [validation register](docs/validation.md).
-Historical test results do not qualify the current build.
+**Status:** experimental. The application is implemented, but the current source
+build is not release-qualified. Review the [validation requirements](docs/validation.md)
+before deployment. Earlier household tests do not qualify a new build.
 
 ## Requirements
 
@@ -25,9 +25,18 @@ On macOS, run Docker, FUSE, Plex, and persistent storage inside Colima. Follow t
 
 ## Compose quick start
 
-Run these commands from the repository on the **Linux Docker daemon host**:
+Choose one complete example:
+
+| File | Includes |
+| --- | --- |
+| [compose.yaml](compose.yaml) | duplex; connect your existing Plex server. |
+| [compose.plex.yaml](compose.plex.yaml) | duplex and a separate Plex server. |
+
+Run these commands from the repository on the **Linux Docker daemon host**.
+Set `COMPOSE_FILE` to your chosen example and keep it set for later commands:
 
 ```sh
+export COMPOSE_FILE=compose.yaml  # Or compose.plex.yaml to include Plex.
 sudo ./scripts/prepare-host.sh /var/lib/duplex
 sudo ./scripts/check-host.sh /var/lib/duplex
 docker compose build
@@ -51,29 +60,32 @@ or credentials. For an existing installation, use the [upgrade procedure](docs/o
 
 Use a dedicated TV library. Mount `/var/lib/duplex/library` into the Plex container
 read-only, with `rslave` propagation, and select its `media` child as the library
-folder. The optional Plex service in [compose.yaml](compose.yaml) already has this mount:
+folder. The Plex service in [compose.plex.yaml](compose.plex.yaml) already has this mount.
+When that example is selected, start it after duplex is ready:
 
 ```sh
-docker compose --profile plex up -d plex
+docker compose up -d plex
 ```
 
 In Plex, select **Plex NFO Series**, enable **Use local assets** and **Use season
 titles**, and disable automatic trash emptying and optional thumbnail, intro,
 credits, and loudness analysis. Keep remote access disabled for the household setup.
 See [Plex setup](docs/installation.md#plex-library) for the token file, library
-section, and claim procedure.
+section, and claim procedure. Use the [collection setup guide](docs/collections.md)
+for library settings, selection examples, and the limits of this approach.
 
 ## Follow a channel and play a video
 
-1. Open **Channels**, enter a YouTube channel URL, and select **Follow**.
-2. Keep **Latest N**, `50`, and **Include playlists** for the defaults. Use **All**
-   for the complete collection. Individual playlists can inherit, override, or skip.
-3. Open **Videos**. Discovered entries and preparation state appear separately.
-   **Prepare now** gives a selected video priority over background work.
-4. Wait for **ready**. duplex publishes each verified recording and requests a
-   Plex scan. Open its show in Plex Web and play the episode.
+1. Open **Channels**, select **Follow channel**, and enter a public YouTube channel URL.
+2. Select **Latest videos** and a count. Use **All videos** for the complete
+   collection. Start with playlists disabled, then add them after the first
+   playback check. Individual playlists can inherit, override, or skip.
+3. Open **Videos**. Discovery and preparation have separate states. Open a video
+   title for details. Use **Retry preparation** when it is offered for a failed item.
+4. Wait for **Prepared** and Plex discovery. Open its show in Plex Web and test
+   playback, a distant seek, and resume.
 
-If a video does not become ready, inspect its preparation details and **Diagnostics**.
+If preparation fails, inspect the video details and **Diagnostics**.
 Use [troubleshooting](docs/troubleshooting.md) before repeating a failed operation.
 
 ## What is included
@@ -95,13 +107,15 @@ representation can no longer be read.
 ## Documentation
 
 - [Install](docs/installation.md): Linux, Colima, and Plex setup.
+- [Configure collections](docs/collections.md): Plex library setup, selection examples, and limits.
 - [Operate](docs/operations.md): policies, artwork, storage, backups, upgrades, and recovery.
 - [Administration panel](docs/administration.md): channels, filtering, preparation failures, policies, and artwork.
 - [Configuration](docs/configuration.md) and [JSON API](docs/api.md): field and endpoint references.
 - [Troubleshooting](docs/troubleshooting.md): symptoms and corrective actions.
 - [Architecture](docs/architecture.md): identities, selection, packaging, and cache rules.
 - [Development](docs/development.md): code standards and quality gates.
-- [Performance evidence](docs/performance.md) and [validation](docs/validation.md).
+- [Performance measurement](docs/performance.md) and [validation requirements](docs/validation.md).
+- [Contributing](CONTRIBUTING.md), [security reporting](SECURITY.md), and [licensing](docs/licensing.md).
 
 ## Development commands
 
@@ -118,3 +132,12 @@ make check   # Run the local quality gate.
 
 There is no frontend build step. Templates, CSS, JavaScript, and HTMX are embedded
 in the Go binary. Commits use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
+
+## License
+
+The original duplex source code and documentation are available under the
+[MIT License](LICENSE). Copyright (c) 2026 asabla.
+
+Third-party code, fonts, and tools keep their own licenses. See
+[third-party notices](THIRD_PARTY_NOTICES.txt) and [licensing](docs/licensing.md).
+Plex and media obtained from external services are not covered by this license.

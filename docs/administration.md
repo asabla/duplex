@@ -85,7 +85,8 @@ component library or frontend build.
 - [W3C guidance for updating content](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide.html)
   informs the live-update pause control.
 
-The [administration verification record](evidence/administration-ux.json) contains
-the automated and Browser checks for this change, separate from media release
-acceptance. Controlled preview data does not establish household Plex playback,
-device compatibility, or complete accessibility conformance.
+Use handler tests, controlled rendered markup, and Browser/keyboard checks for
+interface changes, as described in [Development](development.md). Controlled
+preview data does not establish household Plex playback, device compatibility,
+or complete accessibility conformance. Media acceptance uses the separate
+[validation requirements](validation.md).

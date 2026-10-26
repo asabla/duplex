@@ -26,6 +26,7 @@ COPY --from=build /duplex /usr/local/bin/duplex
 COPY --from=build /yt-dlp /opt/yt-dlp
 RUN ln -s /opt/yt-dlp/yt-dlp /usr/local/bin/yt-dlp
 COPY --from=deno /deno /usr/local/bin/deno
+COPY LICENSE /LICENSE
 COPY THIRD_PARTY_NOTICES.txt /THIRD_PARTY_NOTICES.txt
 COPY docs/licenses /licenses
 ENV DENO_DIR=/tmp/deno

@@ -1,8 +1,7 @@
 # Code standards
 
-This document adapts the supplied general readability instructions and their Go
-and HTML policies to duplex. It is the authority for source readability
-and manual review rules. [Development](development.md) owns tool setup and check
+This document defines the source readability rules and manual review requirements
+for duplex. [Development](development.md) owns tool setup and check
 commands. [Architecture](architecture.md) owns package and runtime boundaries.
 
 The shared local and CI quality gate enforces the automated checks below. Manual

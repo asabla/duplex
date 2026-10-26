@@ -7,3 +7,9 @@
 __pycache__/
 *.py[cod]
 /tools/readability/node_modules/
+
+# Local environment and editor state
+.env
+.env.*
+!.env.example
+.DS_Store

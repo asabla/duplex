@@ -18,12 +18,12 @@ Use the versions in [`.tool-versions`](../.tool-versions) and [go.mod](../go.mod
 - Prettier 3.9.10, prettier-plugin-go-template 0.0.15, and html-validate 11.17.0,
   pinned in the development-only `tools/readability/package-lock.json`.
 - Python 3 for the existing scripts and their controlled behavioral tests.
-- FFmpeg and ffprobe for controlled media comparisons. The retained local evidence uses 9.0.2.
+- FFmpeg and ffprobe for controlled media comparisons. Record the installed version in each result.
 
 Install the pinned tools through the existing mise configuration or make those
 exact versions available on PATH. Check their versions before running the gate.
 The gate checks the Go toolchain and analysis tools; it needs FFmpeg and ffprobe
-on PATH but does not enforce the retained FFmpeg evidence version.
+on PATH but does not pin their version.
 
 Install the development-only Node packages from the repository root:
 
@@ -112,26 +112,6 @@ checks labels and native elements, and writes `.cache/markup/markup-validation.j
 CI retains this summary. Do not upload the raw HTML, session values, or local
 fixture configuration. These checks complement the Browser and keyboard review.
 
-## Refactor baseline status
-
-During planning on 2026-10-25, the installed golangci-lint 2.15.0 accepted the
-current configuration schema. An attempt to run `make check` stopped at its tool
-prerequisite check because `govulncheck` was missing from PATH. The documentation
-preparation also found concurrent source changes. These observations do not
-establish a stable or passing refactor baseline.
-
-This planning blocker was resolved before source work. The stable baseline and
-separate proposed-rule findings were recorded before activation.
-The later integrated-source baseline at `b7e3415` passed the complete existing
-gate, including Linux/FUSE tests, both architecture builds, and at least 80%
-statement coverage in every package. The pinned vulnerability scanner was
-available in the existing local tool cache and was added to the command's PATH.
-See the [baseline record](evidence/structure-baseline.json) for versions, source
-fingerprint, coverage, and the separate proposed-rule findings. The isolated live
-Plex qualification test remained skipped; this is not a release acceptance claim.
-The later repository refactor and activated-check results are tracked in the
-[refactor work list](structure-refactor.md) and its completion evidence.
-
 ## Tests and evidence
 
 Controlled MP4 tests compare packet data and timing against independently prepared
@@ -141,9 +121,9 @@ Record dependency versions and retain failed experiments as well as successful
 results. Never commit signed source URLs, tokens, profiles, credentials, or local
 installation state.
 
-The V01–V12 register is the release authority. Keep historical results separate
-from a new build's results. Provider, active-live, and explicit playlist-import
-scope remain deferred; V08 covers discovered playlist seasons in this release.
+The [validation requirements](validation.md) define the release gates. Keep results
+for each build separate. Active-live playback and explicit playlist URL import
+remain outside the current scope; discovered playlist seasons are implemented.
 
 ## Commits and documentation
 
@@ -154,4 +134,5 @@ explicitly configured and publication is authorized.
 The README follows [GitHub's README guidance](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes).
 Documentation uses the [Diátaxis](https://diataxis.fr/) distinction between an
 installation tutorial, operating procedures, reference material, and architecture
-explanations. Put raw qualification output in evidence, not in installation steps.
+explanations. Keep raw qualification output outside Git. Publish only reviewed, sanitized
+results that identify their exact revision and test scope.

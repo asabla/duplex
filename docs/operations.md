@@ -1,11 +1,18 @@
 # Operate and recover duplex
 
+Use the same Compose example and project for every command. Keep `COMPOSE_FILE`
+set to `compose.yaml` or `compose.plex.yaml`, as selected during installation.
+Do not switch examples or use a different project name to upgrade an installation.
+
 ## Change a collection policy
 
-Open **Channels** to change uploads between **Latest N** and **All**, or to include
-or skip playlists. In **Playlists**, choose **Inherit**, **Latest N**, **All**, or
-**Skip** for one collection. A channel-wide playlist skip takes precedence over
-individual overrides.
+See [Configure a collection](collections.md) for initial setup and selection limits.
+
+Open a channel's **Settings** to select **Latest videos** or **All videos**, or
+to include or skip playlists. In **Playlists**, open **Actions** then
+**Edit selection** to choose **Inherit**, **Latest videos**, **All videos**, or
+**Skip playlist** for one collection. A channel-wide playlist skip takes precedence
+over individual overrides.
 
 Latest N uses publication time. Playlist episodes keep YouTube playlist order
 after a complete refresh. A video shared by several playlists uses one canonical
@@ -13,9 +20,9 @@ media revision and cache data, with separate Plex progress for each occurrence.
 Repeated references inside one playlist appear once.
 
 Discovery and preparation are separate. A completed discovery job can still have
-pending media tasks. Inspect **Videos**, or use **Prepare now** for a selected
-recording. Unfollowing removes the channel from the projection and retains its
-identity records. Pausing retains its settings without publishing its media.
+pending media tasks. Inspect **Videos** and open a recording for preparation
+details. Use **Retry preparation** when it is available for a failed recording.
+Unfollowing removes the channel from the projection and retains its identity records. Pausing retains its settings without publishing its media.
 
 ## Replace artwork
 

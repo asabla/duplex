@@ -29,6 +29,10 @@ last applicable limit remains active and Diagnostics reports the failure.
 
 ## Channel and playlist policies
 
+Use the [collection setup guide](collections.md) for worked selections and the
+limits of playlist discovery, cache storage, and Plex history. This section
+defines the YAML fields.
+
 ```yaml
 channels:
   - id: UCw7FkXsC00lH2v2yB5LQoYA

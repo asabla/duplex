@@ -24,10 +24,18 @@ bind mount. Do not substitute a macOS directory for this Linux path.
 
 ## Initialize and start
 
-The production definition is [compose.yaml](../compose.yaml) at the repository root.
+Choose one complete example at the repository root. [compose.yaml](../compose.yaml)
+runs only duplex for an existing Plex installation. [compose.plex.yaml](../compose.plex.yaml)
+runs duplex and a separate Plex server. Do not combine the two files.
 Qualification fixtures are separate.
 
+Set `COMPOSE_FILE` for your chosen example before using the commands below.
+Compose reads this variable for each command. Keep it set for logs, upgrades,
+and shutdown, or save it in your local `.env`. [.env.example](../.env.example)
+contains non-secret settings for both examples.
+
 ```sh
+export COMPOSE_FILE=compose.yaml  # Or compose.plex.yaml to include Plex.
 docker compose build
 docker compose run --rm --no-deps duplex-mount init \
   --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
@@ -62,11 +70,11 @@ These settings choose locations and ports; credentials remain in protected files
 
 ## Plex library
 
-The supplied optional Plex service mounts the stable parent read-only with
-`rslave` propagation:
+When `COMPOSE_FILE=compose.plex.yaml` is selected, its Plex service mounts the
+stable parent read-only with `rslave` propagation. Start it after duplex is ready:
 
 ```sh
-docker compose --profile plex up -d plex
+docker compose up -d plex
 ```
 
 Open `http://localhost:32499/web/` and claim that isolated server. Keep remote
@@ -74,9 +82,9 @@ access disabled. If **Plex NFO Series** is absent after claim, restart Plex and
 check again. duplex checks the actual agent; it does not infer support from the
 server version.
 
-For an existing Plex container, give it a read-only bind of the stable
-`/var/lib/duplex/library` parent with `rslave` propagation. Select the mounted
-`media` child as the library folder. Do not bind the FUSE root directly: an old
+For the duplex-only example, use your existing Plex installation. A Plex container
+must have a read-only bind of the stable `/var/lib/duplex/library` parent with
+`rslave` propagation. Select the mounted `media` child as the library folder. Do not bind the FUSE root directly: an old
 root bind can remain disconnected after remount recovery.
 
 Create a dedicated **TV Shows** library:
@@ -104,11 +112,16 @@ plex:
 ```
 
 Replace `"1"` with the dedicated library's actual section ID. For another Plex
-server, use its reachable origin. The token is sent in a header. Diagnostics
-reports a missing agent, inaccessible token file, or incorrect library setting.
+server, use an origin reachable from inside the duplex container. Container
+loopback is not the Docker host. The server must also be able to read the same
+Linux projection; these examples do not configure a network filesystem. The token
+is sent in a header. Diagnostics reports a missing agent, inaccessible token file,
+or incorrect library setting.
 Scans require mount readiness and the library prerequisites.
 
-Follow the [first channel and playback steps](../README.md#follow-a-channel-and-play-a-video).
+Follow the [collection setup guide](collections.md) for channel and playlist
+selection, Plex settings, and the current limitations. Then use the
+[first playback steps](../README.md#follow-a-channel-and-play-a-video).
 
 ## Colima on macOS
 
@@ -121,6 +134,7 @@ Use the existing Colima profile. If it is stopped, start it. Then run from the
 repository on macOS:
 
 ```sh
+export COMPOSE_FILE=compose.yaml  # Or compose.plex.yaml to include Plex.
 colima start
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/prepare-host.sh
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/check-host.sh

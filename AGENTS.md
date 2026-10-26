@@ -16,15 +16,15 @@
 2. Read [Development](docs/development.md) for tools, commands, and verification.
 3. Read [Architecture](docs/architecture.md) for package responsibilities,
    state ownership, dependencies, and runtime invariants.
-4. For structural work, read the [refactor work list](docs/structure-refactor.md).
-   Recheck its source evidence and dependencies before selecting an item.
+4. For structural work, inspect state ownership, callers, invariants, and tests
+   before selecting a boundary to change.
 5. Read the documentation for the behavior that the task affects. Use the
    [README documentation index](README.md#documentation) to find it.
 6. Read the relevant source and tests. Confirm current behavior before changing it.
 
 Keep detailed readability rules in Code standards, runtime boundaries in
-Architecture, check procedures in Development, and stage status in the refactor
-work list. Update the relevant authority when a later implementation changes it.
+Architecture, check procedures in Development, and acceptance requirements in
+Validation. Update the relevant authority when a later implementation changes it.
 
 ## Concurrent work
 

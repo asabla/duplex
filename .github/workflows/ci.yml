@@ -21,8 +21,10 @@ jobs:
         run: npm ci --ignore-scripts --prefix tools/readability
       - name: Check
         run: make check
-      - name: Validate production Compose
-        run: docker compose config --quiet
+      - name: Validate Compose examples
+        run: |
+          docker compose -f compose.yaml config --quiet
+          docker compose -f compose.plex.yaml config --quiet
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         if: always()
         with:

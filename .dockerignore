@@ -5,6 +5,7 @@
 !cmd/**
 !internal/
 !internal/**
+!LICENSE
 !THIRD_PARTY_NOTICES.txt
 !docs/
 !docs/licenses/
