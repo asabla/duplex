@@ -1,0 +1,88 @@
+{
+  "date": "2026-10-26",
+  "before": {
+    "commit": "2c9c811ec6b8db67fe398f5efd7f8ced842cf12a",
+    "tree": "ac26134e00c717e7922a62154c68cd4c675b80f0"
+  },
+  "after": {
+    "commit": "20a70e30bef1c73ea8ea1c99d77ee5dc8d23039f",
+    "tree": "ad70e313ac426e16bd5fd703182918ec6ff0030c"
+  },
+  "environment": {
+    "go": "1.27.3",
+    "os": "linux",
+    "architecture": "arm64",
+    "image": "debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587",
+    "cpus": 2,
+    "memory_bytes": 1073741824,
+    "gomaxprocs": 2,
+    "storage": "512 MiB tmpfs",
+    "network": "disabled",
+    "readers": 1
+  },
+  "fixture": {
+    "recordings": 10000,
+    "uploads": "one selected verified year",
+    "playlist": "the same uploads plus one selected playlist sharing all videos",
+    "native_reference": "same episode filenames in the measured season, with empty files",
+    "sha256": {
+      "filesystem_benchmark_test.go": "8cd60ca0185ee941f39089e888ecf5d24156343d6eed3e9e009a40501b326a96",
+      "filesystem_metadata_benchmark_test.go": "027ec3da222569bad564bdab0bd03c68e3758e4dc2ef7ebb0ad7e30ec9fe4c2f",
+      "filesystem_metadata_linux_test.go": "917c7bb3c066dfea74dfefa2c27da15efb06f85a101402aa1a79f69d63c4967d",
+      "discovery_test.go": "f83142d16f6df98aaaf840937e0dd632e2a03b261e76c0e0131a149f2231e67f"
+    }
+  },
+  "summary_fields": [
+    "median",
+    "minimum",
+    "maximum"
+  ],
+  "provider_samples": 10,
+  "provider_sample_duration": "1s",
+  "update_samples": 10,
+  "update_sample_duration": "1s",
+  "mounted_samples": 3,
+  "mounted_calls_per_sample": 500,
+  "mounted_percentiles": "Nearest-rank percentile within each 500-call sample. Summary is the median and range of the three per-sample percentiles, not a pooled percentile.",
+  "limits": [
+    "Synthetic warm metadata only; fixture setup and migration excluded from timed reads.",
+    "No Plex scan, NFO content read, payload read, cold-cache, concurrency, or native amd64 measurement.",
+    "Timing overhead is included in mounted and native stat calls.",
+    "All six ten-sample provider time comparisons have benchstat p < 0.001. Update results are included separately. Three-sample mounted results have no significance claim.",
+    "Prepared-query retention is limited to 32 statements and 128 KiB of SQL text per store. Driver plan memory and total resident memory were not measured. No persistent format change."
+  ],
+  "provider": [
+    {"workload": "CatalogueFilesystemMetadata/10000/playlist_false/channel", "ns/op": {"before": [77638.5, 76062.0, 78470.0], "after": [9461.5, 9374.0, 9784.0]}, "B/op": {"before": [3904.0, 3904.0, 3908.0], "after": [4200.0, 4200.0, 4202.0]}, "allocs/op": {"before": [40.0, 40.0, 40.0], "after": [37.0, 37.0, 37.0]}},
+    {"workload": "CatalogueFilesystemMetadata/10000/playlist_false/season", "ns/op": {"before": [84151.0, 82876.0, 85055.0], "after": [11001.0, 10649.0, 11474.0]}, "B/op": {"before": [4584.0, 4584.0, 4585.0], "after": [4897.0, 4897.0, 4897.0]}, "allocs/op": {"before": [57.0, 57.0, 57.0], "after": [54.0, 54.0, 54.0]}},
+    {"workload": "CatalogueFilesystemMetadata/10000/playlist_false/show_nfo", "ns/op": {"before": [290250.5, 285812.0, 300955.0], "after": [62059.0, 60742.0, 63531.0]}, "B/op": {"before": [16998.0, 16998.0, 17002.0], "after": [17678.0, 17677.0, 17678.0]}, "allocs/op": {"before": [195.0, 195.0, 195.0], "after": [188.0, 188.0, 188.0]}},
+    {"workload": "CatalogueFilesystemMetadata/10000/playlist_true/channel", "ns/op": {"before": [82666.0, 80570.0, 83950.0], "after": [11061.5, 10925.0, 11215.0]}, "B/op": {"before": [3904.0, 3904.0, 3904.0], "after": [4200.0, 4200.0, 4200.0]}, "allocs/op": {"before": [40.0, 40.0, 40.0], "after": [37.0, 37.0, 37.0]}},
+    {"workload": "CatalogueFilesystemMetadata/10000/playlist_true/season", "ns/op": {"before": [162329.0, 160904.0, 164427.0], "after": [11259.0, 10997.0, 11497.0]}, "B/op": {"before": [4596.0, 4596.0, 4597.0], "after": [4905.0, 4905.0, 4905.0]}, "allocs/op": {"before": [54.0, 54.0, 54.0], "after": [51.0, 51.0, 51.0]}},
+    {"workload": "CatalogueFilesystemMetadata/10000/playlist_true/show_nfo", "ns/op": {"before": [299503.0, 296735.0, 302537.0], "after": [67319.0, 66295.0, 68309.0]}, "B/op": {"before": [17591.0, 17590.0, 17592.0], "after": [18270.0, 18270.0, 18271.0]}, "allocs/op": {"before": [208.0, 208.0, 208.0], "after": [201.0, 201.0, 201.0]}}
+  ],
+  "updates": [
+    {"workload": "CatalogueProjectionUpdate/playlist_false", "ns/op": {"before": [32414.0, 31911.0, 32967.0], "after": [32345.0, 31822.0, 32827.0]}, "B/op": {"before": [328.0, 328.0, 329.0], "after": [328.0, 328.0, 329.0]}, "allocs/op": {"before": [8.0, 8.0, 8.0], "after": [8.0, 8.0, 8.0]}},
+    {"workload": "CatalogueProjectionUpdate/playlist_true", "ns/op": {"before": [44930.0, 44221.0, 45589.0], "after": [44613.0, 44217.0, 45053.0]}, "B/op": {"before": [328.0, 328.0, 328.0], "after": [328.0, 328.0, 328.0]}, "allocs/op": {"before": [8.0, 8.0, 8.0], "after": [8.0, 8.0, 8.0]}}
+  ],
+  "mounted": [
+    {"workload": "MountedFilesystemMetadata/playlist_false/native/channel", "ns/op": {"before": [550.8, 548.8, 557.9], "after": [594.9, 564.6, 631.3]}, "B/op": {"before": [304.0, 304.0, 304.0], "after": [304.0, 304.0, 304.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [500.0, 459.0, 500.0], "after": [500.0, 500.0, 500.0]}, "p95-ns": {"before": [667.0, 667.0, 667.0], "after": [708.0, 667.0, 709.0]}, "p99-ns": {"before": [875.0, 833.0, 2042.0], "after": [1000.0, 917.0, 2083.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/native/season", "ns/op": {"before": [581.4, 571.6, 592.4], "after": [597.2, 594.7, 602.1]}, "B/op": {"before": [320.0, 320.0, 320.0], "after": [320.0, 320.0, 320.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [500.0, 500.0, 500.0], "after": [500.0, 500.0, 500.0]}, "p95-ns": {"before": [708.0, 667.0, 709.0], "after": [667.0, 667.0, 667.0]}, "p99-ns": {"before": [875.0, 875.0, 917.0], "after": [917.0, 834.0, 1709.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/native/media", "ns/op": {"before": [622.6, 609.2, 655.3], "after": [639.2, 622.3, 641.8]}, "B/op": {"before": [368.0, 368.0, 368.0], "after": [368.0, 368.0, 368.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [542.0, 542.0, 542.0], "after": [542.0, 542.0, 542.0]}, "p95-ns": {"before": [750.0, 750.0, 750.0], "after": [709.0, 709.0, 750.0]}, "p99-ns": {"before": [959.0, 959.0, 1041.0], "after": [875.0, 792.0, 916.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/native/episode_nfo", "ns/op": {"before": [653.7, 621.5, 668.0], "after": [622.6, 614.1, 623.9]}, "B/op": {"before": [368.0, 368.0, 368.0], "after": [368.0, 368.0, 368.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [542.0, 541.0, 542.0], "after": [542.0, 542.0, 542.0]}, "p95-ns": {"before": [750.0, 750.0, 792.0], "after": [709.0, 709.0, 709.0]}, "p99-ns": {"before": [1125.0, 875.0, 1875.0], "after": [916.0, 875.0, 917.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/native/show_nfo", "ns/op": {"before": [583.9, 552.6, 610.9], "after": [579.3, 569.4, 619.9]}, "B/op": {"before": [304.0, 304.0, 304.0], "after": [304.0, 304.0, 304.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [500.0, 500.0, 500.0], "after": [500.0, 500.0, 500.0]}, "p95-ns": {"before": [708.0, 666.0, 708.0], "after": [667.0, 667.0, 708.0]}, "p99-ns": {"before": [833.0, 833.0, 1000.0], "after": [792.0, 750.0, 916.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/fuse/channel", "ns/op": {"before": [271141.0, 270724.0, 278359.0], "after": [93446.0, 82486.0, 95550.0]}, "B/op": {"before": [9245.0, 9054.0, 9546.0], "after": [10107.0, 9532.0, 10530.0]}, "allocs/op": {"before": [104.0, 104.0, 104.0], "after": [98.0, 98.0, 99.0]}, "p50-ns": {"before": [260335.0, 259585.0, 267960.0], "after": [90167.0, 81000.0, 91626.0]}, "p95-ns": {"before": [357626.0, 350960.0, 360210.0], "after": [107209.0, 105376.0, 108292.0]}, "p99-ns": {"before": [390585.0, 386127.0, 476627.0], "after": [158084.0, 157250.0, 246084.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/fuse/season", "ns/op": {"before": [410397.0, 410037.0, 414032.0], "after": [149290.0, 148480.0, 150810.0]}, "B/op": {"before": [15355.0, 15063.0, 15613.0], "after": [15941.0, 15939.0, 15947.0]}, "allocs/op": {"before": [199.0, 199.0, 199.0], "after": [189.0, 189.0, 190.0]}, "p50-ns": {"before": [401377.0, 396961.0, 407710.0], "after": [144542.0, 144501.0, 144834.0]}, "p95-ns": {"before": [486835.0, 476711.0, 498461.0], "after": [179501.0, 178751.0, 190459.0]}, "p99-ns": {"before": [522920.0, 518378.0, 539503.0], "after": [287168.0, 217834.0, 317210.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/fuse/media", "ns/op": {"before": [820913.0, 809261.0, 824854.0], "after": [423662.0, 417404.0, 426288.0]}, "B/op": {"before": [26197.0, 25913.0, 26491.0], "after": [26501.0, 26495.0, 27057.0]}, "allocs/op": {"before": [350.0, 350.0, 350.0], "after": [346.0, 346.0, 346.0]}, "p50-ns": {"before": [798629.0, 771295.0, 805713.0], "after": [410335.0, 409836.0, 419877.0]}, "p95-ns": {"before": [906004.0, 891255.0, 996880.0], "after": [487877.0, 487544.0, 514419.0]}, "p99-ns": {"before": [1065380.0, 1041797.0, 2583971.0], "after": [564712.0, 549377.0, 615836.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/fuse/episode_nfo", "ns/op": {"before": [862811.0, 830054.0, 875047.0], "after": [447873.0, 435577.0, 453153.0]}, "B/op": {"before": [37511.0, 37508.0, 37745.0], "after": [38069.0, 37786.0, 38352.0]}, "allocs/op": {"before": [401.0, 400.0, 401.0], "after": [396.0, 396.0, 396.0]}, "p50-ns": {"before": [856754.0, 783004.0, 872879.0], "after": [436960.0, 424502.0, 440710.0]}, "p95-ns": {"before": [985380.0, 979338.0, 1073547.0], "after": [523211.0, 514086.0, 526169.0]}, "p99-ns": {"before": [1086589.0, 1069463.0, 2481263.0], "after": [618628.0, 617128.0, 677170.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_false/fuse/show_nfo", "ns/op": {"before": [819392.0, 816613.0, 863519.0], "after": [294026.0, 292665.0, 300849.0]}, "B/op": {"before": [41374.0, 41079.0, 41741.0], "after": [42703.0, 42599.0, 43133.0]}, "allocs/op": {"before": [482.0, 482.0, 484.0], "after": [465.0, 465.0, 465.0]}, "p50-ns": {"before": [814837.0, 810462.0, 863712.0], "after": [284335.0, 266835.0, 284918.0]}, "p95-ns": {"before": [896129.0, 884880.0, 964755.0], "after": [360460.0, 350751.0, 389002.0]}, "p99-ns": {"before": [1161839.0, 1051297.0, 1181548.0], "after": [547794.0, 516086.0, 730670.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/native/channel", "ns/op": {"before": [600.5, 592.9, 635.3], "after": [556.8, 536.6, 610.4]}, "B/op": {"before": [304.0, 304.0, 304.0], "after": [304.0, 304.0, 304.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [500.0, 500.0, 542.0], "after": [459.0, 459.0, 500.0]}, "p95-ns": {"before": [708.0, 667.0, 792.0], "after": [708.0, 667.0, 708.0]}, "p99-ns": {"before": [1000.0, 958.0, 2334.0], "after": [875.0, 875.0, 1917.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/native/season", "ns/op": {"before": [607.0, 591.9, 632.3], "after": [573.8, 556.8, 632.8]}, "B/op": {"before": [304.0, 304.0, 304.0], "after": [304.0, 304.0, 304.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [542.0, 541.0, 583.0], "after": [500.0, 500.0, 500.0]}, "p95-ns": {"before": [708.0, 708.0, 750.0], "after": [667.0, 667.0, 709.0]}, "p99-ns": {"before": [958.0, 958.0, 1875.0], "after": [1625.0, 1041.0, 1667.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/native/media", "ns/op": {"before": [639.3, 607.0, 694.4], "after": [596.2, 592.3, 607.2]}, "B/op": {"before": [368.0, 368.0, 368.0], "after": [368.0, 368.0, 368.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [542.0, 500.0, 625.0], "after": [542.0, 542.0, 542.0]}, "p95-ns": {"before": [750.0, 750.0, 833.0], "after": [708.0, 666.0, 708.0]}, "p99-ns": {"before": [1000.0, 875.0, 1125.0], "after": [834.0, 834.0, 875.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/native/episode_nfo", "ns/op": {"before": [658.8, 633.4, 660.2], "after": [602.3, 586.8, 626.3]}, "B/op": {"before": [368.0, 368.0, 368.0], "after": [368.0, 368.0, 368.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [584.0, 542.0, 625.0], "after": [542.0, 542.0, 542.0]}, "p95-ns": {"before": [791.0, 750.0, 791.0], "after": [708.0, 667.0, 709.0]}, "p99-ns": {"before": [1000.0, 959.0, 1083.0], "after": [875.0, 834.0, 1041.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/native/show_nfo", "ns/op": {"before": [603.0, 589.8, 604.3], "after": [560.1, 559.8, 574.6]}, "B/op": {"before": [304.0, 304.0, 304.0], "after": [304.0, 304.0, 304.0]}, "allocs/op": {"before": [2.0, 2.0, 2.0], "after": [2.0, 2.0, 2.0]}, "p50-ns": {"before": [541.0, 500.0, 542.0], "after": [500.0, 500.0, 500.0]}, "p95-ns": {"before": [708.0, 708.0, 709.0], "after": [667.0, 666.0, 667.0]}, "p99-ns": {"before": [917.0, 875.0, 958.0], "after": [792.0, 750.0, 834.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/fuse/channel", "ns/op": {"before": [275299.0, 264078.0, 287840.0], "after": [102276.0, 98973.0, 103980.0]}, "B/op": {"before": [9239.0, 8959.0, 9525.0], "after": [9811.0, 9526.0, 9812.0]}, "allocs/op": {"before": [104.0, 104.0, 104.0], "after": [98.0, 97.0, 98.0]}, "p50-ns": {"before": [264668.0, 258418.0, 269209.0], "after": [100042.0, 96876.0, 101584.0]}, "p95-ns": {"before": [334544.0, 315460.0, 398669.0], "after": [116251.0, 114209.0, 119668.0]}, "p99-ns": {"before": [392836.0, 363127.0, 533336.0], "after": [165210.0, 131876.0, 234335.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/fuse/season", "ns/op": {"before": [566712.0, 566020.0, 575379.0], "after": [155854.0, 134354.0, 160916.0]}, "B/op": {"before": [15377.0, 15347.0, 15642.0], "after": [16239.0, 16237.0, 16240.0]}, "allocs/op": {"before": [193.0, 193.0, 193.0], "after": [183.0, 183.0, 184.0]}, "p50-ns": {"before": [556711.0, 520544.0, 565044.0], "after": [147917.0, 124459.0, 150667.0]}, "p95-ns": {"before": [641212.0, 627170.0, 810588.0], "after": [175292.0, 173293.0, 215084.0]}, "p99-ns": {"before": [719129.0, 694545.0, 2674721.0], "after": [340335.0, 304043.0, 461669.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/fuse/media", "ns/op": {"before": [914039.0, 911883.0, 916592.0], "after": [440198.0, 437573.0, 445488.0]}, "B/op": {"before": [26462.0, 26460.0, 26749.0], "after": [27060.0, 27059.0, 27061.0]}, "allocs/op": {"before": [351.0, 351.0, 351.0], "after": [347.0, 347.0, 347.0]}, "p50-ns": {"before": [912713.0, 907338.0, 913171.0], "after": [430585.0, 427419.0, 436627.0]}, "p95-ns": {"before": [994547.0, 994255.0, 1014047.0], "after": [512711.0, 506752.0, 515419.0]}, "p99-ns": {"before": [1121547.0, 1036214.0, 1134630.0], "after": [663795.0, 607086.0, 714170.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/fuse/episode_nfo", "ns/op": {"before": [950798.0, 931026.0, 951009.0], "after": [455238.0, 450246.0, 456957.0]}, "B/op": {"before": [37555.0, 37265.0, 38673.0], "after": [38712.0, 38706.0, 38988.0]}, "allocs/op": {"before": [395.0, 395.0, 395.0], "after": [391.0, 391.0, 391.0]}, "p50-ns": {"before": [912296.0, 904046.0, 933421.0], "after": [438085.0, 427252.0, 451585.0]}, "p95-ns": {"before": [1123880.0, 1061714.0, 1138630.0], "after": [554169.0, 502627.0, 568878.0]}, "p99-ns": {"before": [1318757.0, 1183131.0, 2791931.0], "after": [679504.0, 620086.0, 715712.0]}},
+    {"workload": "MountedFilesystemMetadata/playlist_true/fuse/show_nfo", "ns/op": {"before": [889613.0, 874603.0, 900135.0], "after": [289325.0, 287341.0, 289537.0]}, "B/op": {"before": [42286.0, 41999.0, 42844.0], "after": [43906.0, 43619.0, 43965.0]}, "allocs/op": {"before": [508.0, 508.0, 508.0], "after": [491.0, 491.0, 491.0]}, "p50-ns": {"before": [876671.0, 871171.0, 883796.0], "after": [269418.0, 253584.0, 280376.0]}, "p95-ns": {"before": [993047.0, 939380.0, 1119922.0], "after": [387502.0, 358376.0, 419752.0]}, "p99-ns": {"before": [1223381.0, 1050964.0, 1262507.0], "after": [690212.0, 538919.0, 1174089.0]}}
+  ]
+}

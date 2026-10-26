@@ -113,6 +113,58 @@ An uncached media open can still resolve and verify remote sources. Preparing
 local scan artifacts, measuring useful scan ranges for bounded prefetch, and
 revision-safe kernel caching remain separate implementation work.
 
+## Reused projection queries, 2026-10-26
+
+A second matched comparison started with the prepared timestamp indexes above.
+Projection reads now retain bounded prepared statements. Runtime owner,
+visibility, page, and season values use materialized parameter rows where
+SQLite would otherwise recompile its plan on each execution. Each call still
+reads current committed values. The cache has limits of 32 statements and
+128 KiB of SQL text per store; extra variants use uncached reads.
+
+The 10,000-recording fixtures, Linux arm64 image, tmpfs storage, resource limits,
+and sample counts matched the previous comparison procedure. Ten-sample median
+provider times changed as follows; all six time comparisons have p < 0.001:
+
+| Catalogue | Attribute | Before | After |
+| --- | --- | ---: | ---: |
+| Uploads | Channel | 77.64 microseconds | 9.46 microseconds |
+| Uploads | Season | 84.15 microseconds | 11.00 microseconds |
+| Uploads | Show NFO | 290.25 microseconds | 62.06 microseconds |
+| Uploads + playlist | Channel | 82.67 microseconds | 11.06 microseconds |
+| Uploads + playlist | Playlist season | 162.33 microseconds | 11.26 microseconds |
+| Uploads + playlist | Show NFO | 299.50 microseconds | 67.32 microseconds |
+
+The complete mounted path results below again show the median of three
+per-sample p95 values, with 500 calls in each sample. No significance or
+confidence-interval claim is made for these three-sample results:
+
+| Catalogue | Attribute | Before p95 | After p95 |
+| --- | --- | ---: | ---: |
+| Uploads | Channel | 0.358 ms | 0.107 ms |
+| Uploads | Season | 0.487 ms | 0.180 ms |
+| Uploads | MP4 | 0.906 ms | 0.488 ms |
+| Uploads | Episode NFO | 0.985 ms | 0.523 ms |
+| Uploads | Show NFO | 0.896 ms | 0.360 ms |
+| Uploads + playlist | Channel | 0.335 ms | 0.116 ms |
+| Uploads + playlist | Playlist season | 0.641 ms | 0.175 ms |
+| Uploads + playlist | Playlist MP4 | 0.995 ms | 0.513 ms |
+| Uploads + playlist | Playlist episode NFO | 1.124 ms | 0.554 ms |
+| Uploads + playlist | Show NFO | 0.993 ms | 0.388 ms |
+
+Canonical timestamp writes did not show a significant change: upload updates
+were 32.41 versus 32.35 microseconds (p=0.684), and shared-playlist updates were
+44.93 versus 44.61 microseconds (p=0.063). Provider allocation counts fell, but
+allocated bytes increased by about 0.3 KiB per channel or season call and
+0.7 KiB per show-NFO call. Driver plan memory and total resident memory were
+not measured. The SQL-text limit is not a total memory limit.
+
+The [structured query results](projection-query-performance.json) retain source
+trees, fixture hashes, ranges, allocation results, and mounted p50/p95/p99.
+These measurements have the same warm, single-reader limits as the preceding
+comparison. NFO generation, local artifact I/O, and cold source binding remain
+implementation targets.
+
 ## Media path
 
 Use the [playback profiler](playback-performance.md) to measure reads through Plex,
