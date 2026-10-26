@@ -94,3 +94,93 @@ command above; the fixture retains at most 4,096 samples. Record the storage
 type, CPU and memory limits, cache state, and concurrency for each comparison.
 Fixture creation and migration are outside the timed read loops. Compare equal
 fixture files at the two commits and measure catalogue write overhead separately.
+
+## Initial readiness and writer load
+
+Retain the baseline before changing production code. Use committed source exports
+for each version and compare the benchmark and helper bytes before accepting a
+result. Keep the same media files for both versions. The
+[readiness results](readiness-performance.json) identify the measured commits,
+fixture hashes, image, resource limits, all samples, and statistical comparisons.
+
+Generate controlled media once with FFmpeg. Use a new private fixture directory:
+
+```sh
+mkdir -p .cache
+readiness_fixtures=$(mktemp -d "$PWD/.cache/readiness-fixtures.XXXXXX")
+ffmpeg -hide_banner -loglevel error -f lavfi \
+  -i testsrc2=size=1920x1080:rate=25 -t 2 -an -c:v libx264 \
+  -preset ultrafast -pix_fmt yuv420p -movflags +faststart \
+  "$readiness_fixtures/video.mp4"
+ffmpeg -hide_banner -loglevel error -f lavfi \
+  -i sine=frequency=440:sample_rate=48000 -t 2 -vn -c:a aac \
+  -movflags +faststart "$readiness_fixtures/audio.m4a"
+export DUPLEX_APP_MEDIA_FIXTURES="$readiness_fixtures"
+export GOMAXPROCS=2 GOTOOLCHAIN=go1.27.3
+```
+
+Record SHA-256 hashes of both media files before and after the paired runs.
+Do not regenerate or replace them between versions.
+
+Run these commands separately from each source export. Retain each output under
+its exact commit and tree. The fixed initial-readiness and writer workloads need
+`-benchtime=1x`; their fixtures reject additional iterations within a sample.
+
+```sh
+go test ./internal/app -run '^$' -bench '^BenchmarkInitialScanArtifacts$' \
+  -benchtime=1x -count=10 -benchmem
+go test ./internal/app -run '^$' -bench '^BenchmarkMediaOpenState$' \
+  -benchtime=10x -count=10 -benchmem
+go test ./internal/app -run '^$' -bench '^BenchmarkMetadataUnderWrites$' \
+  -benchtime=1x -count=10 -benchmem
+go test ./internal/app -run '^$' \
+  -bench '^BenchmarkCatalogueFilesystemMetadata$/10000/' \
+  -benchtime=200ms -count=10 -benchmem
+go test ./internal/app -run '^$' -bench '^BenchmarkCatalogueProjectionUpdate$' \
+  -benchtime=1s -count=10 -benchmem
+```
+
+The first two commands need the media fixtures. Source artwork and captions use
+a controlled HTTP transport; media uses a loopback HTTP origin. No real source
+resolver or Plex service participates. The initial-readiness fixture drains the
+earlier discovery notification and measures the prepared-recording scan request.
+
+For the measured Linux environment, cross-compile each source export:
+
+```sh
+mkdir -p .cache
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go test -c \
+  -o "$PWD/.cache/readiness-linux.test" ./internal/app
+```
+
+Use a disposable container with `--read-only --network none --cpus 2 --memory 1g
+--pids-limit 256 --security-opt no-new-privileges:true`, the pinned Debian image
+in the structured results, `GOMAXPROCS=2`, and
+`--tmpfs /tmp:rw,nosuid,nodev,size=512m`. Bind the
+binary read-only as `/probe.test` and the same media directory read-only as
+`/fixtures`; set `DUPLEX_APP_MEDIA_FIXTURES=/fixtures`. Use `--cap-drop ALL` for
+provider, media, and control workloads. Invoke `/probe.test` with the same flags
+above, adding the `-test.` prefix to each Go test flag.
+
+Mounted writer-load runs instead use the quality gate's FUSE exception:
+`--cap-add SYS_ADMIN --device /dev/fuse --security-opt apparmor=unconfined`,
+without `--cap-drop ALL`. Set `DUPLEX_FUSE_TEST=1` and run:
+
+```sh
+/probe.test -test.run '^$' \
+  -test.bench '^Benchmark(MetadataUnderWrites|MountedMetadataUnderWrites)$' \
+  -test.benchtime 1x -test.count 10 -test.benchmem
+```
+
+This last command runs inside the container. Keep native APFS cold-open results
+separate from Linux tmpfs results. Do not run quality gates or other profiles
+during timing samples. Capture profiles in a later process if they are needed.
+
+Each writer-load sample must finish all 800 offered reads and ten write
+transactions. Compare both service and planned-arrival p95/p99. Its `ns/op` is
+the complete workload window, not per-request latency. Preserve the range of
+per-sample percentiles and report allocation and write costs. Do not pool
+percentiles or remove late arrivals. If worker logs split benchmark names and
+numeric result lines, join them before giving the output to `benchstat`; keep
+the original logs privately. The structured results retain these normalized
+sample values without local paths or source locators.
