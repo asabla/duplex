@@ -61,6 +61,58 @@ inside Linux containers. They do not measure mounted FUSE latency, Plex scan
 completion, or playback. Read callbacks, metadata generation, asset readiness,
 and source binding still need separate work.
 
+## Prepared metadata timestamps, 2026-10-26
+
+Channel and season attributes previously aggregated every published episode.
+Schema 6 maintains timestamp indexes as catalogue records change. Uploads use
+one indexed maximum per year. Playlist occurrences retain the maximum of their
+member and canonical video timestamps in a separate index. Channel and playlist
+metadata join at read time, including current YAML visibility rules.
+
+A matched Linux arm64 comparison used 10,000 recordings, two CPUs, 1 GiB of
+memory, GOMAXPROCS=2, a 512 MiB tmpfs, and no network. The playlist fixture also
+included all recordings as uploads. Ten one-second provider samples reduced
+upload channel attributes from 4.145 ms to 0.080 ms and shared-playlist show-NFO
+attributes from 32.120 ms to 0.297 ms. All six provider time comparisons have
+`benchstat` p < 0.001.
+
+Complete mounted paths were measured separately, including parent lookups.
+Each workload had three samples of 500 `stat` calls. Values below are the median
+of each sample's p95, not a pooled percentile or a confidence interval:
+
+| Catalogue | Attribute | Before p95 | After p95 |
+| --- | --- | ---: | ---: |
+| Uploads | Channel | 9.221 ms | 0.330 ms |
+| Uploads | Season | 14.961 ms | 0.472 ms |
+| Uploads | MP4 | 10.472 ms | 0.906 ms |
+| Uploads | Episode NFO | 10.414 ms | 0.995 ms |
+| Uploads | Show NFO | 28.510 ms | 0.943 ms |
+| Uploads + playlist | Channel | 27.421 ms | 0.279 ms |
+| Uploads + playlist | Playlist season | 33.656 ms | 0.650 ms |
+| Uploads + playlist | Playlist MP4 | 24.246 ms | 1.013 ms |
+| Uploads + playlist | Playlist episode NFO | 24.324 ms | 1.084 ms |
+| Uploads + playlist | Show NFO | 80.235 ms | 0.985 ms |
+
+The work moves cost to writes. A canonical timestamp update increased from
+12.39 to 32.15 microseconds with uploads and from 12.33 to 44.63 microseconds
+with shared playlist membership. These ten-sample comparisons also have
+`benchstat` p < 0.001. The derived playlist rows and indexes add persistent storage
+per selected verified membership. Total catalogue size, resident memory,
+migration time, and concurrent writer latency were not measured.
+
+The [structured measurements](metadata-read-performance.json) retain exact source
+trees, fixture hashes, sample ranges, allocations, and mounted p50/p95/p99.
+The local reference contains the same episode filenames in the measured season
+with empty files. The [metadata workloads](performance-tooling.md#filesystem-metadata-workloads)
+describe repeatable commands. These are warm, single-reader metadata results.
+They do not establish Plex scan time, payload throughput, cold-cache latency,
+or concurrent service capacity.
+
+Episode NFO generation and asset manifest reads remain in filesystem callbacks.
+An uncached media open can still resolve and verify remote sources. Preparing
+local scan artifacts, measuring useful scan ranges for bounded prefetch, and
+revision-safe kernel caching remain separate implementation work.
+
 ## Media path
 
 Use the [playback profiler](playback-performance.md) to measure reads through Plex,

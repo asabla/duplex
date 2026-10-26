@@ -60,3 +60,37 @@ and source identities before including a result in project documentation.
 These are catalogue query measurements inside Linux containers. They do not
 measure native-host Linux storage, HTTP response time, Plex scanning, live
 source requests, concurrent playback, or first rendered frame.
+
+## Filesystem metadata workloads
+
+Provider metadata benchmarks cover 1,000 and 10,000 recordings, with uploads
+and shared playlist membership. They measure channel, season, MP4, episode-NFO,
+and show-NFO attributes. The update benchmark measures a canonical timestamp
+change in a 10,000-recording catalogue, including its projection maintenance:
+
+```sh
+go test ./internal/app -run '^$' \
+  -bench '^BenchmarkCatalogueFilesystemMetadata$' \
+  -benchmem -count=10 -benchtime=1s
+go test ./internal/app -run '^$' \
+  -bench '^BenchmarkCatalogueProjectionUpdate$' \
+  -benchmem -count=10 -benchtime=1s
+```
+
+On Linux, use the FUSE privileges required by the quality gate to measure complete
+mounted path lookups. This workload creates a disposable mount and a local
+reference tree with the same episode filenames. The reference files are empty;
+the workload measures metadata calls, not media or NFO reads:
+
+```sh
+DUPLEX_FUSE_TEST=1 go test ./internal/app -run '^$' \
+  -bench '^BenchmarkMountedFilesystemMetadata$' \
+  -benchmem -count=3 -benchtime=500x
+```
+
+Each result includes p50, p95, and p99 in nanoseconds. These use the nearest-rank
+method on the measured calls and include timing overhead. Use the fixed 500-call
+command above; the fixture retains at most 4,096 samples. Record the storage
+type, CPU and memory limits, cache state, and concurrency for each comparison.
+Fixture creation and migration are outside the timed read loops. Compare equal
+fixture files at the two commits and measure catalogue write overhead separately.
