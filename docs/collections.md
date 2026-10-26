@@ -77,6 +77,18 @@ Use the UI where possible. For external YAML edits, change the existing entry;
 do not replace the complete settings file with this fragment. Invalid edits keep
 the previous settings active until corrected, but can prevent the next startup.
 
+## Captions and metadata refresh
+
+duplex selects available subtitles for the original audio language. Explicit
+subtitles take priority over automatic captions. A regional audio tag can use
+original captions for its base language, such as `en-US` with `en-orig`.
+
+Optional captions can arrive after Plex's first scan. If the subtitle file is
+available in duplex but absent from Plex, open the episode's **More** menu and
+select **Refresh Metadata**. Then check the episode's Subtitles list. **Analyse**
+alone does not refresh a late subtitle. Automatic targeted metadata refresh for
+late captions is not implemented.
+
 ## Add playlist seasons
 
 Enable playlists for the channel, then refresh it. duplex discovers playlists

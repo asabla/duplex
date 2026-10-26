@@ -12,6 +12,12 @@ run against an exact commit and source fingerprint, with tool versions, workload
 commands, failures, and skipped checks. Keep raw profiles, signed source URLs,
 credentials, and installation state outside Git.
 
+Repository fixtures must use controlled data that represents the required
+workload shape: catalogue size, recording duration, codecs, language tags,
+caption timing, cache state, and access patterns. Keep real channel identifiers,
+live-run reports, and installation-specific results local. A successful live run
+can identify a missing regression case; add a controlled case for that behavior.
+
 ## Local quality gate
 
 Run `make check` with the pinned tools described in [Development](development.md).
