@@ -224,3 +224,33 @@ func TestOriginalSubtitleLanguageAndTrackFallbacks(t *testing.T) {
 		}
 	}
 }
+
+func TestAutomaticCaptionsMatchOriginalAudioRegion(t *testing.T) {
+	for _, scenario := range []struct {
+		name     string
+		language string
+		tracks   map[string][]source.Subtitle
+		want     string
+	}{
+		{"base original", "en-US", map[string][]source.Subtitle{"en-orig": {{URL: "original"}}, "ar-orig": {{URL: "other audio"}}}, "original"},
+		{"prefer original", "en-US", map[string][]source.Subtitle{"en-orig": {{URL: "original"}}, "en-US": {{URL: "regional translation"}}}, "original"},
+		{"exact original", "en-US", map[string][]source.Subtitle{"en-US-orig": {{URL: "exact"}}, "en-orig": {{URL: "base"}}}, "exact"},
+		{"base fallback", "en-US", map[string][]source.Subtitle{"en": {{URL: "base"}}}, "base"},
+		{"unrelated language", "en-US", map[string][]source.Subtitle{"ar-orig": {{URL: "Arabic"}}}, ""},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			got := subtitleTracks(source.Metadata{AutomaticCaptions: scenario.tracks}, scenario.language)
+			if scenario.want == "" {
+				if len(got) != 0 {
+					t.Fatal("unrelated captions selected", got)
+				}
+
+				return
+			}
+
+			if len(got) != 1 || got[0].URL != scenario.want {
+				t.Fatal("original audio caption language was not matched", got, scenario.want)
+			}
+		})
+	}
+}

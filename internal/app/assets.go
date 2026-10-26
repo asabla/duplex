@@ -193,11 +193,14 @@ func subtitleTracks(m source.Metadata, language string) []source.Subtitle {
 		}
 	}
 
-	if tracks := m.AutomaticCaptions[language+"-orig"]; len(tracks) > 0 {
-		return tracks
+	base, _, _ := strings.Cut(language, "-")
+	for _, key := range []string{language + "-orig", base + "-orig", language, base} {
+		if tracks := m.AutomaticCaptions[key]; len(tracks) > 0 {
+			return tracks
+		}
 	}
 
-	return m.AutomaticCaptions[language]
+	return nil
 }
 
 var subtitleCode = regexp.MustCompile(`^[A-Za-z0-9-]{1,25}$`)
