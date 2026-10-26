@@ -214,6 +214,8 @@ func (a *App) bindUncachedEpisode(ctx context.Context, episode catalog.Episode) 
 		return nil, err
 	}
 
+	a.wakeAssets()
+
 	return rep, nil
 }
 

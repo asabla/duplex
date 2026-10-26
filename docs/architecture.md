@@ -70,6 +70,8 @@ The application now groups mutable state by responsibility: `schedulerState`
 owns discovery queue bookkeeping and applied configuration, `preparationState`
 owns preparation capacity and active runs, `representationState` owns runtime
 bindings and leases, and `libraryState` owns scan and hint publication bookkeeping.
+`assetState` owns the optional asset wake channel and the single active asset
+operation. Its mutex only protects channel creation; it does not span I/O.
 They remain inside `App` and use the existing shared mutex; transitions across
 these groups retain their original atomicity. The scheduler alone uses its
 `lastIntegration` timestamp. Lifecycle code owns acquisition, worker startup, and
@@ -186,8 +188,25 @@ The pipeline has separate boundaries:
    successful enumeration boundary.
 4. Queue canonical media work in SQLite. Two preparation workers share videos
    used by several collections; explicit requests receive higher priority.
-5. Verify a representation, save its index and exact size, then publish it promptly.
-6. Request the first Plex scan immediately and coalesce subsequent requests.
+5. Verify a representation and save its index and exact size. Its cached runtime
+   binding is available for playback before optional asset work starts.
+6. For a recording's first preparation, retain a local thumbnail or write a
+   deterministic fallback. Allow up to 250 ms for optional source artwork and
+   original-language captions, including any wait for the single asset slot.
+   Then request the prepared-recording scan. Discovery can request an earlier
+   scan before any media is ready; subsequent requests are coalesced.
+
+Optional asset jobs have a durable `warming` state during the initial attempt.
+The background worker cannot consume these jobs. An interrupted attempt returns
+to `queued`, wakes the worker, and retains its fallback and any completed assets.
+Restart also returns interrupted `warming` jobs to `queued`. The background
+worker drains pending jobs without a per-item polling delay and keeps its
+one-minute operation deadline. Initial warming and background work share one
+asset slot. Optional source errors remain separate from media readiness.
+
+Asset manifests retain a modification timestamp for each content-addressed file.
+Changed content advances that timestamp even within the same second; unchanged
+content retains it. Older manifests without a timestamp use the file timestamp.
 
 Preparation state is independent of source lifecycle. An upcoming broadcast is
 not a failed MP4 preparation. Completed discovery also does not mean all selected
