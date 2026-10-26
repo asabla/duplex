@@ -247,7 +247,15 @@ Episode directory pages seek through partial indexes on the formatted file
 number. Upload years and playlist seasons use separate queries; playlist season
 allocation excludes the reserved year range. This keeps lexical ordering above
 episode 9,999 without sorting the full season for each page. These derived
-indexes are added on catalogue open without changing identities or schema 5.
+indexes do not change representation identities or scanner slots.
+
+Schema 6 prepares timestamp indexes for filesystem metadata. Upload years use
+an indexed maximum over visible verified videos. Playlist membership changes
+and canonical video changes maintain a separate timestamp index in the same
+SQLite transaction. Directory reads look up one maximum per collection instead
+of aggregating its episodes. Channel and playlist metadata remain joined at
+read time, and YAML visibility rules apply immediately. Migration backfills the
+derived records and retains existing representation revisions and scanner slots.
 
 The runtime index cache has a fixed entry limit and memory budget estimate.
 Eviction removes only its cache reference; an open handle keeps its immutable

@@ -147,6 +147,7 @@ func TestPlaylistPathMigrationPreservesExposedPathsAndBindings(t *testing.T) {
 
 func removeSchema5(t *testing.T, s *Store) {
 	t.Helper()
+	removeSchema6(t, s)
 
 	for _, query := range []string{
 		`DROP INDEX playlist_projection_name`, `DROP INDEX video_projection_name`,
