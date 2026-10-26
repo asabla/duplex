@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS plex_bindings(video_id TEXT NOT NULL,server TEXT NOT 
 		return nil, errors.Join(e, db.Close())
 	}
 
+	if _, e = db.ExecContext(ctx, `UPDATE asset_jobs SET state='queued',updated=0 WHERE state='warming'`); e != nil {
+		return nil, errors.Join(e, db.Close())
+	}
+
 	_, e = db.ExecContext(ctx, `UPDATE sync_jobs SET state='interrupted',finished=?,error='service restarted during sync' WHERE state='running'`, time.Now().Unix())
 	if e != nil {
 		return nil, errors.Join(e, db.Close())

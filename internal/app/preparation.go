@@ -240,11 +240,16 @@ func (a *App) prepareRecording(ctx context.Context, id string, force bool) error
 		return err
 	}
 
+	previous, _, err := a.Catalog.RepresentationState(ctx, id)
+	if err != nil {
+		return err
+	}
+
 	if err = a.Catalog.SavePrepared(ctx, p); err != nil {
 		return err
 	}
 
-	if err = a.Catalog.QueueAsset(ctx, id); err != nil {
+	if err = a.queueRecordingAssets(ctx, m, previous == ""); err != nil {
 		return err
 	}
 

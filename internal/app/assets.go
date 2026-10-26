@@ -106,6 +106,11 @@ func (a *App) saveAssetManifest(id string, entries []library.Entry) error {
 		return errors.New("invalid asset identity")
 	}
 
+	previous := map[string]library.Entry{}
+	for _, entry := range a.loadAssets(id) {
+		previous[entry.Path] = entry
+	}
+
 	records := []assetRecord{}
 
 	for _, entry := range entries {
@@ -114,7 +119,22 @@ func (a *App) saveAssetManifest(id string, entries []library.Entry) error {
 			return errors.New("optional assets must use durable files")
 		}
 
-		records = append(records, assetRecord{Suffix: entry.Path, File: filepath.Base(file.file), Size: file.size})
+		stat, err := os.Stat(file.file)
+		if err != nil {
+			return err
+		}
+
+		modified := stat.ModTime().Unix()
+
+		if old := previous[entry.Path]; old.Media != nil {
+			if old.Media.ID() == file.ID() {
+				modified = old.Modified
+			} else {
+				modified = max(modified, old.Modified+1)
+			}
+		}
+
+		records = append(records, assetRecord{Suffix: entry.Path, File: filepath.Base(file.file), Size: file.size, Modified: modified})
 	}
 
 	data, err := json.Marshal(records)
@@ -231,9 +251,10 @@ func (a *App) fetchCaption(ctx context.Context, id, language string, track sourc
 }
 
 type assetRecord struct {
-	Suffix string `json:"suffix"`
-	File   string `json:"file"`
-	Size   int64  `json:"size"`
+	Suffix   string `json:"suffix"`
+	File     string `json:"file"`
+	Size     int64  `json:"size"`
+	Modified int64  `json:"modified,omitempty"`
 }
 
 var assetID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,80}$`)
@@ -258,7 +279,7 @@ func (a *App) loadAssets(id string) []library.Entry {
 	out := []library.Entry{}
 
 	for _, r := range records {
-		if filepath.Base(r.File) != r.File || r.Size <= 0 || r.Size > 8<<20 || !strings.HasPrefix(r.Suffix, ".") || strings.ContainsAny(r.Suffix, "/\\") {
+		if filepath.Base(r.File) != r.File || r.Size <= 0 || r.Size > 8<<20 || r.Modified < 0 || !strings.HasPrefix(r.Suffix, ".") || strings.ContainsAny(r.Suffix, "/\\") {
 			return nil
 		}
 
@@ -269,7 +290,12 @@ func (a *App) loadAssets(id string) []library.Entry {
 			return nil
 		}
 
-		out = append(out, library.Entry{Path: r.Suffix, Media: localAsset{file: file, size: r.Size}, Modified: stat.ModTime().Unix()})
+		modified := r.Modified
+		if modified == 0 {
+			modified = stat.ModTime().Unix()
+		}
+
+		out = append(out, library.Entry{Path: r.Suffix, Media: localAsset{file: file, size: r.Size}, Modified: modified})
 	}
 
 	return out
@@ -319,49 +345,66 @@ func VTTtoSRT(raw []byte) []byte {
 func (a *App) assetWorker(ctx context.Context) {
 	defer a.wg.Done()
 
+	wake, _ := a.assetChannels()
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return
-		case <-ticker.C:
 		}
 
 		id, err := a.Catalog.NextAsset(ctx)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-
-		if err != nil {
-			a.operationFailure("asset queue", err)
-			continue
-		}
-
-		workCtx, stop := context.WithTimeout(ctx, time.Minute)
-
-		m, err := a.playbackMetadata(workCtx, id, false)
 		if err == nil {
-			candidates := source.Candidates(m, a.Config.Snapshot().Config.MaxHeight)
-			if len(candidates) == 0 {
-				err = errors.New("no supported asset language")
-			} else {
-				assets, assetErr := a.acquireAssets(workCtx, m, candidates[0])
-
-				err = assetErr
-				if len(assets) > 0 {
-					err = errors.Join(err, a.Publish())
-					a.requestScan()
-				}
+			if err = a.runAssetWork(ctx, id); err == nil {
+				continue
 			}
 		}
 
-		stop()
-		a.operationFailure("optional assets", err)
+		if !errors.Is(err, sql.ErrNoRows) {
+			a.operationFailure("asset queue", err)
+		}
 
-		if finishErr := a.Catalog.FinishAsset(ctx, id, err); finishErr != nil {
-			a.operationFailure("asset result", finishErr)
+		select {
+		case <-ctx.Done():
+			return
+		case <-wake:
+		case <-ticker.C:
 		}
 	}
+}
+
+func (a *App) runAssetWork(ctx context.Context, id string) error {
+	workCtx, stop := context.WithTimeout(ctx, time.Minute)
+	defer stop()
+
+	release, err := a.acquireAsset(workCtx)
+	if err == nil {
+		defer release()
+
+		err = a.refreshAssets(workCtx, id)
+	}
+
+	a.operationFailure("optional assets", err)
+
+	finishErr := a.Catalog.FinishAsset(ctx, id, err)
+	a.operationFailure("asset result", finishErr)
+
+	return finishErr
+}
+
+func (a *App) refreshAssets(ctx context.Context, id string) error {
+	m, err := a.playbackMetadata(ctx, id, false)
+	if err != nil {
+		return err
+	}
+
+	assets, err := a.acquireMetadataAssets(ctx, m)
+	if len(assets) > 0 {
+		err = errors.Join(err, a.Publish())
+		a.requestScan()
+	}
+
+	return err
 }

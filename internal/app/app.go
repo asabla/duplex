@@ -22,6 +22,7 @@ type App struct {
 	preparationState
 	representationState
 	libraryState
+	assetState
 
 	httpClient       *http.Client
 	Measurements     *diagnostics.Recorder

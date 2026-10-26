@@ -174,6 +174,25 @@ func (s *Store) QueueAsset(ctx context.Context, id string) error {
 	return err
 }
 
+// BeginInitialAsset reserves the first local artifact pass before the background
+// worker can claim it. Existing refresh jobs keep their current owner and state.
+func (s *Store) BeginInitialAsset(ctx context.Context, id string) (bool, error) {
+	result, err := s.DB.ExecContext(ctx, `INSERT INTO asset_jobs(video_id,state,updated) VALUES(?,'warming',?) ON CONFLICT(video_id) DO NOTHING`, id, time.Now().Unix())
+	if err != nil {
+		return false, err
+	}
+
+	count, err := result.RowsAffected()
+
+	return count == 1, err
+}
+
+// RetryInitialAsset leaves interrupted bounded work for the normal worker.
+func (s *Store) RetryInitialAsset(ctx context.Context, id string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE asset_jobs SET state='queued',updated=0,error='' WHERE video_id=? AND state='warming'`, id)
+	return err
+}
+
 // NextAsset returns one pending optional asset job.
 func (s *Store) NextAsset(ctx context.Context) (string, error) {
 	var id string
