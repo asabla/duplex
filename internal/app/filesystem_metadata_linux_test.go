@@ -73,6 +73,7 @@ func benchmarkNativeMetadata(b *testing.B, provider catalogueFS, playlist bool) 
 
 	episode := metadataOperations(playlist)[2].path
 	base := episode[:len(episode)-len("0001.mp4")]
+
 	for number := 1; number <= 10000; number++ {
 		for _, suffix := range []string{".mp4", ".nfo"} {
 			if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("%s%04d%s", base, number, suffix)), nil, 0o600); err != nil {
@@ -86,10 +87,12 @@ func benchmarkNativeMetadata(b *testing.B, provider catalogueFS, playlist bool) 
 
 func benchmarkMetadataStat(b *testing.B, name string) {
 	samples := make([]int64, 0, 4096)
+
 	b.ReportAllocs()
 
 	for b.Loop() {
 		started := time.Now()
+
 		if _, err := os.Stat(name); err != nil {
 			b.Fatal(err)
 		}
@@ -100,6 +103,7 @@ func benchmarkMetadataStat(b *testing.B, name string) {
 	}
 
 	slices.Sort(samples)
+
 	for _, percentile := range []int{50, 95, 99} {
 		index := (len(samples)*percentile+99)/100 - 1
 		b.ReportMetric(float64(samples[index]), fmt.Sprintf("p%d-ns", percentile))
