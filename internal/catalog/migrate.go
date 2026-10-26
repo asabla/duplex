@@ -27,10 +27,12 @@ func (s *Store) migrate(ctx context.Context, version int) error {
 	}
 
 	if version < 5 {
-		return s.migratePlaylistPaths(ctx)
+		if err := s.migratePlaylistPaths(ctx); err != nil {
+			return err
+		}
 	}
 
-	return nil
+	return s.ensureProjectionIndexes(ctx)
 }
 
 func (s *Store) migratePlaylistPaths(ctx context.Context) error {

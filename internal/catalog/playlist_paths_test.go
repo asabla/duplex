@@ -149,6 +149,7 @@ func removeSchema5(t *testing.T, s *Store) {
 	t.Helper()
 
 	for _, query := range []string{
+		`DROP INDEX playlist_projection_name`, `DROP INDEX video_projection_name`,
 		`DROP TRIGGER playlist_hint_insert`, `DROP TRIGGER playlist_hint_update`, `DROP TRIGGER playlist_hint_delete`, `DROP TRIGGER playlist_hint_media`,
 		`DROP INDEX observed_episodes`,
 		`ALTER TABLE episode_bindings DROP COLUMN owner_id`, `ALTER TABLE episode_bindings DROP COLUMN playlist_id`, `ALTER TABLE episode_bindings DROP COLUMN video_id`, `ALTER TABLE episode_bindings DROP COLUMN current_index`, `ALTER TABLE episode_bindings DROP COLUMN seen_run`,

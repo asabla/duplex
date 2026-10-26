@@ -243,6 +243,12 @@ sizes. Directory reads use lexical keyset pages. Publication does not retain a
 complete path or episode map. New media handles bind a cached representation or
 verify a fresh source against the saved revision before reads begin.
 
+Episode directory pages seek through partial indexes on the formatted file
+number. Upload years and playlist seasons use separate queries; playlist season
+allocation excludes the reserved year range. This keeps lexical ordering above
+episode 9,999 without sorting the full season for each page. These derived
+indexes are added on catalogue open without changing identities or schema 5.
+
 The runtime index cache has a fixed entry limit and memory budget estimate.
 Eviction removes only its cache reference; an open handle keeps its immutable
 representation. A source change creates a new revision and fails an attempt to
