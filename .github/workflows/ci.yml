@@ -15,8 +15,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
-      - name: Install FUSE and controlled-media prerequisites
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y fuse3 ffmpeg
+      - name: Install system prerequisites
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y fuse3 ffmpeg ripgrep
       - name: Install pinned source check tools
         run: npm ci --ignore-scripts --prefix tools/readability
       - name: Check
@@ -37,3 +37,4 @@ jobs:
             .cache/format.diff
             .cache/markup/markup-validation.json
           if-no-files-found: error
+          include-hidden-files: true

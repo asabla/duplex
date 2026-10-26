@@ -18,6 +18,8 @@ Use the versions in [`.tool-versions`](../.tool-versions) and [go.mod](../go.mod
 - Prettier 3.9.10, prettier-plugin-go-template 0.0.15, and html-validate 11.17.0,
   pinned in the development-only `tools/readability/package-lock.json`.
 - Python 3 for the existing scripts and their controlled behavioral tests.
+- Git and ripgrep (`rg`) for source fingerprints and history checks. CI installs
+  ripgrep with its system prerequisites; these tools must also be on the local PATH.
 - FFmpeg and ffprobe for controlled media comparisons. Record the installed version in each result.
 
 Install the pinned tools through the existing mise configuration or make those
@@ -111,6 +113,8 @@ The fixture adapter uses no external source or Plex service. The HTML validator
 checks labels and native elements, and writes `.cache/markup/markup-validation.json`.
 CI retains this summary. Do not upload the raw HTML, session values, or local
 fixture configuration. These checks complement the Browser and keyboard review.
+The artifact step includes hidden directories so its explicit `.cache` paths
+are uploaded. Keep that path list limited to the reviewed check outputs above.
 
 ## Tests and evidence
 

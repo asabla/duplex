@@ -4,7 +4,7 @@ set -eu
 
 GO=${GO:-go}
 export GOTOOLCHAIN=go1.27.3
-for tool in "$GO" golangci-lint gitleaks govulncheck ffmpeg ffprobe; do
+for tool in "$GO" git rg golangci-lint gitleaks govulncheck ffmpeg ffprobe; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'Required development tool is missing: %s\n' "$tool" >&2
     exit 1
