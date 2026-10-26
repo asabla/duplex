@@ -1,0 +1,120 @@
+{
+  "schema": 1,
+  "date": "2026-10-26",
+  "scope": "Catalogue-backed provider ReadDir, 128 entries, synthetic year and playlist seasons; no mounted FUSE or live Plex timing",
+  "before_commit": "4171a105365a6995ec0db1bfb345c69ff44e6f9d",
+  "after_commit": "507d1e01a476c7da10e871c05d9ec1a485924408",
+  "before_tree": "311a41ab1718e4b656a43be106170551d72341fb",
+  "after_tree": "66477b25ef87f147c79ecb60e740e4a22c8485fe",
+  "environment": {
+    "os": "linux",
+    "architecture": "arm64",
+    "host": "Colima Linux VM",
+    "go": "1.27.3",
+    "cpus": 2,
+    "memory_bytes": 1073741824,
+    "gomaxprocs": 2,
+    "samples_per_version": 10,
+    "benchtime": "1s",
+    "storage": "anonymous Linux Docker volume",
+    "benchstat": "golang.org/x/perf@v0.0.0-20250813145418-2f7363a06fe1"
+  },
+  "results": {
+    "CatalogueFilesystemPage/1000-2": {
+      "before": {
+        "median_ns": 1389587.5,
+        "range_ns": [
+          1371684.0,
+          1405706.0
+        ],
+        "median_bytes": 83633.5,
+        "median_allocations": 1394.0
+      },
+      "after": {
+        "median_ns": 255326.5,
+        "range_ns": [
+          253372.0,
+          256795.0
+        ],
+        "median_bytes": 79512.0,
+        "median_allocations": 1384.0
+      },
+      "time_reduction_percent": 81.63,
+      "benchstat": "p < 0.001; ten samples per version"
+    },
+    "CatalogueFilesystemPage/10000-2": {
+      "before": {
+        "median_ns": 10206761.5,
+        "range_ns": [
+          10158417.0,
+          10269298.0
+        ],
+        "median_bytes": 83631.5,
+        "median_allocations": 1394.0
+      },
+      "after": {
+        "median_ns": 256071.5,
+        "range_ns": [
+          253926.0,
+          257683.0
+        ],
+        "median_bytes": 79512.0,
+        "median_allocations": 1384.0
+      },
+      "time_reduction_percent": 97.49,
+      "benchstat": "p < 0.001; ten samples per version"
+    },
+    "CataloguePlaylistFilesystemPage/1000-2": {
+      "before": {
+        "median_ns": 1908868.5,
+        "range_ns": [
+          1885576.0,
+          1923866.0
+        ],
+        "median_bytes": 87704.0,
+        "median_allocations": 1390.0
+      },
+      "after": {
+        "median_ns": 408531.0,
+        "range_ns": [
+          394281.0,
+          433045.0
+        ],
+        "median_bytes": 84147.0,
+        "median_allocations": 1382.0
+      },
+      "time_reduction_percent": 78.6,
+      "benchstat": "p < 0.001; ten samples per version"
+    },
+    "CataloguePlaylistFilesystemPage/10000-2": {
+      "before": {
+        "median_ns": 15348796.0,
+        "range_ns": [
+          15130944.0,
+          16004928.0
+        ],
+        "median_bytes": 87704.0,
+        "median_allocations": 1390.0
+      },
+      "after": {
+        "median_ns": 401419.0,
+        "range_ns": [
+          397274.0,
+          421968.0
+        ],
+        "median_bytes": 84147.0,
+        "median_allocations": 1382.0
+      },
+      "time_reduction_percent": 97.38,
+      "benchstat": "p < 0.001; ten samples per version"
+    }
+  },
+  "limits": [
+    "One synthetic channel with all recordings selected; no optional artwork or subtitle files in the timing fixtures.",
+    "Includes directory visibility, row lookup, filename construction and asset-manifest lookup; excludes FUSE and Plex.",
+    "Fixture construction and one-time derived-index creation are outside the timed read loop.",
+    "CPU and allocation profiles are separate from timing samples and include fixture setup; no total-service memory or CPU claim.",
+    "Sources were rebased onto the merged CI fix after measurement; both complete source trees were verified identical.",
+    "Raw profiles and machine-specific output remain private."
+  ]
+}

@@ -30,8 +30,10 @@ GOMAXPROCS=2, no network, and an anonymous volume for temporary SQLite data.
 The image is pinned by digest in the script. Container removal also removes
 the temporary data volume.
 
-Each directory benchmark has ten one-second samples. Before and after runs
-are sequential. Do not run quality gates or other profiling workloads at the
+Upload-year and playlist directory benchmarks each have ten one-second samples.
+The playlist catalogue contains both uploads and a playlist that references the
+same canonical videos. Before and after runs are sequential. Do not run quality
+gates or other profiling workloads at the
 same time. `benchstat` reports medians, 95% confidence intervals, and a test
 for differences at the default 0.05 significance threshold. A `~` result does
 not establish a change.
