@@ -32,6 +32,12 @@ func (s *Store) migrate(ctx context.Context, version int) error {
 		}
 	}
 
+	if version < 6 {
+		if err := s.migrateProjectionTimes(ctx); err != nil {
+			return err
+		}
+	}
+
 	return s.ensureProjectionIndexes(ctx)
 }
 

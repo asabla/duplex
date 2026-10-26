@@ -89,10 +89,10 @@ func (s *Store) ProjectionSeasons(ctx context.Context, v Visibility, owner, afte
 		return nil, errors.New("invalid projection page size")
 	}
 
-	cte, args := projectionCTE(v)
-	args = append(args, owner, after, limit)
+	cte, args := projectionSeasonsCTE(v, owner)
+	args = append(args, after, limit)
 
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT printf('Season %04d',season),CASE WHEN playlist='' THEN 'year:'||season ELSE 'playlist:'||playlist END,season_title,season,MAX(updated) FROM episodes WHERE owner=? GROUP BY season HAVING printf('Season %04d',season)>? ORDER BY printf('Season %04d',season) LIMIT ?`, args...)
+	rows, err := s.DB.QueryContext(ctx, cte+`SELECT printf('Season %04d',number),scope,title,number,modified FROM seasons WHERE printf('Season %04d',number)>? ORDER BY printf('Season %04d',number) LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -102,12 +102,11 @@ func (s *Store) ProjectionSeasons(ctx context.Context, v Visibility, owner, afte
 
 // ProjectionChanged returns the latest visible metadata change for a show.
 func (s *Store) ProjectionChanged(ctx context.Context, v Visibility, owner string) (int64, error) {
-	cte, args := projectionCTE(v)
-	args = append(args, owner)
+	cte, args := projectionSeasonsCTE(v, owner)
 
 	var changed sql.NullInt64
 
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT MAX(updated) FROM episodes WHERE owner=?`, args...).Scan(&changed)
+	err := s.DB.QueryRowContext(ctx, cte+`SELECT MAX(modified) FROM seasons`, args...).Scan(&changed)
 	if err == nil && !changed.Valid {
 		err = sql.ErrNoRows
 	}
@@ -141,10 +140,10 @@ func (s *Store) ProjectionPosters(ctx context.Context, v Visibility, owner, afte
 		return nil, errors.New("invalid projection page size")
 	}
 
-	cte, args := projectionCTE(v)
-	args = append(args, owner, after, limit)
+	cte, args := projectionSeasonsCTE(v, owner)
+	args = append(args, after, limit)
 
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT printf('season%02d-poster.jpg',season),CASE WHEN playlist='' THEN 'year:'||season ELSE 'playlist:'||playlist END,season_title,season,MAX(updated) FROM episodes WHERE owner=? GROUP BY season HAVING printf('season%02d-poster.jpg',season)>? ORDER BY printf('season%02d-poster.jpg',season) LIMIT ?`, args...)
+	rows, err := s.DB.QueryContext(ctx, cte+`SELECT printf('season%02d-poster.jpg',number),scope,title,number,modified FROM seasons WHERE printf('season%02d-poster.jpg',number)>? ORDER BY printf('season%02d-poster.jpg',number) LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -154,12 +153,12 @@ func (s *Store) ProjectionPosters(ctx context.Context, v Visibility, owner, afte
 
 // ProjectionSeasonAt reads one visible season and its stable artwork scope.
 func (s *Store) ProjectionSeasonAt(ctx context.Context, v Visibility, owner string, number int) (ProjectionSeason, error) {
-	cte, args := projectionCTE(v)
-	args = append(args, owner, number)
+	cte, args := projectionSeasonsCTE(v, owner)
+	args = append(args, number)
 
 	var season ProjectionSeason
 
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT printf('Season %04d',season),CASE WHEN playlist='' THEN 'year:'||season ELSE 'playlist:'||playlist END,season_title,season,MAX(updated) FROM episodes WHERE owner=? AND season=? GROUP BY season`, args...).Scan(&season.Name, &season.Scope, &season.Title, &season.Number, &season.Modified)
+	err := s.DB.QueryRowContext(ctx, cte+`SELECT printf('Season %04d',number),scope,title,number,modified FROM seasons WHERE number=?`, args...).Scan(&season.Name, &season.Scope, &season.Title, &season.Number, &season.Modified)
 
 	return season, err
 }

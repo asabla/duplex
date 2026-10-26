@@ -176,7 +176,7 @@ func TestProjectionIndexesUpgradeWithoutChangingSchemaOrIdentities(t *testing.T)
 	defer closeTestStore(t, s)
 
 	var version, indexes int
-	if err = s.DB.QueryRowContext(t.Context(), `PRAGMA user_version`).Scan(&version); err != nil || version != 5 {
+	if err = s.DB.QueryRowContext(t.Context(), `PRAGMA user_version`).Scan(&version); err != nil || version != 6 {
 		t.Fatal(version, err)
 	}
 
