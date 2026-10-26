@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"duplex/internal/catalog"
 	"duplex/internal/config"
 )
 
@@ -53,6 +54,36 @@ func BenchmarkPublish(b *testing.B) {
 			for b.Loop() {
 				if err := app.Publish(); err != nil {
 					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkCataloguePlaylistFilesystemPage(b *testing.B) {
+	for _, count := range []int{1000, 10000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			app := benchmarkCatalogue(b, count)
+
+			if err := app.Catalog.SavePlaylist(b.Context(), catalog.Playlist{ID: "PLbenchmark", ChannelID: testOwner, Title: "Benchmark playlist"}); err != nil {
+				b.Fatal(err)
+			}
+
+			_, err := app.Catalog.DB.ExecContext(b.Context(), `INSERT INTO playlist_members(playlist_id,video_id,position,selected,episode,file_episode) SELECT 'PLbenchmark',id,number,1,number,number FROM videos`)
+			if err != nil {
+				b.Fatal(err)
+			}
+
+			provider := catalogueFS{app: app}
+			directory := "Channel-" + testOwner + "/Season 0001"
+
+			b.ReportAllocs()
+			b.ResetTimer()
+
+			for b.Loop() {
+				page, err := provider.ReadDir(b.Context(), directory, "", 128)
+				if err != nil || len(page) != 128 {
+					b.Fatal(len(page), err)
 				}
 			}
 		})
