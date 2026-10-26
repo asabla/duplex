@@ -26,7 +26,7 @@ func (s *Store) ProjectionPage(ctx context.Context, v Visibility, owner string, 
 	cte, args := projectionCTE(v)
 	args = append(args, owner, season, after, limit)
 
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND number>? ORDER BY number,video LIMIT ?`, args...)
+	rows, err := s.queryProjectionRows(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND number>? ORDER BY number,video LIMIT ?`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (s *Store) ProjectionFile(ctx context.Context, v Visibility, owner string, 
 	cte, args := projectionCTE(v)
 	args = append(args, owner, season, fileNumber)
 
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND file_number=? LIMIT 1`, args...)
+	rows, err := s.queryProjectionRows(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND file_number=? LIMIT 1`, args...)
 	if err != nil {
 		return Episode{}, err
 	}
@@ -69,7 +69,7 @@ func (s *Store) PlaylistOrder(ctx context.Context, v Visibility, occurrence stri
 
 	var index int
 
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT number FROM episodes WHERE owner=? AND playlist=? AND video=? LIMIT 1`, args...).Scan(&index)
+	err := s.scanProjectionRow(ctx, cte+`SELECT number FROM episodes WHERE owner=? AND playlist=? AND video=? LIMIT 1`, args, &index)
 
 	return index, err
 }
@@ -92,7 +92,7 @@ func (s *Store) ProjectionSeasons(ctx context.Context, v Visibility, owner, afte
 	cte, args := projectionSeasonsCTE(v, owner)
 	args = append(args, after, limit)
 
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT printf('Season %04d',number),scope,title,number,modified FROM seasons WHERE printf('Season %04d',number)>? ORDER BY printf('Season %04d',number) LIMIT ?`, args...)
+	rows, err := s.queryProjectionRows(ctx, cte+`, projection_page(after,count) AS MATERIALIZED(SELECT ?,?) SELECT printf('Season %04d',number),scope,title,number,modified FROM seasons WHERE printf('Season %04d',number)>(SELECT after FROM projection_page) ORDER BY printf('Season %04d',number) LIMIT (SELECT count FROM projection_page)`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (s *Store) ProjectionChanged(ctx context.Context, v Visibility, owner strin
 
 	var changed sql.NullInt64
 
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT MAX(modified) FROM seasons`, args...).Scan(&changed)
+	err := s.scanProjectionRow(ctx, cte+`SELECT MAX(modified) FROM seasons`, args, &changed)
 	if err == nil && !changed.Valid {
 		err = sql.ErrNoRows
 	}
@@ -129,7 +129,7 @@ func (s *Store) HasProjectionSeason(ctx context.Context, v Visibility, owner str
 
 	var exists bool
 
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT EXISTS(SELECT 1 FROM episodes WHERE owner=? AND season=?)`, args...).Scan(&exists)
+	err := s.scanProjectionRow(ctx, cte+`SELECT EXISTS(SELECT 1 FROM episodes WHERE owner=? AND season=?)`, args, &exists)
 
 	return exists, err
 }
@@ -143,7 +143,7 @@ func (s *Store) ProjectionPosters(ctx context.Context, v Visibility, owner, afte
 	cte, args := projectionSeasonsCTE(v, owner)
 	args = append(args, after, limit)
 
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT printf('season%02d-poster.jpg',number),scope,title,number,modified FROM seasons WHERE printf('season%02d-poster.jpg',number)>? ORDER BY printf('season%02d-poster.jpg',number) LIMIT ?`, args...)
+	rows, err := s.queryProjectionRows(ctx, cte+`, projection_page(after,count) AS MATERIALIZED(SELECT ?,?) SELECT printf('season%02d-poster.jpg',number),scope,title,number,modified FROM seasons WHERE printf('season%02d-poster.jpg',number)>(SELECT after FROM projection_page) ORDER BY printf('season%02d-poster.jpg',number) LIMIT (SELECT count FROM projection_page)`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func (s *Store) ProjectionSeasonAt(ctx context.Context, v Visibility, owner stri
 
 	var season ProjectionSeason
 
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT printf('Season %04d',number),scope,title,number,modified FROM seasons WHERE number=?`, args...).Scan(&season.Name, &season.Scope, &season.Title, &season.Number, &season.Modified)
+	err := s.scanProjectionRow(ctx, cte+`, projection_number(value) AS MATERIALIZED(SELECT ?) SELECT printf('Season %04d',number),scope,title,number,modified FROM seasons WHERE number=(SELECT value FROM projection_number)`, args, &season.Name, &season.Scope, &season.Title, &season.Number, &season.Modified)
 
 	return season, err
 }
@@ -195,7 +195,7 @@ func (s *Store) HasPublished(ctx context.Context, visible Visibility) (bool, err
 
 	var ready bool
 
-	err := s.DB.QueryRowContext(ctx, cte+`SELECT EXISTS(SELECT 1 FROM episodes)`, args...).Scan(&ready)
+	err := s.scanProjectionRow(ctx, cte+`SELECT EXISTS(SELECT 1 FROM episodes)`, args, &ready)
 
 	return ready, err
 }

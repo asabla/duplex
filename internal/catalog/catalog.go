@@ -13,7 +13,10 @@ import (
 )
 
 // Store owns the serialized SQLite connection and transactional catalogue operations.
-type Store struct{ DB *sql.DB }
+type Store struct {
+	DB          *sql.DB
+	projections projectionStatements
+}
 
 // Open opens and migrates a catalogue for callers without an existing context.
 func Open(path string) (*Store, error) { return OpenContext(context.Background(), path) }
@@ -36,7 +39,7 @@ func OpenContext(ctx context.Context, path string) (*Store, error) {
 		return nil, errors.Join(errors.New("unsupported catalogue schema version"), db.Close())
 	}
 
-	s := &Store{db}
+	s := &Store{DB: db}
 
 	_, e = db.ExecContext(ctx, `PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
 CREATE TABLE IF NOT EXISTS channels(id TEXT PRIMARY KEY,title TEXT NOT NULL,synced_at INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '');

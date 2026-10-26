@@ -35,7 +35,7 @@ func (s *Store) ProjectionEntries(ctx context.Context, v Visibility, owner strin
 		return []ProjectionEntry{}, nil
 	}
 
-	rows, err := s.DB.QueryContext(ctx, query, args...)
+	rows, err := s.queryProjectionRows(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
