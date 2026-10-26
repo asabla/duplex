@@ -257,6 +257,14 @@ of aggregating its episodes. Channel and playlist metadata remain joined at
 read time, and YAML visibility rules apply immediately. Migration backfills the
 derived records and retains existing representation revisions and scanner slots.
 
+Projection reads retain at most 32 prepared SQL statements and 128 KiB of SQL
+text per catalogue store. Additional query variants use ordinary uncached reads.
+The cache retains query plans; each call binds current values and reads current
+committed data. The database closes driver statement resources. The retention
+mutex is released before statement preparation or execution. Materialized
+parameter rows prevent SQLite from repeatedly recompiling parameter-sensitive
+season queries. This changes no stored format or projection identity.
+
 The runtime index cache has a fixed entry limit and memory budget estimate.
 Eviction removes only its cache reference; an open handle keeps its immutable
 representation. A source change creates a new revision and fails an attempt to

@@ -42,19 +42,22 @@ func (s *Store) migrateProjectionTimes(ctx context.Context) error {
 // applied at read time so YAML changes do not depend on a projection rebuild.
 // Fix the upload index: SQLite can otherwise prefer the episode-number range
 // index and sort every recording before it returns the latest timestamp.
+// Materialize runtime parameters to prevent SQLite's parameter-sensitive
+// optimizer from recompiling the retained statement on each execution.
 func projectionSeasonsCTE(v Visibility, owner string) (string, []any) {
 	args := []any{}
 	skipped := valueSet("skipped_playlists", v.SkippedPlaylists, &args)
-	args = append(args, owner, slices.Contains(v.Channels, owner), owner, slices.Contains(v.PlaylistChannels, owner), owner, owner)
+	args = append(args, owner, slices.Contains(v.Channels, owner), slices.Contains(v.PlaylistChannels, owner))
 
 	return "WITH " + skipped + `,
+projection_owner(id,uploads,playlists) AS MATERIALIZED (SELECT ?,?,?),
 upload_times AS (
  SELECT y.year,(SELECT v.updated FROM videos v INDEXED BY video_projection_time WHERE v.channel_id=y.channel_id AND v.year=y.year AND v.selected=1 AND v.number>0 AND v.revision<>'' AND v.state IN ('recorded','replay-ready') ORDER BY v.updated DESC LIMIT 1) AS updated
- FROM projection_years y WHERE y.channel_id=? AND ?),
+ FROM projection_years y WHERE y.channel_id=(SELECT id FROM projection_owner) AND (SELECT uploads FROM projection_owner)),
 playlist_times AS (
  SELECT p.id,p.title,p.season,p.updated,(SELECT t.modified FROM projection_playlist_times t WHERE t.playlist_id=p.id ORDER BY t.modified DESC LIMIT 1) AS member_updated
- FROM playlists p WHERE p.channel_id=? AND ? AND NOT EXISTS(SELECT 1 FROM skipped_playlists x WHERE x.id=p.id)),
+ FROM playlists p WHERE p.channel_id=(SELECT id FROM projection_owner) AND (SELECT playlists FROM projection_owner) AND NOT EXISTS(SELECT 1 FROM skipped_playlists x WHERE x.id=p.id)),
 seasons(scope,title,number,modified) AS (
- SELECT 'year:'||u.year,'',u.year,MAX(u.updated,c.updated) FROM upload_times u JOIN channels c ON c.id=? WHERE u.updated IS NOT NULL
- UNION ALL SELECT 'playlist:'||p.id,p.title,p.season,MAX(p.member_updated,p.updated,c.updated) FROM playlist_times p JOIN channels c ON c.id=? WHERE p.member_updated IS NOT NULL) `, args
+ SELECT 'year:'||u.year,'',u.year,MAX(u.updated,c.updated) FROM upload_times u JOIN channels c ON c.id=(SELECT id FROM projection_owner) WHERE u.updated IS NOT NULL
+ UNION ALL SELECT 'playlist:'||p.id,p.title,p.season,MAX(p.member_updated,p.updated,c.updated) FROM playlist_times p JOIN channels c ON c.id=(SELECT id FROM projection_owner) WHERE p.member_updated IS NOT NULL) `, args
 }
