@@ -53,7 +53,7 @@ responsibility extraction.
 | Service command | Configuration manager, authentication, application, listener, and profiling session. | Startup constructs them; HTTP serving returns before the deferred application close. |
 | `app.App` | Shared runtime maps and status fields use `mu`. It also owns queues, wake channels, preparation slots, library-update serialization, cancellation, and worker waiting. | `Open` acquires cache ownership, opens the catalogue, mounts the provider, and starts workers. `Close` cancels and waits, then closes the mount, cache, and catalogue. |
 | `config.Manager` | `fileMu` serializes file operations; `mu` protects the active snapshot. | YAML saves use expected revisions and atomic replacement. Invalid reloads keep the last valid snapshot. |
-| `catalog.Store` | Owns a SQLite connection pool limited to one open connection. Catalogue operations manage rows and transactions. | SQLite retains identities, selections, preparation work, and projection state through restart. Callers must close rows and finish transactions before another operation needs the connection. |
+| `catalog.Store` | Owns one write connection and at most two read-only projection connections. Catalogue operations manage rows and transactions. | SQLite retains identities, selections, preparation work, and projection state through restart. Readers open after migration and recovery and see committed WAL state. Callers must close rows and finish transactions; shutdown closes both pools. |
 | `cache.Store` | A mutex protects reservations, entries, pins, and close state; a directory lock enforces one process owner. | Chunk reads hold pins until release. Publication and recovery preserve accounting; the application closes the store. |
 | `library.Mount` and open handles | The mount owns the FUSE server and provider. Each handle retains one representation; static qualification snapshots use atomic replacement. | The application unmounts after its workers stop. Cache eviction or source renewal must not change an open handle's representation. |
 | Source adapter and diagnostics | The resolver bounds listing and metadata work with slots. The recorder protects its aggregates with a mutex. | Process calls have contexts and deadlines. Locators remain transient; measurements retain bounded operation data. |
@@ -290,6 +290,20 @@ committed data. The database closes driver statement resources. The retention
 mutex is released before statement preparation or execution. Materialized
 parameter rows prevent SQLite from repeatedly recompiling parameter-sensitive
 season queries. This changes no stored format or projection identity.
+
+Projection queries and channel branding use a separate read-only pool with at
+most two connections. Each connection sets a five-second busy timeout and
+`query_only`, and opens the existing database with `mode=ro`. Reads can use the
+last committed WAL state while a write transaction is active. Each query gets
+its own snapshot; a complete filesystem operation is not one database snapshot.
+Private in-memory databases and backup-only stores retain the original single
+connection path. Writes keep one connection with the existing foreign-key and
+durability settings.
+
+An unchanged show-NFO digest reads its durable timestamp without an update.
+Changed digests retain the existing atomic update and targeted Plex refresh.
+The statement retention limits apply across the read pool; driver plans and
+SQLite page caches can consume more memory with two reader connections.
 
 The runtime index cache has a fixed entry limit and memory budget estimate.
 Eviction removes only its cache reference; an open handle keeps its immutable

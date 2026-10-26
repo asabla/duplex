@@ -52,7 +52,7 @@ func (s *Store) ChannelArtwork(ctx context.Context, id, avatar, banner string) e
 
 // Branding returns only the channel's public metadata image candidates.
 func (s *Store) Branding(ctx context.Context, id string) (title, avatar, banner string, err error) {
-	err = s.DB.QueryRowContext(ctx, `SELECT title,avatar,banner FROM channels WHERE id=?`, id).Scan(&title, &avatar, &banner)
+	err = s.scanProjectionRow(ctx, `SELECT title,avatar,banner FROM channels WHERE id=?`, []any{id}, &title, &avatar, &banner)
 	return title, avatar, banner, err
 }
 
