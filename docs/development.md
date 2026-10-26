@@ -121,6 +121,10 @@ are uploaded. Keep that path list limited to the reviewed check outputs above.
 Controlled MP4 tests compare packet data and timing against independently prepared
 references, decode original audio, read distant ranges concurrently, and check
 end-of-file behavior. Real-source and Plex tests are separate release gates.
+FFprobe 6.1 can omit a nonterminal AAC packet duration. The comparison derives
+only that absent field from adjacent integer decode timestamps and the stream
+time base. Explicit durations, payload hashes, PTS, DTS, decoded audio, and
+seeking remain checked. A missing terminal duration or unproven interval fails.
 Record dependency versions and retain failed experiments as well as successful
 results. Never commit signed source URLs, tokens, profiles, credentials, or local
 installation state.
