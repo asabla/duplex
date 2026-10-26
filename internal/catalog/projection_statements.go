@@ -32,7 +32,7 @@ func (s *Store) projectionStatement(ctx context.Context, query string) (statemen
 		return statement, nil
 	}
 
-	prepared, err := s.DB.PrepareContext(ctx, query)
+	prepared, err := s.projectionReader().PrepareContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (s *Store) queryProjectionRows(ctx context.Context, query string, args ...a
 	}
 
 	if statement == nil {
-		return s.DB.QueryContext(ctx, query, args...)
+		return s.projectionReader().QueryContext(ctx, query, args...)
 	}
 
 	return statement.QueryContext(ctx, args...)
@@ -85,7 +85,7 @@ func (s *Store) scanProjectionRow(ctx context.Context, query string, args []any,
 	}
 
 	if statement == nil {
-		return s.DB.QueryRowContext(ctx, query, args...).Scan(targets...)
+		return s.projectionReader().QueryRowContext(ctx, query, args...).Scan(targets...)
 	}
 
 	return statement.QueryRowContext(ctx, args...).Scan(targets...)

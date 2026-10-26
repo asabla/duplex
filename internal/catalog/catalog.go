@@ -12,10 +12,11 @@ import (
 	_ "modernc.org/sqlite" // Register the pure Go SQLite database driver.
 )
 
-// Store owns the serialized SQLite connection and transactional catalogue operations.
+// Store owns serialized writes and bounded readers of committed projection state.
 type Store struct {
-	DB          *sql.DB
-	projections projectionStatements
+	DB              *sql.DB
+	projectionReads *sql.DB
+	projections     projectionStatements
 }
 
 // Open opens and migrates a catalogue for callers without an existing context.
@@ -71,8 +72,19 @@ CREATE TABLE IF NOT EXISTS plex_bindings(video_id TEXT NOT NULL,server TEXT NOT 
 		return nil, errors.Join(e, db.Close())
 	}
 
+	if e = s.openProjectionReads(ctx); e != nil {
+		return nil, errors.Join(e, db.Close())
+	}
+
 	return s, nil
 }
 
-// Close releases the catalogue connection after its workers have stopped.
-func (s *Store) Close() error { return s.DB.Close() }
+// Close releases both catalogue pools after their workers have stopped.
+func (s *Store) Close() error {
+	var err error
+	if s.projectionReads != nil {
+		err = s.projectionReads.Close()
+	}
+
+	return errors.Join(err, s.DB.Close())
+}

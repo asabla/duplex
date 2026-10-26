@@ -14,9 +14,21 @@ func (s *Store) RecordShowMetadata(ctx context.Context, channel, digest string, 
 		return 0, errors.New("show metadata identity is empty")
 	}
 
-	var result int64
+	var (
+		result  int64
+		current string
+	)
 
-	err := s.DB.QueryRowContext(ctx, `INSERT INTO show_metadata(channel_id,digest,modified) VALUES(?,?,?) ON CONFLICT(channel_id) DO UPDATE SET digest=excluded.digest,modified=MAX(show_metadata.modified+1,excluded.modified),pending=1,attempted=0,error='' WHERE digest<>excluded.digest RETURNING modified`, channel, digest, max(modified, time.Now().Unix())).Scan(&result)
+	err := s.scanProjectionRow(ctx, `SELECT digest,modified FROM show_metadata WHERE channel_id=?`, []any{channel}, &current, &result)
+	if err == nil && current == digest {
+		return result, nil
+	}
+
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+
+	err = s.DB.QueryRowContext(ctx, `INSERT INTO show_metadata(channel_id,digest,modified) VALUES(?,?,?) ON CONFLICT(channel_id) DO UPDATE SET digest=excluded.digest,modified=MAX(show_metadata.modified+1,excluded.modified),pending=1,attempted=0,error='' WHERE digest<>excluded.digest RETURNING modified`, channel, digest, max(modified, time.Now().Unix())).Scan(&result)
 	if errors.Is(err, sql.ErrNoRows) {
 		err = s.DB.QueryRowContext(ctx, `SELECT modified FROM show_metadata WHERE channel_id=?`, channel).Scan(&result)
 	}
