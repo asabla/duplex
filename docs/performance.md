@@ -165,6 +165,118 @@ These measurements have the same warm, single-reader limits as the preceding
 comparison. NFO generation, local artifact I/O, and cold source binding remain
 implementation targets.
 
+## Initial assets, cold opens, and reads during writes
+
+The next comparison retained baseline `1b5dfe7` before implementation. Three
+separate commits added bounded initial assets (`5ba3018`), unchanged index-file
+reuse (`843ba29`), and read-only projection connections (`0b0b29e`). Each version
+ran the same byte-identical benchmark fixtures, with ten samples per case.
+The [structured results](readiness-performance.json) retain exact commits, trees,
+Go source fingerprints, fixture hashes, all samples, ranges, allocations, and
+`benchstat` comparisons. A final paired repeat checked media input hashes before
+and after both versions; its asset and cold-open results are reported below.
+Original samples remain in the evidence, with their input-hash limitation stated.
+The [tooling instructions](performance-tooling.md#initial-readiness-and-writer-load)
+describe how to repeat these workloads.
+
+Linux runs used arm64, Go 1.27.3, GOMAXPROCS=2, two CPUs, 1 GiB of memory,
+512 MiB tmpfs, and the same pinned image as the preceding measurements. External
+network access was disabled; media HTTP used a controlled loopback origin.
+Native cold-open runs used macOS arm64 temporary APFS storage, GOMAXPROCS=2,
+and no memory cap. Versions and workloads ran sequentially, without a quality
+gate or another profiling workload running in parallel.
+
+### Local assets at the prepared-recording scan request
+
+Each sample prepared one new recording and ran the real optional asset worker.
+The fixture drains the earlier discovery scan notification and observes the
+scan request from media preparation. It does not measure an actual Plex scan.
+Asset completion uses one-millisecond polling. Medians below compare the
+baseline with all three changes:
+
+| Asset source | Asset completion before | Asset completion after | Local entries at scan request before / after |
+| --- | ---: | ---: | ---: |
+| Available, 25 ms per request | 2,056 ms | 66 ms | 0 / 2 |
+| Slow, 500 ms per request | 3,005 ms | 1,272 ms | 0 / 1 |
+| Unavailable, immediate HTTP 503 | 2,007 ms | 9 ms | 0 / 1 |
+
+Available sources produce a thumbnail and original-language captions. Slow or
+unavailable sources retain a local fallback thumbnail. Initial work has a
+250 ms budget for optional source work and the shared asset-slot wait. Local
+fallback creation, manifest writes, and catalogue completion are outside that
+budget. The background worker wakes immediately and drains queued items.
+
+This moves work into preparation: its available-source median increased from
+14 to 66 ms, and its slow-source median increased from 13 to 267 ms. The slow
+case made four request attempts instead of two because the interrupted initial
+attempt was retried. Available and unavailable cases still made two attempts.
+Cached media is available before this optional work finishes. An already running
+scan can still observe incomplete assets; this is best-effort preparation, not
+a Plex import barrier.
+
+### Cold runtime bindings
+
+The cold fixture clears runtime representation and metadata maps between
+provider opens. It retains the catalogue, indexes, descriptor, and media cache.
+It measures `Open`, without reading payload bytes. Runtime reset and inode
+comparison are excluded from timing. These are not cold storage or live-source
+startup measurements.
+
+On native APFS, the cold-open median fell from 31.96 to 4.10 ms, an 87.2%
+reduction (p<0.001). Each open still made one resolver call and two source HTTP
+requests. Unchanged index and descriptor replacements fell from three to zero.
+Changed or corrupt files still use synced replacement; source identity and
+range checks remain in place.
+
+The final paired repeat showed no significant Linux tmpfs cold-open change:
+3.80 versus 3.86 ms (p=0.529). Warm-open medians were 125 versus 134 microseconds
+on Linux and 180 versus 192 microseconds on macOS; neither comparison was
+significant at 0.05. The original series showed small significant increases in
+these cases; those samples remain retained rather than pooled with the repeat.
+Cold-open allocation grew by about 95 KiB per operation for the three bounded
+comparison buffers. The APFS gain must not be presented as a measured native
+Linux SSD gain.
+
+### Metadata with concurrent catalogue writes
+
+The shared 10,000-recording catalogue receives ten transactions that each update
+1,000 playlist membership timestamps, with planned starts 100 ms apart. Four
+readers each issue 200 metadata requests, with planned starts 5 ms apart. All
+800 reads and all writes must complete. Overdue requests remain in the sample.
+Service time and time from planned arrival to completion are recorded separately.
+
+The table gives medians of ten independent per-sample p99 values. These are not
+pooled percentiles. The first two columns include scheduling delay:
+
+| Path | Attribute | Before p99 | After p99 | After service p99 |
+| --- | --- | ---: | ---: | ---: |
+| Provider | Channel | 18.55 ms | 2.23 ms | 0.30 ms |
+| Provider | Episode NFO | 15.19 ms | 3.10 ms | 1.72 ms |
+| Provider | Show NFO | 16.90 ms | 2.53 ms | 0.69 ms |
+| Mounted FUSE | Channel | 10.28 ms | 4.31 ms | 0.75 ms |
+| Mounted FUSE | Episode NFO | 12.28 ms | 4.02 ms | 2.61 ms |
+| Mounted FUSE | Show NFO | 16.02 ms | 5.57 ms | 1.35 ms |
+
+All scheduled-p99 comparisons were significant at the default 0.05 threshold.
+Mounted channel and show results still varied substantially: after-change
+per-sample scheduled p99 reached 17.81 and 17.06 ms. The read pool removes the
+single connection wait behind catalogue writes; it does not remove host or
+container scheduling delays. Changed show metadata still needs a write.
+
+Separate warm single-reader controls showed 39–40% faster show-NFO attributes.
+Small season lookups increased by about 0.3–0.5 microseconds. Canonical timestamp
+update medians increased from 30.42 to 32.05 microseconds for uploads and from
+42.86 to 44.08 microseconds with playlist membership; allocation remained eight
+allocations and 328 bytes per update. These are measured costs; their cause was
+not isolated. Two read-only connections can retain additional SQLite pages and
+driver plans. Total resident memory was not measured.
+
+These results establish controlled workload improvements. They do not establish
+live resolver latency, Plex asset import, scan completion, first frame, sustained
+playback, or a filesystem latency guarantee. FUSE metadata cache policy and
+scan-range prefetch remain separate targets that need invalidation and actual
+read-range evidence.
+
 ## Media path
 
 Use the [playback profiler](playback-performance.md) to measure reads through Plex,
