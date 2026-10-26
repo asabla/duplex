@@ -133,7 +133,7 @@ func (w *fixtureByteWriter) Write(data []byte) (int, error) {
 	return n, err
 }
 
-func mediaPipeline(t *testing.T) (*App, *collectionSource, *mediaFixtureOrigin) {
+func mediaPipeline(t testing.TB) (*App, *collectionSource, *mediaFixtureOrigin) {
 	t.Helper()
 	origin := newMediaFixtureOrigin(t)
 	adapter := fixtureCollection(1)
