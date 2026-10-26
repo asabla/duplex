@@ -135,36 +135,6 @@ func (s *Store) HasProjectionSeason(ctx context.Context, v Visibility, owner str
 	return exists, err
 }
 
-// ProjectionEntries uses exact mounted base names for lexical keyset paging
-// without loading episode metadata.
-func (s *Store) ProjectionEntries(ctx context.Context, v Visibility, owner string, season int, after string, limit int) ([]ProjectionEntry, error) {
-	if limit < 1 || limit > 256 {
-		return nil, errors.New("invalid projection page size")
-	}
-
-	cte, args := projectionCTE(v)
-	args = append(args, owner, season, after, limit)
-
-	rows, err := s.DB.QueryContext(ctx, cte+`SELECT video,playlist,file_number FROM episodes WHERE owner=? AND season=? AND printf('Channel-%s - S%04dE%04d',owner,season,file_number)>=? ORDER BY printf('Channel-%s - S%04dE%04d',owner,season,file_number),video LIMIT ?`, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer closeRows(rows)
-
-	result := []ProjectionEntry{}
-
-	for rows.Next() {
-		var entry ProjectionEntry
-		if err := rows.Scan(&entry.VideoID, &entry.PlaylistID, &entry.FileNumber); err != nil {
-			return nil, err
-		}
-
-		result = append(result, entry)
-	}
-
-	return result, rows.Err()
-}
-
 // ProjectionPosters pages season artwork names without loading all seasons.
 func (s *Store) ProjectionPosters(ctx context.Context, v Visibility, owner, after string, limit int) ([]ProjectionSeason, error) {
 	if limit < 1 || limit > 256 {

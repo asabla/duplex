@@ -83,7 +83,7 @@ run_linux() {
 
 for label in before after; do
   printf 'Measuring %s\n' "$label"
-  run_linux "$label" -test.bench BenchmarkCatalogueFilesystemPage -test.benchmem -test.count 10 -test.benchtime 1s >"$output/$label.txt"
+  run_linux "$label" -test.bench 'BenchmarkCatalogue(FilesystemPage|PlaylistFilesystemPage)' -test.benchmem -test.count 10 -test.benchtime 1s >"$output/$label.txt"
 done
 (cd "$output" && "$benchstat" before.txt after.txt) >"$output/comparison.txt"
 (cd "$output" && "$benchstat" -format csv before.txt after.txt) >"$output/comparison.csv"
