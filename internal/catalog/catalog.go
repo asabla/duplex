@@ -36,7 +36,7 @@ func OpenContext(ctx context.Context, path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	var version int
-	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 8 {
+	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 9 {
 		return nil, errors.Join(errors.New("unsupported catalogue schema version"), db.Close())
 	}
 

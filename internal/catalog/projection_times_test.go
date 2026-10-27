@@ -198,7 +198,7 @@ func TestProjectionTimeMigrationBackfillsAndPreservesMedia(t *testing.T) {
 	}
 
 	var version int
-	if err = s.DB.QueryRowContext(t.Context(), `PRAGMA user_version`).Scan(&version); err != nil || version != 8 {
+	if err = s.DB.QueryRowContext(t.Context(), `PRAGMA user_version`).Scan(&version); err != nil || version != 9 {
 		t.Fatal(version, err)
 	}
 }

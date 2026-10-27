@@ -124,6 +124,7 @@ func consumeEntries(ctx context.Context, scanner *bufio.Scanner, s Scope, consum
 		}
 
 		result.Count++
+		entry.Kind = ContentKind(s.Tab)
 		entry.Position = max(1, s.Start) + result.Count - 1
 
 		batch = append(batch, entry)
@@ -147,6 +148,20 @@ func consumeEntries(ctx context.Context, scanner *bufio.Scanner, s Scope, consum
 	}
 
 	return result, nil
+}
+
+// ContentKind uses the source tab; duration and aspect ratio do not identify Shorts.
+func ContentKind(tab string) string {
+	switch tab {
+	case "videos":
+		return "upload"
+	case "shorts":
+		return "short"
+	case "streams":
+		return "replay"
+	default:
+		return ""
+	}
 }
 
 // PlaylistStreamer enumerates root collections without retaining the complete list.

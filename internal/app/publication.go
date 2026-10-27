@@ -14,9 +14,10 @@ import (
 // Publication is serialized separately from runtime binding and Plex requests.
 // Restart starts with no applied policies so retained directories are scanned.
 type publicationState struct {
-	publicationMu       sync.Mutex
-	publicationRevision string
-	publicationPolicies map[string]string
+	publicationMu         sync.Mutex
+	publicationRevision   string
+	publicationPolicies   map[string]string
+	publicationSelections map[string]string
 }
 
 // Publish makes current durable state available through the database-backed mount.
@@ -36,6 +37,11 @@ func (a *App) Publish() error {
 		return nil
 	}
 
+	selectionChanged, err := a.publishSelections(snapshot.Config)
+	if err != nil {
+		return err
+	}
+
 	policies := projectionPolicies(snapshot.Config)
 
 	changed := changedProjectionPolicies(a.publicationPolicies, policies)
@@ -45,7 +51,7 @@ func (a *App) Publish() error {
 		}
 	}
 
-	if len(changed) > 0 || a.publicationRevision == "" {
+	if len(changed) > 0 || selectionChanged || a.publicationRevision == "" {
 		a.requestScan()
 	}
 

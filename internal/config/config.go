@@ -18,14 +18,16 @@ var ErrConflict = errors.New("configuration changed; reload before saving")
 
 // Channel stores following, collection selection, and artwork policies by stable ID.
 type Channel struct {
-	ID        string          `yaml:"id" json:"id"`
-	URL       string          `yaml:"url" json:"url"`
-	Limit     int             `yaml:"limit" json:"limit"`
-	Enabled   bool            `yaml:"enabled" json:"enabled"`
-	Unlisted  []string        `yaml:"unlisted_videos,omitempty" json:"unlisted_videos,omitempty"`
-	Indexing  *Selection      `yaml:"indexing,omitempty" json:"indexing,omitempty"`
-	Playlists *PlaylistPolicy `yaml:"playlists,omitempty" json:"playlists,omitempty"`
-	Artwork   Artwork         `yaml:"artwork,omitempty" json:"artwork,omitempty"`
+	ID             string            `yaml:"id" json:"id"`
+	URL            string            `yaml:"url" json:"url"`
+	Limit          int               `yaml:"limit" json:"limit"`
+	Enabled        bool              `yaml:"enabled" json:"enabled"`
+	Unlisted       []string          `yaml:"unlisted_videos,omitempty" json:"unlisted_videos,omitempty"`
+	Indexing       *Selection        `yaml:"indexing,omitempty" json:"indexing,omitempty"`
+	Content        *ContentPolicy    `yaml:"content,omitempty" json:"content,omitempty"`
+	VideoOverrides map[string]string `yaml:"video_overrides,omitempty" json:"video_overrides,omitempty"`
+	Playlists      *PlaylistPolicy   `yaml:"playlists,omitempty" json:"playlists,omitempty"`
+	Artwork        Artwork           `yaml:"artwork,omitempty" json:"artwork,omitempty"`
 }
 
 // Plex identifies the dedicated library and an external protected token file.
