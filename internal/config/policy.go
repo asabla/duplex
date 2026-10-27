@@ -71,6 +71,10 @@ func (s Selection) validate(override bool) error {
 }
 
 func (c Channel) validatePolicy() error {
+	if err := c.validateContent(); err != nil {
+		return err
+	}
+
 	if err := c.Selection().validate(false); err != nil {
 		return err
 	}

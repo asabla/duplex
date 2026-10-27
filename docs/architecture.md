@@ -17,7 +17,7 @@ readability policy. This document owns responsibility and dependency boundaries.
 | `cmd/duplex` | CLI dispatch, startup, HTTP service lifetime, backup, and qualification commands. | `admin`, `app`, `cache`, `catalog`, `config`, `diagnostics`, `library`, `media`, `plex`, `source`. |
 | `internal/admin` | HTTP routing, authentication, request parsing, HTML and JSON responses, embedded templates and assets. | `app`, `catalog`, `config`. |
 | `internal/app` | Coordinates discovery, preparation, publication, runtime bindings, Plex integration, artwork, and worker lifetime. | `artwork`, `cache`, `catalog`, `config`, `diagnostics`, `library`, `media`, `plex`, `source`. |
-| `internal/catalog` | SQLite schema, migrations, identities, selections, durable work, bounded queries, and projection state. | `source`. |
+| `internal/catalog` | SQLite schema, migrations, identities, selections, durable work, bounded queries, and projection state. | `config`, `source`. |
 | `internal/config` | YAML schema, policy validation, revision-checked saves, and reload snapshots. | None. |
 | `internal/source` | Resolver process adapter, collection enumeration, metadata, candidate selection, and transient source locators. | `config`. |
 | `internal/media` | HTTP range sources, verification, MP4 mapping, and representation indexes. | `cache`, `config`. |
@@ -313,6 +313,26 @@ leaves, returns, moves, or changes its published metadata. An index supplies the
 latest recording timestamp for that channel. Unchanged upload discovery updates
 only membership differences, so it retains directory times. Recording file times,
 media revisions, scanner slots, and Plex bindings remain unchanged by selection.
+
+Schema 9 records source content kinds in `video_content` and applied recording
+rule digests in `upload_rule_state`. Tab membership identifies uploads and Shorts;
+completed-broadcast metadata takes precedence for replays. Duplicate tab entries
+retain the more specific kind. Older recordings remain unclassified unless
+broadcast metadata or later tab discovery establishes their kind.
+
+YAML retains recording policy authority: optional independent content windows
+and channel recording Keep/Exclude overrides. Preview and apply share a SQL
+selection query. Exclusions are applied before ranking; Keep adds eligible
+recordings without duplicating an automatic selection. Preview uses a read-only
+transaction for consistent counts and at most 25 rows, with no source calls.
+
+Configuration publication applies changed rules to known recordings. Successful
+source enumeration reconciles its staged window and commits the applied digest
+in the same transaction. Publication and discovery selection writes share the
+publication mutex; source I/O stays outside that lock. The durable digest prevents
+startup or a later publication from restoring withdrawn entries under unchanged
+rules. Playlist membership, occurrence identities, media revisions, and scanner
+slots remain independent of channel recording selection.
 
 Projection reads retain at most 32 prepared SQL statements and 128 KiB of SQL
 text per catalogue store. Additional query variants use ordinary uncached reads.

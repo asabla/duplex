@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
+	"duplex/internal/config"
 	"duplex/internal/source"
 )
 
@@ -56,9 +58,13 @@ func (c *uploadCursor) fill(ctx context.Context) error {
 		return nil
 	}
 
-	c.scope.Count = min(25, c.run.channel.Selection().Limit)
+	c.scope.Count = min(25, c.run.channel.ContentSelection(source.ContentKind(c.scope.Tab)).Limit)
 
 	listing, err := c.run.reader.Entries(ctx, c.scope, func(batch []source.Entry) error {
+		for i := range batch {
+			batch[i].Kind = source.ContentKind(c.scope.Tab)
+		}
+
 		if err := c.run.app.Catalog.Discover(ctx, c.run.channel.ID, batch); err != nil {
 			return err
 		}
@@ -78,13 +84,27 @@ func (c *uploadCursor) fill(ctx context.Context) error {
 }
 
 func (r *discoveryRun) discoverUploads(ctx context.Context, cursors []*uploadCursor) error {
+	if r.channel.Content != nil {
+		if r.reader == nil {
+			return errors.New("separate content selection requires source tab discovery")
+		}
+
+		return r.separateUploads(ctx, cursors)
+	}
+
 	if r.reader != nil && r.channel.Selection().Mode == "all" {
 		return r.allUploads(ctx)
 	}
 
-	selected := 0
+	if err := r.uploadWindow(ctx, cursors, r.channel.Selection()); err != nil {
+		return err
+	}
 
-	policy := r.channel.Selection()
+	return r.finishUploads(ctx)
+}
+
+func (r *discoveryRun) uploadWindow(ctx context.Context, cursors []*uploadCursor, policy config.Selection) error {
+	selected := 0
 	for policy.Mode == "all" || selected < policy.Limit {
 		best, m, err := nextUpload(ctx, cursors)
 		if err != nil {
@@ -97,6 +117,17 @@ func (r *discoveryRun) discoverUploads(ctx context.Context, cursors []*uploadCur
 
 		cursors[best].pending = cursors[best].pending[1:]
 
+		if r.channel.Content != nil {
+			kind, failure := r.app.Catalog.RecordingKind(ctx, m.ID)
+			if failure != nil {
+				return failure
+			}
+
+			if kind != source.ContentKind(cursors[best].scope.Tab) {
+				continue
+			}
+		}
+
 		chosen, err := r.selectUpload(ctx, *m, selected)
 		if err != nil {
 			return err
@@ -107,7 +138,7 @@ func (r *discoveryRun) discoverUploads(ctx context.Context, cursors []*uploadCur
 		}
 	}
 
-	return r.finishUploads(ctx)
+	return nil
 }
 
 func nextUpload(ctx context.Context, cursors []*uploadCursor) (int, *source.Metadata, error) {
@@ -153,6 +184,24 @@ func metadataBefore(a, b source.Metadata) bool {
 }
 
 func (r *discoveryRun) selectUpload(ctx context.Context, m source.Metadata, selected int) (bool, error) {
+	r.app.publicationMu.Lock()
+	defer r.app.publicationMu.Unlock()
+
+	if err := r.current(); err != nil {
+		return false, err
+	}
+
+	if r.channel.VideoOverrides[m.ID] == "exclude" {
+		return false, nil
+	}
+
+	if r.channel.Content != nil && r.channel.VideoOverrides[m.ID] != "keep" {
+		kind, err := r.app.Catalog.RecordingKind(ctx, m.ID)
+		if err != nil || r.channel.ContentSelection(kind).Mode == "skip" {
+			return false, err
+		}
+	}
+
 	chosen, err := r.app.Catalog.ChooseDiscovery(ctx, r.id, "uploads", m.ID)
 	if err != nil || !chosen {
 		return false, err
@@ -176,15 +225,20 @@ func (r *discoveryRun) selectUpload(ctx context.Context, m source.Metadata, sele
 func (r *discoveryRun) allUploads(ctx context.Context) error {
 	u := allUploadDiscovery{run: r}
 
-	consume := func(batch []source.Entry) error { return u.consume(ctx, batch) }
 	for _, tab := range []string{"videos", "streams", "shorts"} {
-		if _, err := r.reader.Entries(ctx, source.Scope{ChannelID: r.channel.ID, Tab: tab, Start: 1}, consume); err != nil {
+		if _, err := r.reader.Entries(ctx, source.Scope{ChannelID: r.channel.ID, Tab: tab, Start: 1}, func(batch []source.Entry) error {
+			for i := range batch {
+				batch[i].Kind = source.ContentKind(tab)
+			}
+
+			return u.consume(ctx, batch)
+		}); err != nil {
 			return err
 		}
 	}
 
 	for _, id := range r.channel.Unlisted {
-		if err := consume([]source.Entry{{ID: id}}); err != nil {
+		if err := u.consume(ctx, []source.Entry{{ID: id}}); err != nil {
 			return err
 		}
 	}
@@ -195,6 +249,7 @@ func (r *discoveryRun) allUploads(ctx context.Context) error {
 type allUploadDiscovery struct {
 	run                *discoveryRun
 	selected, position int
+	kind               string
 }
 
 func (u *allUploadDiscovery) consume(ctx context.Context, batch []source.Entry) error {
@@ -224,6 +279,17 @@ func (u *allUploadDiscovery) add(ctx context.Context, m source.Metadata) error {
 		return nil
 	}
 
+	if u.kind != "" {
+		kind, err := u.run.app.Catalog.RecordingKind(ctx, m.ID)
+		if err != nil {
+			return err
+		}
+
+		if kind != u.kind {
+			return nil
+		}
+	}
+
 	chosen, err := u.run.selectUpload(ctx, m, u.selected)
 	if chosen {
 		u.selected++
@@ -233,6 +299,21 @@ func (u *allUploadDiscovery) add(ctx context.Context, m source.Metadata) error {
 }
 
 func (r *discoveryRun) finishUploads(ctx context.Context) error {
+	if err := r.keptUploads(ctx); err != nil {
+		return err
+	}
+
+	if err := r.commitUploadSelection(ctx); err != nil {
+		return err
+	}
+
+	return r.app.Publish()
+}
+
+func (r *discoveryRun) commitUploadSelection(ctx context.Context) error {
+	r.app.publicationMu.Lock()
+	defer r.app.publicationMu.Unlock()
+
 	limit := 0
 	if policy := r.channel.Selection(); policy.Mode == "latest" {
 		limit = policy.Limit
@@ -242,9 +323,75 @@ func (r *discoveryRun) finishUploads(ctx context.Context) error {
 		return err
 	}
 
-	if err := r.app.Catalog.ReconcileDiscovery(ctx, r.id, "uploads", r.channel.ID, limit); err != nil {
+	if r.channel.Content != nil || len(r.channel.VideoOverrides) > 0 {
+		if err := r.app.Catalog.ReconcileUploadRules(ctx, r.id, r.channel); err != nil {
+			return err
+		}
+	} else {
+		if err := r.app.Catalog.ReconcileDiscovery(ctx, r.id, "uploads", r.channel.ID, limit); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (r *discoveryRun) separateUploads(ctx context.Context, cursors []*uploadCursor) error {
+	for _, c := range cursors {
+		kind := source.ContentKind(c.scope.Tab)
+		if kind == "" {
+			continue
+		}
+
+		policy := r.channel.ContentSelection(kind)
+		if policy.Mode == "skip" {
+			continue
+		}
+
+		if policy.Mode == "all" {
+			u := allUploadDiscovery{run: r, kind: kind}
+			if _, err := r.reader.Entries(ctx, c.scope, func(batch []source.Entry) error {
+				for i := range batch {
+					batch[i].Kind = kind
+				}
+
+				return u.consume(ctx, batch)
+			}); err != nil {
+				return err
+			}
+		} else if err := r.uploadWindow(ctx, []*uploadCursor{c}, policy); err != nil {
+			return err
+		}
+	}
+
+	if err := r.explicitUploads(ctx, r.channel.Unlisted); err != nil {
 		return err
 	}
 
-	return r.app.Publish()
+	return r.finishUploads(ctx)
+}
+
+func (r *discoveryRun) keptUploads(ctx context.Context) error {
+	ids := []string{}
+
+	for id, mode := range r.channel.VideoOverrides {
+		if mode == "keep" {
+			ids = append(ids, id)
+		}
+	}
+
+	slices.Sort(ids)
+
+	return r.explicitUploads(ctx, ids)
+}
+
+func (r *discoveryRun) explicitUploads(ctx context.Context, ids []string) error {
+	u := allUploadDiscovery{run: r}
+	for _, id := range ids {
+		if err := u.consume(ctx, []source.Entry{{ID: id}}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

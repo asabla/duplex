@@ -67,6 +67,13 @@ func clone(c Config) Config {
 		ch := &s.Channels[i]
 
 		ch.Unlisted = append([]string{}, ch.Unlisted...)
+
+		ch.VideoOverrides = maps.Clone(ch.VideoOverrides)
+		if ch.Content != nil {
+			content := *ch.Content
+			ch.Content = &content
+		}
+
 		if ch.Indexing != nil {
 			p := *ch.Indexing
 			ch.Indexing = &p

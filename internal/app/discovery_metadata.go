@@ -50,11 +50,13 @@ func (r *discoveryRun) metadata(ctx context.Context, entry source.Entry, owned b
 		if err != nil {
 			return m, err
 		}
+	}
 
-		if m.ID != entry.ID || m.ChannelID == "" || (owned && m.ChannelID != r.channel.ID) {
-			return m, errors.New("source video or uploader identity changed")
-		}
+	if m.ID != entry.ID || m.ChannelID == "" || (owned && m.ChannelID != r.channel.ID) {
+		return m, errors.New("source video or uploader identity changed")
+	}
 
+	if !cached {
 		if err = r.app.Catalog.SaveMetadata(ctx, m); err != nil {
 			return m, err
 		}

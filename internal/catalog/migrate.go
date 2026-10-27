@@ -19,6 +19,7 @@ func (s *Store) migrate(ctx context.Context, version int) error {
 		{6, s.migrateProjectionTimes},
 		{7, s.migrateEpisodeMetadata},
 		{8, s.migrateUploadTimes},
+		{9, s.migrateContentKinds},
 	}
 
 	for _, step := range steps {

@@ -9,6 +9,7 @@ import (
 
 // Entry is a lightweight collection identity with source ordering and optional timestamps.
 type Entry struct {
+	Kind             string  `json:"-"`
 	Group            int     `json:"-"`
 	Position         int     `json:"playlist_index"`
 	ID               string  `json:"id"`

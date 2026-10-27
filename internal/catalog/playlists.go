@@ -90,6 +90,13 @@ func (s *Store) Discover(ctx context.Context, owner string, entries []source.Ent
 		if err != nil {
 			return err
 		}
+
+		if entry.Kind != "" {
+			_, err = tx.ExecContext(ctx, `INSERT INTO video_content(video_id,kind) SELECT id,? FROM videos WHERE id=? AND channel_id=? ON CONFLICT(video_id) DO UPDATE SET kind=CASE WHEN video_content.kind='replay' OR excluded.kind='replay' THEN 'replay' WHEN video_content.kind='short' OR excluded.kind='short' THEN 'short' ELSE 'upload' END`, entry.Kind, entry.ID, owner)
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	return tx.Commit()

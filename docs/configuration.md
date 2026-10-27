@@ -35,8 +35,8 @@ defines the YAML fields.
 
 ```yaml
 channels:
-  - id: UCw7FkXsC00lH2v2yB5LQoYA
-    url: https://www.youtube.com/channel/UCw7FkXsC00lH2v2yB5LQoYA
+  - id: UCaaaaaaaaaaaaaaaaaaaaaa
+    url: https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa
     limit: 50
     enabled: true
     indexing:
@@ -62,6 +62,48 @@ work remains queued in durable storage when discovery finishes.
 Existing YAML with only `limit` keeps its numeric upload window and skips
 playlists. Migration does not enable new collections without a settings edit.
 Newly followed channels write explicit policies and enable playlists.
+
+### Separate content and individual recordings
+
+Optional `content` rules split the channel's recording collection into uploads,
+Shorts, and completed streams. Each rule accepts `latest` with a positive `limit`,
+`all`, or `skip`. Without `content`, the existing shared `indexing` rule applies.
+Playlist inheritance continues to use `indexing`; these content rules do not
+change playlist selections.
+
+```yaml
+indexing:
+  mode: latest
+  limit: 20
+content:
+  uploads: {mode: latest, limit: 20}
+  shorts: {mode: skip}
+  replays: {mode: latest, limit: 2}
+video_overrides:
+  video000001: keep
+  video000002: exclude
+```
+
+These are controlled example IDs. Replace them with the channel's actual video
+IDs. `keep` adds an eligible recording beyond the automatic window, including a
+skipped content type. A kept recording already inside the window appears once.
+`exclude` removes a recording before the automatic window is counted, so the
+next eligible recording fills its place. Remove an override to restore automatic
+selection. Overrides affect only this channel's recording collection; playlists
+retain their independent membership and history.
+
+Shorts are identified from source tab membership, not duration or image shape.
+Older catalogue records can have an unknown type until discovery reaches them.
+Separate automatic rules omit unknown types; explicit Keep can still select an
+eligible recording. A completed-broadcast state identifies a replay. No rule
+makes an active, processing, unavailable, or unsupported recording playable.
+
+The administration preview reads the last discovered catalogue and returns at
+most 25 selected rows with complete counts. It performs no source or media work.
+Saving applies changed rules to known records and queues discovery when enabled.
+Discovery can find additional recordings. Successful enumeration reconciles its
+window; a failed refresh retains the prior complete window and safe additions.
+Applied rules survive restart without restoring withdrawn source entries.
 
 `enabled: false` pauses a channel and removes it from the library projection.
 Durable identities remain. `unlisted_videos` is an optional list of explicit
