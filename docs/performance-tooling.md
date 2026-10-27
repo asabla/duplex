@@ -207,3 +207,19 @@ less work or immediate playback after mount readiness. This fixture does not
 measure worker concurrency, FFmpeg decoding, Plex scanning, or live source
 latency. Use the playback profiler for those separate measurements and keep
 installation-specific reports outside Git.
+
+## Shared selection reconciliation
+
+Compare the previous upload query and the current durable rule checkpoint on
+the same 10,000 staged recordings:
+
+```sh
+GOMAXPROCS=2 go test ./internal/app -run '^$' \
+  -bench '^BenchmarkSharedSelectionReconcile$' -benchtime=10x -count=10 -benchmem
+```
+
+Both paths run once before timing so membership is unchanged during samples.
+Latest selects 50 recordings; All retains all 10,000. Fixture creation and initial
+reconciliation are outside timing. Compare the same toolchain, filesystem, and
+resource limits without concurrent tests or profiles. This measures catalogue
+transactions and checkpoint work, not source discovery or filesystem callbacks.

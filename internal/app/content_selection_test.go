@@ -201,3 +201,56 @@ func TestNewRulesDoNotRestoreWithdrawnEntriesAfterSuccessfulDiscovery(t *testing
 		t.Fatal("restart restored a withdrawn source entry", got)
 	}
 }
+
+func TestRestoringSharedSelectionDoesNotRestoreWithdrawnEntries(t *testing.T) {
+	a, adapter := mixedContent(t)
+	snapshot := a.Config.Snapshot()
+
+	snapshot.Config.Channels[0].Content = &config.ContentPolicy{Uploads: config.Selection{Mode: "all"}, Shorts: config.Selection{Mode: "skip"}, Replays: config.Selection{Mode: "skip"}}
+	if err := a.Config.Save(snapshot.Config, snapshot.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot = a.Config.Snapshot()
+
+	snapshot.Config.Channels[0].Content = nil
+	if err := a.Config.Save(snapshot.Config, snapshot.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter.entries = map[string][]source.Entry{"videos": {{ID: "video000001"}}}
+
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := selectedIDs(t, a); !reflect.DeepEqual(got, []string{"video000001"}) {
+		t.Fatal("restoring shared rules restored withdrawn recordings", got)
+	}
+
+	snapshot = a.Config.Snapshot()
+
+	snapshot.Config.Channels[0].Indexing = &config.Selection{Mode: "latest", Limit: 1}
+	if err := a.Config.Save(snapshot.Config, snapshot.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+
+	a.publicationRevision = ""
+
+	a.publicationSelections = nil
+	if err := a.Publish(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := selectedIDs(t, a); !reflect.DeepEqual(got, []string{"video000001"}) {
+		t.Fatal("restart restored withdrawn recordings under shared rules", got)
+	}
+}

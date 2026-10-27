@@ -35,6 +35,11 @@ func uploadSelection(ch config.Channel, run int64) (string, []any, error) {
 		return "", nil, err
 	}
 
+	if ch.Content == nil && len(ch.VideoOverrides) == 0 {
+		query, args := sharedUploadSelection(ch, run)
+		return query, args, nil
+	}
+
 	policies := [][]any{{"*", ch.Selection().Mode, ch.Selection().Limit}}
 	if ch.Content != nil {
 		policies = nil
@@ -81,6 +86,27 @@ eligible AS (SELECT * FROM known WHERE override<>'exclude'`
 	}
 
 	return cte + ` WHERE r.override='keep' OR p.mode='all' OR (p.mode='latest' AND r.ordinal<=p.n)) `, args, nil
+}
+
+// Shared windows need no per-kind ranking or override join. Retain that simple
+// query for existing configurations while using the same durable checkpoint.
+func sharedUploadSelection(ch config.Channel, run int64) (string, []any) {
+	query := `WITH known AS (SELECT v.id,v.title,v.published,v.selected,CASE WHEN v.state='replay-ready' THEN 'replay' ELSE COALESCE(k.kind,'') END AS kind,'' AS override FROM videos v LEFT JOIN video_content k ON k.video_id=v.id WHERE v.channel_id=? AND v.state IN ('recorded','replay-ready')), desired AS (SELECT * FROM known WHERE true`
+	args := []any{ch.ID}
+
+	if run > 0 {
+		query += ` AND id IN (SELECT video_id FROM discovery_items WHERE run_id=? AND collection='uploads')`
+
+		args = append(args, run)
+	}
+
+	if policy := ch.Selection(); policy.Mode == "latest" {
+		query += ` ORDER BY published DESC,id LIMIT ?`
+
+		args = append(args, policy.Limit)
+	}
+
+	return query + `) `, args
 }
 
 // PreviewUploads reads consistent counts and at most 25 selected recordings.
