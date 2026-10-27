@@ -314,26 +314,13 @@ func (r *discoveryRun) commitUploadSelection(ctx context.Context) error {
 	r.app.publicationMu.Lock()
 	defer r.app.publicationMu.Unlock()
 
-	limit := 0
-	if policy := r.channel.Selection(); policy.Mode == "latest" {
-		limit = policy.Limit
-	}
-
 	if err := r.current(); err != nil {
 		return err
 	}
 
-	if r.channel.Content != nil || len(r.channel.VideoOverrides) > 0 {
-		if err := r.app.Catalog.ReconcileUploadRules(ctx, r.id, r.channel); err != nil {
-			return err
-		}
-	} else {
-		if err := r.app.Catalog.ReconcileDiscovery(ctx, r.id, "uploads", r.channel.ID, limit); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	// Shared policies also need a durable checkpoint after explicit rules are
+	// cleared, including later edits to that shared policy.
+	return r.app.Catalog.ReconcileUploadRules(ctx, r.id, r.channel)
 }
 
 func (r *discoveryRun) separateUploads(ctx context.Context, cursors []*uploadCursor) error {
