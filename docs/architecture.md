@@ -339,8 +339,12 @@ SQLite page caches can consume more memory with two reader connections.
 The runtime index cache has a fixed entry limit and memory budget estimate.
 Eviction removes only its cache reference; an open handle keeps its immutable
 representation. A source change creates a new revision and fails an attempt to
-open the old revision. Unfinished preparations resume after restart. Other
-verified recordings bind when opened.
+open the old revision. Unfinished preparations resume after restart. The restart
+queue also warms at most four recent selected ready recordings at priority 100,
+below explicit preparation requests and source renewal. Shared playlist
+occurrences use one canonical warm-up task. Paused channels, skipped playlists,
+and failed preparations are excluded. The existing two workers verify sources
+and reuse matching indexes; other retained recordings bind when opened.
 
 The Linux FUSE projection is read-only. Channels are shows, year and playlist
 collections are seasons, and verified recordings are episodes. NFO files contain

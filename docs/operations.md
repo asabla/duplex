@@ -70,8 +70,11 @@ Removals and playlist reorder wait for successful enumeration. A partial refresh
 retains the prior selection and does not renumber year episodes.
 
 On restart, the catalogue, identities, and verified indexes remain. Source leases
-are re-established for new reads through bounded work. Mount readiness is separate
-from individual video availability. Check preparation state as well as Diagnostics.
+for up to four recent selected ready recordings are verified in the background.
+This uses the existing two preparation workers and yields to requested playback.
+Other retained recordings bind on demand. Warming moves source work before a
+later open; it does not remove that work or guarantee immediate playback after
+mount readiness. Check preparation state as well as Diagnostics.
 Keep automatic Plex trash emptying disabled during restoration.
 
 Valid external YAML edits reload. Invalid edits retain the last valid settings
