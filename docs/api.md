@@ -59,11 +59,15 @@ loaded. The page envelope contains `items`, `page`, `per_page`, and `total`.
 
 | Resource | Filters | Sort values |
 | --- | --- | --- |
-| Videos | `q`, `channel`, `playlist`, `lifecycle`, `preparation`, `inclusion` | `newest`, `oldest`, `title`, `title_desc`, `updated`, `updated_oldest` |
+| Videos | `q`, `channel`, `playlist`, `lifecycle`, `preparation`, `inclusion`, `rule` | `newest`, `oldest`, `title`, `title_desc`, `updated`, `updated_oldest` |
 | Playlists | `q`, `channel`, `policy`, `failure`, `availability` | `title`, `title_desc`, `season`, `season_desc`, `updated`, `updated_oldest` |
 | Jobs | `channel`, `state` | `newest`, `oldest` |
 
-Video `inclusion` is `selected` by default, `all`, or `outside`. Lifecycle is
+Video `inclusion` is `selected` by default, `all`, or `outside`. `outside` means
+not selected by any active channel or playlist policy. Optional `rule=keep` or
+`rule=exclude` filters explicit channel recording overrides from current YAML.
+It combines with the other filters. An explicit Exclude can remain selected
+through a playlist. Lifecycle is
 `discovered`, `recorded`, `replay-ready`, `upcoming`, `active`, `processing`, or
 `unavailable`. Preparation is `discovered`, `queued`, `resolving`, `preparing`,
 `ready`, `waiting`, `failed`, or `skipped`. Playlist `policy` filters the effective
@@ -115,7 +119,11 @@ replaces the channel's recording overrides; null or an empty object clears them.
 These endpoints preserve playlist policies and artwork settings.
 
 The preview returns `known`, `unknown_kind`, `selected`, `added`, and `removed`
-counts plus `items`, capped at 25 selected recordings. Each item contains `id`,
+counts plus `items`, capped at 25 recordings. Query parameters `view=selected`
+(the default), `view=added`, or `view=removed` select the review list. `page`
+selects a page; the response includes `view`, `page`, and `pages`. For example,
+POST the same draft to `/api/v1/selection/preview?view=removed&page=2` to review
+the second page of removals. Each item contains `id`,
 `title`, `kind`, and an optional `override`. Content kinds are `upload`, `short`,
 `replay`, or an empty string when unknown. Counts cover the last-discovered
 completed recordings, not future source results. Preview does not save settings,

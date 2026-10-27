@@ -30,7 +30,7 @@ check_layout() {
     --check "$@"
 }
 check_layout --parser go-template internal/admin/templates/*.html
-check_layout internal/admin/static/app.css internal/admin/static/app.js tools/readability/*.mjs tools/readability/prettier.json tools/readability/package.json
+check_layout internal/admin/static/app.css internal/admin/static/app.js internal/admin/static/selection.js tools/readability/*.mjs tools/readability/prettier.json tools/readability/package.json
 shfmt -d -i 2 -ln posix scripts/*.sh
 for file in scripts/*.sh; do
   sh -n "$file"

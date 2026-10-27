@@ -1,7 +1,13 @@
 {{define "head"}}
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>duplex administration</title>
+  <title
+    >{{if .Error}}
+      Error: duplex administration
+    {{else}}
+      duplex administration
+    {{end}}</title
+  >
   <meta name="csrf-token" content="{{.CSRF}}" />
   <meta
     name="htmx-config"
@@ -10,6 +16,7 @@
   <link rel="stylesheet" href="/static/app.css" />
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
+  <script src="/static/selection.js" defer></script>
 {{end}}
 
 {{define "layout"}}

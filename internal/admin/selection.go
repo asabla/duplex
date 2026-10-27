@@ -2,10 +2,9 @@ package admin
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +21,10 @@ type selectionEditor struct {
 	Separate      bool
 	Content       []contentEditor
 	Keep, Exclude string
+}
+
+func (e selectionEditor) OverrideCount() int {
+	return len(strings.Fields(e.Keep)) + len(strings.Fields(e.Exclude))
 }
 
 func editorFor(ch config.Channel) selectionEditor {
@@ -60,20 +63,21 @@ func submittedEditor(r *http.Request) selectionEditor {
 func editorChange(ch config.Channel, revision string, editor selectionEditor) (app.SelectionChange, error) {
 	change := app.SelectionChange{ChannelID: ch.ID, Revision: revision, Selection: ch.Selection(), VideoOverrides: map[string]string{}}
 
-	for _, row := range []struct{ ids, mode string }{{editor.Keep, "keep"}, {editor.Exclude, "exclude"}} {
-		for _, id := range strings.Fields(row.ids) {
-			if prior := change.VideoOverrides[id]; prior != "" && prior != row.mode {
-				return change, errors.New("a video cannot be both kept and excluded")
-			}
+	var err error
 
-			change.VideoOverrides[id] = row.mode
-		}
+	change.VideoOverrides, err = editorOverrides(editor)
+	if err != nil {
+		return change, err
 	}
 
 	if editor.Separate {
 		policies := map[string]config.Selection{}
 
 		for _, row := range editor.Content {
+			if row.Mode != "latest" && row.Mode != "all" && row.Mode != "skip" {
+				return change, fieldFailure{"content-" + row.Name + "-mode", "Choose Latest recordings, All recordings, or Skip for " + row.Label + "."}
+			}
+
 			limit := 0
 
 			if row.Mode == "latest" {
@@ -81,7 +85,7 @@ func editorChange(ch config.Channel, revision string, editor selectionEditor) (a
 
 				limit, err = strconv.Atoi(row.Limit)
 				if err != nil || limit < 1 {
-					return change, errors.New("each Latest selection needs a positive whole number")
+					return change, fieldFailure{"content-" + row.Name + "-limit", "Enter a positive whole number for " + row.Label + "."}
 				}
 			}
 
@@ -92,6 +96,51 @@ func editorChange(ch config.Channel, revision string, editor selectionEditor) (a
 	}
 
 	return change, nil
+}
+
+func editorOverrides(editor selectionEditor) (map[string]string, error) {
+	overrides := map[string]string{}
+
+	for _, row := range []struct{ ids, mode string }{{editor.Keep, "keep"}, {editor.Exclude, "exclude"}} {
+		for _, raw := range strings.Fields(row.ids) {
+			id, err := recordingID(raw)
+			if err != nil {
+				return nil, fieldFailure{"selection-" + row.mode, err.Error()}
+			}
+
+			if prior := overrides[id]; prior != "" && prior != row.mode {
+				return nil, fieldFailure{"selection-" + row.mode, "A recording cannot be both kept and excluded. Remove it from one list."}
+			}
+
+			overrides[id] = row.mode
+		}
+	}
+
+	return overrides, nil
+}
+
+// recordingID accepts IDs and ordinary watch, Shorts, or shortened URLs without
+// making a source request. Credentials, other hosts, and ambiguous paths fail.
+func recordingID(raw string) (string, error) {
+	id := raw
+	if u, err := url.Parse(raw); err == nil && u.IsAbs() && u.User == nil && u.Scheme == "https" {
+		switch u.Host {
+		case "youtu.be":
+			id = strings.TrimPrefix(u.Path, "/")
+		case "www.youtube.com", "youtube.com", "m.youtube.com":
+			if u.Path == "/watch" {
+				id = u.Query().Get("v")
+			} else if strings.HasPrefix(u.Path, "/shorts/") || strings.HasPrefix(u.Path, "/live/") {
+				id = strings.TrimPrefix(strings.TrimPrefix(u.Path, "/shorts/"), "/live/")
+			}
+		}
+	}
+
+	if len(id) != 11 || strings.Trim(id, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" {
+		return "", fieldFailure{"", "Enter an eleven-character video ID or a YouTube recording URL."}
+	}
+
+	return id, nil
 }
 
 func (s *Server) selectionAPI(w http.ResponseWriter, r *http.Request) bool {
@@ -109,7 +158,12 @@ func (s *Server) selectionAPI(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 
-	preview, err := s.App.PreviewSelection(r.Context(), change)
+	view := r.URL.Query().Get("view")
+	if view == "" {
+		view = "selected"
+	}
+
+	preview, err := s.App.PreviewSelectionPage(r.Context(), change, view, number(r, "page"))
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, config.ErrConflict) {
@@ -124,92 +178,6 @@ func (s *Server) selectionAPI(w http.ResponseWriter, r *http.Request) bool {
 	reply(w, http.StatusOK, preview)
 
 	return true
-}
-
-func (s *Server) selectionAction(w http.ResponseWriter, r *http.Request) bool {
-	switch r.URL.Path {
-	case "/actions/selection-preview", "/actions/video-selection-preview":
-		s.previewSelectionPage(w, r)
-	case "/actions/selection-save":
-		var change app.SelectionChange
-
-		decoder := json.NewDecoder(strings.NewReader(r.FormValue("change")))
-		decoder.DisallowUnknownFields()
-
-		if err := decoder.Decode(&change); err != nil {
-			s.result(w, r, errors.New("invalid selection preview; preview again"), "")
-			return true
-		}
-
-		if decoder.Decode(&struct{}{}) != io.EOF {
-			s.result(w, r, errors.New("preview must contain one selection"), "")
-			return true
-		}
-
-		err := s.App.SaveSelection(r.Context(), change)
-		if err != nil {
-			s.selectionFailurePage(w, r, change, err)
-		} else {
-			http.Redirect(w, r, channelLink("/selection", change.ChannelID, r.FormValue("back")), http.StatusSeeOther)
-		}
-	default:
-		return false
-	}
-
-	return true
-}
-
-func (s *Server) previewSelectionPage(w http.ResponseWriter, r *http.Request) {
-	status, counts, err := s.App.Summary(r.Context())
-	if err != nil {
-		http.Error(w, "catalogue unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	session, _ := s.Auth.Session(r)
-
-	v := page{Page: "/selection", Tab: "settings", CSRF: session.CSRF, Status: status, Counts: counts, Revision: r.FormValue("revision"), ChannelSettings: map[string]config.Channel{}, BackURL: localPageURL(r.FormValue("back"), actionReturnURL(r))}
-	for _, ch := range status.Config.Config.Channels {
-		v.ChannelSettings[ch.ID] = ch
-	}
-
-	v.Channel = v.ChannelSettings[r.FormValue("id")]
-	for _, info := range status.Channels {
-		if info.ID == v.Channel.ID {
-			v.ChannelInfo = info
-		}
-	}
-
-	v.SelectionEditor = submittedEditor(r)
-	if r.URL.Path == "/actions/video-selection-preview" {
-		v.SelectionEditor, err = s.individualEditor(r.Context(), v.Channel, r.FormValue("video"), r.FormValue("override"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-
-	change, err := editorChange(v.Channel, v.Revision, v.SelectionEditor)
-	if err == nil {
-		preview, failure := s.App.PreviewSelection(r.Context(), change)
-		err = failure
-		v.SelectionPreview = &preview
-	}
-
-	if err != nil {
-		v.Error = err.Error()
-		v.SelectionPreview = nil
-	} else {
-		encoded, failure := json.Marshal(change)
-		if failure != nil {
-			v.Error = "Cannot prepare selection preview"
-			v.SelectionPreview = nil
-		} else {
-			v.SelectionJSON = string(encoded)
-		}
-	}
-
-	s.render(w, "layout", v)
 }
 
 func (s *Server) individualEditor(ctx context.Context, ch config.Channel, id, mode string) (selectionEditor, error) {
@@ -233,25 +201,4 @@ func (s *Server) individualEditor(ctx context.Context, ch config.Channel, id, mo
 	}
 
 	return editorFor(ch), nil
-}
-
-func (s *Server) selectionFailurePage(w http.ResponseWriter, r *http.Request, change app.SelectionChange, failure error) {
-	status, _, err := s.App.Summary(r.Context())
-	if err != nil {
-		http.Error(w, "catalogue unavailable", http.StatusServiceUnavailable)
-		return
-	}
-
-	session, _ := s.Auth.Session(r)
-
-	ch := config.Channel{ID: change.ChannelID}
-	for _, current := range status.Config.Config.Channels {
-		if current.ID == change.ChannelID {
-			ch = current
-		}
-	}
-
-	ch.Indexing, ch.Content, ch.VideoOverrides = &change.Selection, change.Content, change.VideoOverrides
-	v := page{Page: "/selection", Tab: "settings", CSRF: session.CSRF, Status: status, Revision: change.Revision, Channel: ch, SelectionEditor: editorFor(ch), Error: safeError(failure), BackURL: "/selection?channel=" + change.ChannelID}
-	s.render(w, "layout", v)
 }

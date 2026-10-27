@@ -65,6 +65,25 @@ func TestRenderedMarkupFixtures(t *testing.T) {
 	}
 
 	fixture.hx = true
+
+	selection := url.Values{"editor": {"1"}, "id": {workflowChannel}, "revision": {fixture.app.Config.Snapshot().Revision}, "keep": {"aqz-KE-bpKQ"}}
+	for _, item := range []struct{ name, path string }{
+		{"selection-preview", "/actions/selection-preview"},
+		{"selection-search", "/actions/selection-search"},
+	} {
+		body, _ := fixture.form(t, item.path, selection, http.StatusOK)
+		if err := os.WriteFile(filepath.Join(directory, item.name+".html"), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	selection.Set("keep", "invalid")
+
+	errorBody, _ := fixture.form(t, "/actions/selection-preview", selection, http.StatusOK)
+	if err := os.WriteFile(filepath.Join(directory, "selection-error.html"), errorBody, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	form := policyFormID(workflowChannel, "")
 
 	body, _ := fixture.form(t, "/actions/policy", url.Values{"id": {workflowChannel}, "mode": {"latest"}, "limit": {"invalid"}, "_form": {form}, "revision": {fixture.app.Config.Snapshot().Revision}}, http.StatusBadRequest)

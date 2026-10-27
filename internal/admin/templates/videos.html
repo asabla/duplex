@@ -46,18 +46,33 @@
         <option
           value="outside"
           {{if eq (.Filters.Get "inclusion") "outside"}}selected{{end}}
-          >Excluded videos</option
+          >Not selected</option
         >
       </select>
     </label>
     <details
       class="filter-more"
-      {{if or (.Filters.Get "preparation") (.Filters.Get "lifecycle") (.Filters.Get "playlist")}}
+      {{if or (.Filters.Get "preparation") (.Filters.Get "lifecycle") (.Filters.Get "playlist") (.Filters.Get "rule")}}
         open
       {{end}}
     >
       <summary>More filters</summary>
       <div class="filter-fields">
+        <label
+          >Channel recording rule<select name="rule">
+            <option value="">All rules</option>
+            <option
+              value="keep"
+              {{if eq (.Filters.Get "rule") "keep"}}selected{{end}}
+              >Keep</option
+            >
+            <option
+              value="exclude"
+              {{if eq (.Filters.Get "rule") "exclude"}}selected{{end}}
+              >Explicit Exclude</option
+            >
+          </select></label
+        >
         <div class="playlist-combobox" data-playlist-picker>
           <label for="playlist-search">Playlist</label>
           <input
@@ -152,7 +167,9 @@
                 <a class="item-title" href="{{$.VideoLink .ID}}">{{.Title}}</a
                 >{{if not $.Channel.ID}}
                   <small>{{$.ChannelName .ChannelID}}</small>
-                {{end}}</th
+                {{end}}<small
+                  >{{contentLabel (index $.RecordingKinds .ID)}}</small
+                ></th
               >
               <td class="date" title="{{when .Published}}"
                 >{{day .Published}}</td
@@ -171,7 +188,13 @@
                   <span class="muted">Not verified</span>
                 {{end}}</td
               >
-              <td>{{if .Exposed}}Selected{{else}}Excluded{{end}}</td>
+              <td
+                >{{if .Exposed}}
+                  Selected
+                {{else}}
+                  Not selected
+                {{end}}<small>{{$.RecordingReason .}}</small></td
+              >
             </tr>
           {{else}}
             <tr>
@@ -277,9 +300,13 @@
       >{{if .Video.Exposed}}
         Selected
       {{else}}
-        Excluded by current policy
+        Not selected by active policies
       {{end}}</dd
     >
+    <dt>Channel recording rule</dt>
+    <dd>{{.RecordingReason .Video}}</dd>
+    <dt>Content type</dt>
+    <dd>{{contentLabel (index .RecordingKinds .Video.ID)}}</dd>
     <dt>Published</dt>
     <dd>{{when .Video.Published}}</dd>
   </dl>

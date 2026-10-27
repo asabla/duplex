@@ -18,7 +18,7 @@ func TestPlaybackAvailabilityDoesNotConfuseSelectionQualityAndReadiness(t *testi
 		label string
 		retry bool
 	}{
-		{catalog.Video{Height: 2160, Preparation: "ready"}, "Excluded", false},
+		{catalog.Video{Height: 2160, Preparation: "ready"}, "Not selected", false},
 		{catalog.Video{Exposed: true, State: "upcoming"}, "Waiting for recording", false},
 		{catalog.Video{Exposed: true, State: "active"}, "Waiting for recording", false},
 		{catalog.Video{Exposed: true, State: "processing"}, "Waiting for recording", false},

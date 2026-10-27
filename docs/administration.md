@@ -50,15 +50,23 @@ separate limits to choose Latest, All, or Skip for each content type. When this
 option is disabled, the existing shared channel selection applies. Playlist
 policies remain separate and inherit the shared selection when configured.
 
+Use **Find and change individual recordings** to search the discovered catalogue
+by title, video ID, or recording URL. Each result shows its title, confirmed
+content type, and draft rule. Choose **Keep**, **Exclude**, or **Automatic**. These
+buttons update the draft; preview and save to apply it. Search returns ten
+channel-owned recordings per page and makes no source requests.
+
 Use **Keep** for a recording that must remain beyond the automatic window, or
-**Exclude** to remove one from this channel's recording collection. Enter one
-video ID per line, or open a video and change its **Channel recording selection**.
+**Exclude** to remove one from this channel's recording collection. The advanced
+editor accepts one video ID or HTTPS YouTube recording URL per line. You can also
+open a video and change its **Channel recording selection**.
 Choose **Automatic** on that video to remove its override. These controls do not
 archive media or bypass source availability and preparation requirements.
 
 Select **Preview selection** before saving. The preview shows selected,
-added, and removed counts from the last discovered catalogue and at most 25
-selected titles. It does not fetch source metadata or media. Unknown content
+added, and removed counts from the last discovered catalogue. Select a review
+list to inspect its titles, with at most 25 recordings per page. It does not
+fetch source metadata or media. Unknown content
 types are identified in the preview; discovery must classify them before separate
 automatic rules can select them. Explicit Keep can select an eligible recording
 whose type is unknown.
@@ -67,6 +75,16 @@ whose type is unknown.
 when the channel is enabled. Discovery can find more recordings. A stale save
 retains the draft and requires comparison with current settings. Recording paths,
 slots, and media revisions are retained when membership changes.
+
+An edit after preview requires another preview before saving. The server checks
+this even without JavaScript. Counts for All, Skip, or disabled separate rules do
+not affect validation. Field errors retain the draft and identify the input to
+correct. A successful save confirms whether discovery was queued.
+
+In Videos, **Not selected** means outside all active library selections. The
+**Channel recording rule** filter distinguishes Keep and explicit Exclude rules.
+Each row shows the confirmed content type and selection reason. An explicit
+Exclude can still appear as selected through a playlist, whose rules are separate.
 
 ### Artwork and unfollow
 

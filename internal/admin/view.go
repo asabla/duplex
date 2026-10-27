@@ -44,6 +44,11 @@ type page struct {
 	SelectionPreview         *catalog.SelectionPreview
 	SelectionJSON            string
 	VideoChannel             config.Channel
+	SelectionConflict        bool
+	RecordingSearch          catalog.RecordingSearch
+	RecordingQuery           string
+	RecordingKinds           map[string]string
+	RecordingSearchOpen      bool
 }
 
 func (p page) ChannelName(id string) string {

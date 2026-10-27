@@ -999,3 +999,53 @@ th[aria-sort='descending'] a::after {
     flex-direction: column;
   }
 }
+
+/* Recording rule editing and bounded preview lists. */
+.selection-editor {
+  max-width: 1050px;
+}
+
+.recording-options {
+  list-style: none;
+  padding: 0;
+}
+
+.recording-options li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.recording-options li > div:first-child {
+  flex: 1 1 240px;
+  overflow-wrap: anywhere;
+}
+
+.recording-options small,
+[data-selection-preview] small {
+  display: block;
+  color: var(--muted);
+}
+
+button[aria-pressed='true'] {
+  background: #e8eff8;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.preview-tabs {
+  margin: 16px 0;
+}
+
+.preview-tabs button {
+  margin: 0 8px 8px 0;
+}
+
+[data-selection-preview] li {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
