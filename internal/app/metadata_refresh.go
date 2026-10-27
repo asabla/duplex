@@ -34,17 +34,23 @@ func (a *App) metadataWorker(ctx context.Context) {
 			continue
 		}
 
-		job, err := a.Catalog.NextShowRefresh(ctx)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
+		a.refreshMetadataQueues(ctx)
+	}
+}
 
-		if err != nil {
-			a.operationFailure("show metadata queue", err)
-			continue
-		}
+func (a *App) refreshMetadataQueues(ctx context.Context) {
+	show, err := a.Catalog.NextShowRefresh(ctx)
+	if err == nil {
+		a.runShowRefresh(ctx, show)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		a.operationFailure("show metadata queue", err)
+	}
 
-		a.runShowRefresh(ctx, job)
+	episode, err := a.Catalog.NextEpisodeRefresh(ctx, a.Config.Snapshot().Config.Plex.URL)
+	if err == nil {
+		a.runEpisodeRefresh(ctx, episode)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		a.operationFailure("episode metadata queue", err)
 	}
 }
 

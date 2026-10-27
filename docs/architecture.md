@@ -213,6 +213,15 @@ tracks take priority. Automatic caption lookup checks exact and base-language
 original tracks before other matching tracks: for example, `en-US` can use
 `en-orig`. It does not fall back to an unrelated language.
 
+Schema 7 adds a durable queue for changed episode asset digests. The asset worker
+records content identities after manifest publication; unchanged assets retain
+the current queue state. The metadata worker refreshes bounded pages of observed
+upload and playlist occurrences under the existing library-update lock. Each
+request verifies the current Plex section, episode type, and occurrence identity.
+Completion acknowledges only the queued digest. Interrupted work resumes after
+restart; failed work retains a redacted error and a fifteen-minute retry delay.
+Queue counts and errors share the existing metadata diagnostics fields.
+
 Preparation state is independent of source lifecycle. An upcoming broadcast is
 not a failed MP4 preparation. Completed discovery also does not mean all selected
 media is ready. Long work and item results remain durable through restarts.

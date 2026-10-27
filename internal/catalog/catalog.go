@@ -36,7 +36,7 @@ func OpenContext(ctx context.Context, path string) (*Store, error) {
 	db.SetMaxOpenConns(1)
 
 	var version int
-	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 6 {
+	if e = db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); e != nil || version > 7 {
 		return nil, errors.Join(errors.New("unsupported catalogue schema version"), db.Close())
 	}
 
@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS plex_bindings(video_id TEXT NOT NULL,server TEXT NOT 
 	}
 
 	if _, e = db.ExecContext(ctx, `UPDATE show_metadata SET attempted=0 WHERE pending=1 AND error=''`); e != nil {
+		return nil, errors.Join(e, db.Close())
+	}
+
+	if _, e = db.ExecContext(ctx, `UPDATE episode_metadata SET attempted=0 WHERE pending=1 AND error=''`); e != nil {
 		return nil, errors.Join(e, db.Close())
 	}
 

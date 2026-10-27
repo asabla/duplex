@@ -83,11 +83,15 @@ duplex selects available subtitles for the original audio language. Explicit
 subtitles take priority over automatic captions. A regional audio tag can use
 original captions for its base language, such as `en-US` with `en-orig`.
 
-Optional captions can arrive after Plex's first scan. If the subtitle file is
-available in duplex but absent from Plex, open the episode's **More** menu and
-select **Refresh Metadata**. Then check the episode's Subtitles list. **Analyse**
-alone does not refresh a late subtitle. Automatic targeted metadata refresh for
-late captions is not implemented.
+Optional captions can arrive after Plex's first scan. Changed assets queue a
+targeted metadata refresh for each observed occurrence of that recording.
+Unchanged assets do not queue another refresh. Pending work survives restarts;
+failed attempts remain visible in Diagnostics and retry after fifteen minutes.
+Plex must first discover the recording before its metadata can be refreshed.
+
+To retry manually in Plex, open the episode's **More** menu and select
+**Refresh Metadata**, then check its Subtitles list. **Analyse** alone does not
+refresh a late subtitle.
 
 ## Add playlist seasons
 

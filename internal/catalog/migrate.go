@@ -38,6 +38,12 @@ func (s *Store) migrate(ctx context.Context, version int) error {
 		}
 	}
 
+	if version < 7 {
+		if err := s.migrateEpisodeMetadata(ctx); err != nil {
+			return err
+		}
+	}
+
 	return s.ensureProjectionIndexes(ctx)
 }
 
