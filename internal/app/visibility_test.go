@@ -10,6 +10,26 @@ import (
 	"duplex/internal/config"
 )
 
+func TestStartupPublicationScansRetainedLibraryWithoutVisibleChannels(t *testing.T) {
+	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "all"}), fixtureCollection(0))
+	projectionVideo(t, a, "video000001", 1)
+
+	snapshot := a.Config.Snapshot()
+
+	snapshot.Config.Channels = nil
+	if err := a.Config.Save(snapshot.Config, snapshot.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Publish(); err != nil {
+		t.Fatal(err)
+	}
+
+	if !a.scanPending {
+		t.Fatal("startup with no visible channels did not scan retained Plex entries")
+	}
+}
+
 func TestCollectionVisibilityReturnAdvancesDirectoryTimesWithoutDiscovery(t *testing.T) {
 	for _, scenario := range []string{"pause", "unfollow", "playlists", "playlist"} {
 		t.Run(scenario, func(t *testing.T) {
