@@ -1,146 +1,375 @@
 {{define "selection-page"}}
   <a class="back-link" href="{{.BackURL}}">Back to previous page</a>
   <h2>Recording selection</h2>
-  <p>{{.ChannelName .Channel.ID}}</p>
   <p class="hint"
-    >These rules control the channel's recording collection. Playlist selections
-    are separate. Existing Plex identities are retained.</p
+    >These rules control channel recordings. Playlist selections are separate.
+    Keep retains a recording in the selection; it does not archive its media.</p
   >
+  {{if .Notice}}
+    <p class="inline-alert success" role="status">{{.Notice}}</p>
+  {{end}}
   {{if .Error}}
-    <div class="error" role="alert"
-      ><p>{{.Error}}</p
-      ><p
-        ><a
-          href="/selection?channel={{.Channel.ID}}"
-          target="_blank"
-          rel="noreferrer"
-          >Open current settings in a separate tab</a
-        >. Your draft is retained below.</p
-      ></div
+    <div
+      id="selection-errors"
+      class="inline-alert danger"
+      role="alert"
+      tabindex="-1"
+      data-focus-errors
     >
+      <h3>Check the recording selection</h3>
+      <p
+        >{{if .ErrorFieldID}}
+          <a href="#{{.ErrorFieldID}}">{{.Error}}</a>
+        {{else}}
+          {{.Error}}
+        {{end}}</p
+      >
+      {{if .SelectionConflict}}
+        <p
+          ><a
+            href="/selection?channel={{.Channel.ID}}"
+            target="_blank"
+            rel="noreferrer"
+            >Open current settings in a separate tab</a
+          >. Your draft is retained below.</p
+        >
+      {{end}}
+    </div>
   {{end}}
   <form
-    class="editor"
+    id="selection-editor"
+    class="selection-editor"
     action="/actions/selection-preview#selection-preview-title"
     method="post"
+    novalidate
+    data-selection-editor
   >
+    <input type="hidden" name="editor" value="1" />
     <input type="hidden" name="csrf" value="{{.CSRF}}" />
     <input type="hidden" name="revision" value="{{.Revision}}" />
     <input type="hidden" name="id" value="{{.Channel.ID}}" />
     <input type="hidden" name="back" value="{{.BackURL}}" />
-    <fieldset>
-      <legend>Content rules</legend>
+    <section class="editor">
+      <h3>Content rules</h3>
       <label class="checkbox"
         ><input
           type="checkbox"
           name="separate"
           {{if .SelectionEditor.Separate}}checked{{end}}
+          data-selection-rule
+          data-separate-content
         />Use separate limits for uploads, Shorts, and completed streams</label
       >
       <p class="hint"
-        >When unchecked, the existing shared channel selection applies. The
-        limits below are ignored.</p
+        >When unchecked, the shared channel selection applies. Separate content
+        limits are ignored.</p
       >
-      <div class="settings-grid">
+      <div class="settings-grid" data-content-rules>
         {{range .SelectionEditor.Content}}
-          <fieldset>
+          <fieldset data-content-row>
             <legend>{{.Label}}</legend>
-            <label for="content-{{.Name}}-mode"
-              >Selection<select
-                id="content-{{.Name}}-mode"
-                name="{{.Name}}_mode"
-              >
-                <option
-                  value="latest"
-                  {{if eq .Mode "latest"}}selected{{end}}
-                  >Latest videos</option
-                >
-                <option
-                  value="all"
-                  {{if eq .Mode "all"}}selected{{end}}
-                  >All videos</option
-                >
-                <option
-                  value="skip"
-                  {{if eq .Mode "skip"}}selected{{end}}
-                  >Skip</option
-                >
-              </select></label
+            <label for="content-{{.Name}}-mode">Selection</label>
+            <select
+              id="content-{{.Name}}-mode"
+              name="{{.Name}}_mode"
+              data-selection-rule
+              data-content-mode
+              {{if eq $.ErrorFieldID (printf "content-%s-mode" .Name)}}
+                aria-invalid="true"
+                aria-describedby="content-{{.Name}}-mode-error"
+              {{end}}
             >
-            <label for="content-{{.Name}}-limit"
-              >Number of latest videos<input
+              <option
+                value="latest"
+                {{if eq .Mode "latest"}}selected{{end}}
+                >Latest recordings</option
+              >
+              <option
+                value="all"
+                {{if eq .Mode "all"}}selected{{end}}
+                >All recordings</option
+              >
+              <option
+                value="skip"
+                {{if eq .Mode "skip"}}selected{{end}}
+                >Skip</option
+              >
+            </select>
+            {{if eq $.ErrorFieldID (printf "content-%s-mode" .Name)}}
+              <p class="field-error" id="content-{{.Name}}-mode-error"
+                >{{$.Error}}</p
+              >
+            {{end}}
+            <label for="content-{{.Name}}-limit" data-content-limit
+              >Number of latest recordings
+              <input
                 id="content-{{.Name}}-limit"
                 name="{{.Name}}_limit"
                 type="number"
                 min="1"
                 value="{{.Limit}}"
-            /></label>
+                data-selection-rule
+                {{if eq $.ErrorFieldID (printf "content-%s-limit" .Name)}}
+                  aria-invalid="true"
+                  aria-describedby="content-{{.Name}}-limit-error"
+                {{end}}
+              />
+              {{if eq $.ErrorFieldID (printf "content-%s-limit" .Name)}}
+                <span class="field-error" id="content-{{.Name}}-limit-error"
+                  >{{$.Error}}</span
+                >
+              {{end}}
+            </label>
           </fieldset>
         {{end}}
       </div>
-    </fieldset>
-    <fieldset>
-      <legend>Individual recordings</legend>
-      <p class="hint"
-        >Use one YouTube video ID per line. Keep can add an older recording,
-        including a skipped content type. It does not archive media. Exclude
-        takes a recording out of the automatic window; the next eligible
-        recording fills its place after discovery.</p
-      >
-      <label for="selection-keep"
-        >Keep<textarea id="selection-keep" name="keep" rows="3">
-{{.SelectionEditor.Keep}}</textarea>
-      </label>
-      <label for="selection-exclude"
-        >Exclude<textarea id="selection-exclude" name="exclude" rows="3">
-{{.SelectionEditor.Exclude}}</textarea>
-      </label>
-    </fieldset>
-    <button>Preview selection</button>
-  </form>
-  {{with .SelectionPreview}}
-    <section class="panel" aria-labelledby="selection-preview-title">
-      <h2 id="selection-preview-title">Selection preview</h2>
-      <p
-        >{{.Selected}} selected · {{.Added}} additions ·
-        {{.Removed}}
-        removals</p
-      >
-      <p class="hint"
-        >Based on {{.Known}} last-discovered completed recordings. No source or
-        media requests were made. Discovery can find more recordings or change
-        availability.</p
-      >
-      {{if and .UnknownKind $.SelectionEditor.Separate}}
-        <p
-          >{{.UnknownKind}} recordings have no confirmed content type. Separate
-          automatic rules omit them until discovery identifies their type.
-          Explicit Keep still applies.</p
-        >
-      {{end}}
-      <p>First 25 selected recordings, newest first:</p>
-      <ul
-        >{{range .Items}}
-          <li
-            >{{.Title}}
-            <small
-              >{{if .Kind}}
-                {{.Kind}}
-              {{else}}
-                Type unknown
-              {{end}}{{if .Override}}· {{.Override}}{{end}}</small
-            ></li
-          >
-        {{else}}
-          <li>No known eligible recordings selected.</li>
-        {{end}}</ul
-      >
-      <form action="/actions/selection-save" method="post">
-        <input type="hidden" name="csrf" value="{{$.CSRF}}" />
-        <input type="hidden" name="change" value="{{$.SelectionJSON}}" />
-        <input type="hidden" name="back" value="{{$.BackURL}}" />
-        <button>Save selection</button>
-      </form>
     </section>
-  {{end}}
+    <section
+      class="editor"
+      id="recording-search"
+      aria-labelledby="recording-search-title"
+    >
+      <h3 id="recording-search-title">Individual recordings</h3>
+      <p>{{.SelectionEditor.OverrideCount}} individual rules in this draft.</p>
+      <details {{if .RecordingSearchOpen}}open{{end}}>
+        <summary>Find and change individual recordings</summary>
+        <p class="hint"
+          >Search this channel's discovered recordings by title, video ID, or
+          recording URL. Rule buttons update your draft. Preview and save to
+          apply it.</p
+        >
+        <label for="recording-query">Find a recording</label>
+        <div class="form-actions">
+          <input
+            id="recording-query"
+            type="search"
+            name="recording_q"
+            value="{{.RecordingQuery}}"
+            maxlength="200"
+            {{if eq .ErrorFieldID "recording-query"}}
+              aria-invalid="true" aria-describedby="recording-query-error"
+            {{end}}
+          />
+          <button
+            class="secondary"
+            name="recording_page"
+            value="1"
+            formaction="/actions/selection-search#recording-search"
+            >Search recordings</button
+          >
+        </div>
+        {{if eq .ErrorFieldID "recording-query"}}
+          <p class="field-error" id="recording-query-error">{{.Error}}</p>
+        {{end}}
+        <p
+          >Matching discovered recordings: {{.RecordingSearch.Total}}. Results
+          show your draft rules.</p
+        >
+        <ul class="recording-options">
+          {{range .RecordingSearch.Items}}
+            <li>
+              <div
+                ><strong>{{.Title}}</strong
+                ><small
+                  >{{contentLabel .Kind}} · {{.ID}} ·
+                  {{if .Override}}{{.Override}}{{else}}Automatic{{end}}</small
+                ></div
+              >
+              <div
+                class="form-actions"
+                role="group"
+                aria-label="Rule for {{.Title}}"
+              >
+                <button
+                  class="secondary"
+                  name="recording_action"
+                  value="keep:{{.ID}}"
+                  formaction="/actions/selection-search#recording-search"
+                  aria-pressed="{{eq .Override "keep"}}"
+                  >Keep</button
+                >
+                <button
+                  class="secondary"
+                  name="recording_action"
+                  value="exclude:{{.ID}}"
+                  formaction="/actions/selection-search#recording-search"
+                  aria-pressed="{{eq .Override "exclude"}}"
+                  >Exclude</button
+                >
+                <button
+                  class="secondary"
+                  name="recording_action"
+                  value="automatic:{{.ID}}"
+                  formaction="/actions/selection-search#recording-search"
+                  aria-pressed="{{eq .Override ""}}"
+                  >Automatic</button
+                >
+              </div>
+            </li>
+          {{else}}
+            <li
+              >No matching discovered recordings. Change the search or refresh
+              the channel.</li
+            >
+          {{end}}
+        </ul>
+        {{if gt .RecordingSearch.Pages 1}}
+          <nav class="form-actions" aria-label="Recording search pages">
+            {{if gt .RecordingSearch.Page 1}}
+              <button
+                class="secondary"
+                name="recording_page"
+                value="{{dec .RecordingSearch.Page}}"
+                formaction="/actions/selection-search#recording-search"
+                >Previous recordings</button
+              >
+            {{end}}
+            <span
+              >Page {{.RecordingSearch.Page}} of
+              {{.RecordingSearch.Pages}}</span
+            >
+            {{if lt .RecordingSearch.Page .RecordingSearch.Pages}}
+              <button
+                class="secondary"
+                name="recording_page"
+                value="{{inc .RecordingSearch.Page}}"
+                formaction="/actions/selection-search#recording-search"
+                >Next recordings</button
+              >
+            {{end}}
+          </nav>
+        {{end}}
+      </details>
+      <details
+        {{if or (eq .ErrorFieldID "selection-keep") (eq .ErrorFieldID "selection-exclude")}}
+          open
+        {{end}}
+      >
+        <summary>Advanced: paste recording IDs or URLs</summary>
+        <p class="hint"
+          >Use one ID or recording URL per line. Keep can add an older recording
+          or a skipped content type. Exclude removes it from channel recordings;
+          discovery can fill its place.</p
+        >
+        <label for="selection-keep">Keep</label>
+        <textarea
+          id="selection-keep"
+          name="keep"
+          rows="3"
+          data-selection-rule
+          {{if eq .ErrorFieldID "selection-keep"}}
+            aria-invalid="true" aria-describedby="selection-keep-error"
+          {{end}}
+        >
+{{.SelectionEditor.Keep}}</textarea>
+        {{if eq .ErrorFieldID "selection-keep"}}
+          <p class="field-error" id="selection-keep-error">{{.Error}}</p>
+        {{end}}
+        <label for="selection-exclude">Exclude</label>
+        <textarea
+          id="selection-exclude"
+          name="exclude"
+          rows="3"
+          data-selection-rule
+          {{if eq .ErrorFieldID "selection-exclude"}}
+            aria-invalid="true" aria-describedby="selection-exclude-error"
+          {{end}}
+        >
+{{.SelectionEditor.Exclude}}</textarea>
+        {{if eq .ErrorFieldID "selection-exclude"}}
+          <p class="field-error" id="selection-exclude-error">{{.Error}}</p>
+        {{end}}
+      </details>
+    </section>
+    <div class="form-actions"
+      ><button name="preview_page" value="1">Preview selection</button></div
+    >
+    <p class="inline-alert warning" hidden data-preview-outdated role="status"
+      >The rules changed after preview. Preview the current rules before
+      saving.</p
+    >
+    {{with .SelectionPreview}}
+      <section
+        class="panel"
+        aria-labelledby="selection-preview-title"
+        data-selection-preview
+      >
+        <h2 id="selection-preview-title" tabindex="-1">Selection preview</h2>
+        <p
+          >Selected: {{.Selected}} · Additions: {{.Added}} · Removals:
+          {{.Removed}}</p
+        >
+        <p class="hint"
+          >Based on {{.Known}} last-discovered completed recordings. Discovery
+          can find more recordings or change availability.</p
+        >
+        {{if and .UnknownKind $.SelectionEditor.Separate}}
+          <p
+            >{{.UnknownKind}} recordings have no confirmed content type.
+            Separate automatic rules omit them until discovery identifies their
+            type. Explicit Keep still applies.</p
+          >
+        {{end}}
+        <input type="hidden" name="view" value="{{.View}}" />
+        <fieldset class="preview-tabs">
+          <legend>Review recordings</legend>
+          <button
+            class="secondary"
+            name="review"
+            value="selected"
+            aria-pressed="{{eq .View "selected"}}"
+            >Selected ({{.Selected}})</button
+          >
+          <button
+            class="secondary"
+            name="review"
+            value="added"
+            aria-pressed="{{eq .View "added"}}"
+            >Additions ({{.Added}})</button
+          >
+          <button
+            class="secondary"
+            name="review"
+            value="removed"
+            aria-pressed="{{eq .View "removed"}}"
+            >Removals ({{.Removed}})</button
+          >
+        </fieldset>
+        <ul
+          >{{range .Items}}
+            <li
+              ><strong>{{.Title}}</strong
+              ><small
+                >{{contentLabel .Kind}} ·
+                {{.ID}}{{if .Override}}
+                  {{printf " · %s" .Override}}
+                {{end}}</small
+              ></li
+            >
+          {{else}}
+            <li>No recordings in this review list.</li>
+          {{end}}</ul
+        >
+        <nav class="form-actions" aria-label="Selection preview pages">
+          {{if gt .Page 1}}
+            <button class="secondary" name="preview_page" value="{{dec .Page}}"
+              >Previous preview page</button
+            >
+          {{end}}
+          <span
+            >Page {{.Page}} of {{.Pages}} · Up to 25 recordings per page</span
+          >
+          {{if lt .Page .Pages}}
+            <button class="secondary" name="preview_page" value="{{inc .Page}}"
+              >Next preview page</button
+            >
+          {{end}}
+        </nav>
+        <input type="hidden" name="change" value="{{$.SelectionJSON}}" />
+        <button formaction="/actions/selection-save" data-selection-save
+          >Save selection</button
+        >
+      </section>
+    {{end}}
+  </form>
 {{end}}

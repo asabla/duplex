@@ -51,6 +51,13 @@ func (a *App) Summary(ctx context.Context) (Status, catalog.Counts, error) {
 
 // Videos returns a filtered database page with current YAML authority applied.
 func (a *App) Videos(ctx context.Context, f catalog.VideoFilter) (catalog.VideoPage, error) {
-	f.Visibility = visibility(a.Config.Snapshot().Config)
+	c := a.Config.Snapshot().Config
+	f.Visibility = visibility(c)
+
+	f.RecordingRules = map[string]map[string]string{}
+	for _, ch := range c.Channels {
+		f.RecordingRules[ch.ID] = ch.VideoOverrides
+	}
+
 	return a.Catalog.VideosPage(ctx, f)
 }

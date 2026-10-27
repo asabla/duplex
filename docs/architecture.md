@@ -324,7 +324,9 @@ YAML retains recording policy authority: optional independent content windows
 and channel recording Keep/Exclude overrides. Preview and apply share a SQL
 selection query. Exclusions are applied before ranking; Keep adds eligible
 recordings without duplicating an automatic selection. Preview uses a read-only
-transaction for consistent counts and at most 25 rows, with no source calls.
+transaction for consistent counts and a page of at most 25 selected, added, or
+removed recordings, with no source calls. Recording search uses canonical uploader
+ownership and returns at most ten catalogue rows per page.
 
 Configuration publication applies changed rules to known recordings. Successful
 source enumeration reconciles its staged window and commits the applied digest
@@ -408,6 +410,13 @@ UI writes validate and atomically replace YAML using the expected file revision.
 External invalid edits retain the last valid settings. One administrator account
 uses expiring sessions, login rate limits, and CSRF protection. Secrets and raw
 profiles remain outside editable YAML and public diagnostics.
+
+Recording selection uses one native editor form for preview and save. HTML saves
+compare the submitted normalized rules with the reviewed rules before writing.
+JavaScript disables the old Save action after edits, controls inputs that apply,
+and moves focus to field-error summaries. The same server checks protect plain
+HTML operation. Explicit recording overrides remain separate from library
+selection through playlists; administration reads both using current YAML.
 
 Artwork composition runs separately from media preparation. It preserves source
 image proportions and uses embedded licensed fonts. Manual uploads become

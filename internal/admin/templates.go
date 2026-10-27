@@ -11,19 +11,21 @@ import (
 
 func templateFunctions() template.FuncMap {
 	return template.FuncMap{
-		"states":      func(values ...string) []string { return values },
-		"heights":     func(values ...int) []int { return values },
-		"sortlink":    sortLink,
-		"sortaria":    sortARIA,
-		"playback":    playback,
-		"stage":       stageLabel,
-		"channelLink": channelLink,
-		"gib":         formatGiB,
-		"day":         formatDay,
-		"when":        formatWhen,
-		"height":      formatHeight,
-		"age":         formatAge,
-		"inc":         func(n int) int { return n + 1 },
+		"states":       func(values ...string) []string { return values },
+		"heights":      func(values ...int) []int { return values },
+		"sortlink":     sortLink,
+		"sortaria":     sortARIA,
+		"playback":     playback,
+		"stage":        stageLabel,
+		"channelLink":  channelLink,
+		"gib":          formatGiB,
+		"day":          formatDay,
+		"when":         formatWhen,
+		"height":       formatHeight,
+		"age":          formatAge,
+		"inc":          func(n int) int { return n + 1 },
+		"dec":          func(n int) int { return n - 1 },
+		"contentLabel": contentLabel,
 	}
 }
 

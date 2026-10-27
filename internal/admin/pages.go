@@ -29,7 +29,7 @@ func videoFilter(r *http.Request) catalog.VideoFilter {
 		inclusion = "selected"
 	}
 
-	return catalog.VideoFilter{Query: strings.TrimSpace(q.Get("q")), Channel: q.Get("channel"), Playlist: q.Get("playlist"), Lifecycle: q.Get("lifecycle"), Preparation: q.Get("preparation"), Inclusion: inclusion, Sort: q.Get("sort"), Page: number(r, "page"), PerPage: number(r, "per_page")}
+	return catalog.VideoFilter{Query: strings.TrimSpace(q.Get("q")), Channel: q.Get("channel"), Playlist: q.Get("playlist"), Lifecycle: q.Get("lifecycle"), Preparation: q.Get("preparation"), Inclusion: inclusion, Rule: q.Get("rule"), Sort: q.Get("sort"), Page: number(r, "page"), PerPage: number(r, "per_page")}
 }
 
 func playlistFilter(r *http.Request) catalog.PlaylistFilter {
@@ -122,12 +122,7 @@ func (s *Server) pageData(r *http.Request, v *page) error {
 	case "/video":
 		return s.videoInspectionData(r, v)
 	case "/selection":
-		if v.Channel.ID == "" {
-			return errors.New("channel is not followed")
-		}
-
-		v.Tab = "settings"
-		v.SelectionEditor = editorFor(v.Channel)
+		return s.selectionPageData(r, v)
 	case "/catalogue", "/fragments/catalogue":
 		return s.videoPageData(r, v)
 	case "/fragments/playlist-options":
@@ -167,7 +162,11 @@ func (s *Server) pageData(r *http.Request, v *page) error {
 func (s *Server) videoInspectionData(r *http.Request, v *page) error {
 	video, err := s.App.Video(r.Context(), r.URL.Query().Get("id"))
 	v.Video = video
+
 	v.VideoChannel = v.ChannelSettings[video.ChannelID]
+	if err == nil {
+		v.RecordingKinds, err = s.App.Catalog.RecordingKinds(r.Context(), []string{video.ID})
+	}
 
 	return err
 }
@@ -183,6 +182,16 @@ func (s *Server) videoPageData(r *http.Request, v *page) error {
 	v.Total = v.Counts.Discovered
 	v.Query = r.URL.Query().Get("q")
 	v.Pagination = paginate(r.URL.Query(), "/catalogue", "Videos", result.Total)
+
+	ids := make([]string, 0, len(result.Items))
+	for _, video := range result.Items {
+		ids = append(ids, video.ID)
+	}
+
+	v.RecordingKinds, err = s.App.Catalog.RecordingKinds(r.Context(), ids)
+	if err != nil {
+		return err
+	}
 
 	return s.playlistOptions(r, v)
 }

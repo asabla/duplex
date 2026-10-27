@@ -44,12 +44,17 @@ func (a *App) proposedSelection(change SelectionChange) (config.Snapshot, config
 
 // PreviewSelection evaluates a draft against known records without source I/O.
 func (a *App) PreviewSelection(ctx context.Context, change SelectionChange) (catalog.SelectionPreview, error) {
+	return a.PreviewSelectionPage(ctx, change, "selected", 1)
+}
+
+// PreviewSelectionPage reviews selected, added, or removed known recordings.
+func (a *App) PreviewSelectionPage(ctx context.Context, change SelectionChange, view string, page int) (catalog.SelectionPreview, error) {
 	_, ch, err := a.proposedSelection(change)
 	if err != nil {
 		return catalog.SelectionPreview{}, err
 	}
 
-	return a.Catalog.PreviewUploads(ctx, ch)
+	return a.Catalog.PreviewUploadsPage(ctx, ch, view, page)
 }
 
 // SaveSelection saves revision-checked rules and queues enabled discovery.

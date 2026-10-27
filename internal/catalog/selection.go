@@ -20,6 +20,9 @@ type SelectionPreview struct {
 	Added       int             `json:"added"`
 	Removed     int             `json:"removed"`
 	Items       []SelectionItem `json:"items"`
+	View        string          `json:"view"`
+	Page        int             `json:"page"`
+	Pages       int             `json:"pages"`
 }
 
 // SelectionItem is a bounded preview row, without media locators.
@@ -111,6 +114,15 @@ func sharedUploadSelection(ch config.Channel, run int64) (string, []any) {
 
 // PreviewUploads reads consistent counts and at most 25 selected recordings.
 func (s *Store) PreviewUploads(ctx context.Context, ch config.Channel) (SelectionPreview, error) {
+	return s.PreviewUploadsPage(ctx, ch, "selected", 1)
+}
+
+// PreviewUploadsPage reads one bounded review page in a consistent snapshot.
+func (s *Store) PreviewUploadsPage(ctx context.Context, ch config.Channel, view string, page int) (SelectionPreview, error) {
+	if view != "selected" && view != "added" && view != "removed" {
+		return SelectionPreview{}, errors.New("invalid selection review")
+	}
+
 	cte, args, err := uploadSelection(ch, 0)
 	if err != nil {
 		return SelectionPreview{}, err
@@ -122,29 +134,65 @@ func (s *Store) PreviewUploads(ctx context.Context, ch config.Channel) (Selectio
 	}
 	defer rollback(tx)
 
-	p := SelectionPreview{Items: []SelectionItem{}}
+	p := SelectionPreview{Items: []SelectionItem{}, View: view}
 
 	err = tx.QueryRowContext(ctx, cte+`SELECT (SELECT count(*) FROM known),(SELECT count(*) FROM known WHERE kind=''),(SELECT count(*) FROM desired),(SELECT count(*) FROM desired WHERE selected=0),(SELECT count(*) FROM videos WHERE channel_id=? AND selected=1 AND id NOT IN (SELECT id FROM desired))`, append(args, ch.ID)...).Scan(&p.Known, &p.UnknownKind, &p.Selected, &p.Added, &p.Removed)
 	if err != nil {
 		return p, err
 	}
 
-	rows, err := tx.QueryContext(ctx, cte+`SELECT id,title,kind,override FROM desired ORDER BY published DESC,id LIMIT 25`, args...)
+	total := p.Selected
+
+	switch view {
+	case "added":
+		total = p.Added
+	case "removed":
+		total = p.Removed
+	}
+
+	p.Pages = max(1, (total+24)/25)
+	p.Page = max(1, min(page, p.Pages))
+	p.Items, err = previewItems(ctx, tx, cte, args, ch, view, p.Page)
+
+	return p, err
+}
+
+func previewItems(ctx context.Context, tx *sql.Tx, cte string, args []any, ch config.Channel, view string, page int) ([]SelectionItem, error) {
+	query := `SELECT id,title,kind,override FROM desired`
+
+	switch view {
+	case "added":
+		query += ` WHERE selected=0`
+	case "removed":
+		query = `SELECT v.id,v.title,CASE WHEN v.state='replay-ready' THEN 'replay' ELSE COALESCE(k.kind,'') END,'' FROM videos v LEFT JOIN video_content k ON k.video_id=v.id WHERE v.channel_id=? AND v.selected=1 AND v.id NOT IN (SELECT id FROM desired)`
+
+		args = append(args, ch.ID)
+	}
+
+	args = append(args, (page-1)*25)
+
+	rows, err := tx.QueryContext(ctx, cte+query+` ORDER BY published DESC,id LIMIT 25 OFFSET ?`, args...)
 	if err != nil {
-		return p, err
+		return nil, err
 	}
 	defer closeRows(rows)
+
+	items := []SelectionItem{}
 
 	for rows.Next() {
 		var item SelectionItem
 		if err = rows.Scan(&item.ID, &item.Title, &item.Kind, &item.Override); err != nil {
-			return p, err
+			return nil, err
 		}
 
-		p.Items = append(p.Items, item)
+		if view == "removed" {
+			item.Override = ch.VideoOverrides[item.ID]
+		}
+
+		items = append(items, item)
 	}
 
-	return p, rows.Err()
+	return items, rows.Err()
 }
 
 // ReconcileUploadRules publishes only a successfully enumerated window.

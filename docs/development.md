@@ -116,7 +116,7 @@ exception described in Code standards. For CSS, JavaScript, and development
 `.mjs` files, use the same Prettier command with the appropriate file path and
 omit `--parser go-template`.
 
-`./scripts/check-readability.sh` runs the non-Go checks separately. It creates 24
+`./scripts/check-readability.sh` runs the non-Go checks separately. It creates 28
 controlled pages and fragments in `.cache/markup` through
 `DUPLEX_MARKUP_TEST=1 go test -race -count=1 -run '^TestRenderedMarkupFixtures$' ./internal/admin`.
 The fixture adapter uses no external source or Plex service. The HTML validator

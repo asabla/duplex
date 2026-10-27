@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 )
@@ -20,6 +21,8 @@ type VideoFilter struct {
 	Visibility
 	Query, Channel, Playlist, Lifecycle, Preparation, Inclusion, Sort string
 	Page, PerPage                                                     int
+	Rule                                                              string
+	RecordingRules                                                    map[string]map[string]string
 }
 
 // VideoPage contains only the requested rows and consistent result counts.
@@ -66,6 +69,20 @@ UNION SELECT m.video_id FROM playlist_members m JOIN playlists p ON p.id=m.playl
 func videoWhere(f VideoFilter) (string, []any, error) {
 	clauses := []string{"1=1"}
 	args := []any{}
+
+	if f.Rule != "" {
+		if f.Rule != "keep" && f.Rule != "exclude" {
+			return "", nil, errors.New("invalid recording rule filter")
+		}
+
+		rules, err := json.Marshal(f.RecordingRules)
+		if err != nil {
+			return "", nil, err
+		}
+
+		clauses = append(clauses, `EXISTS(SELECT 1 FROM json_each(?) c JOIN json_each(c.value) r WHERE c.key=v.channel_id AND r.key=v.id AND r.value=?)`)
+		args = append(args, string(rules), f.Rule)
+	}
 
 	if f.Query != "" {
 		clauses = append(clauses, `instr(v.search_title||' '||lower(v.id||' '||v.channel_id),?)>0`)

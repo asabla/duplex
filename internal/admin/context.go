@@ -140,7 +140,7 @@ type playbackState struct {
 
 func playback(v catalog.Video) playbackState {
 	if !v.Exposed {
-		return playbackState{Label: "Excluded", Tone: "neutral", Detail: "Outside the current library selection"}
+		return playbackState{Label: "Not selected", Tone: "neutral", Detail: "Outside the current library selection"}
 	}
 
 	if v.State == "upcoming" || v.State == "active" || v.State == "processing" {
