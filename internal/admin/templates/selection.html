@@ -1,0 +1,146 @@
+{{define "selection-page"}}
+  <a class="back-link" href="{{.BackURL}}">Back to previous page</a>
+  <h2>Recording selection</h2>
+  <p>{{.ChannelName .Channel.ID}}</p>
+  <p class="hint"
+    >These rules control the channel's recording collection. Playlist selections
+    are separate. Existing Plex identities are retained.</p
+  >
+  {{if .Error}}
+    <div class="error" role="alert"
+      ><p>{{.Error}}</p
+      ><p
+        ><a
+          href="/selection?channel={{.Channel.ID}}"
+          target="_blank"
+          rel="noreferrer"
+          >Open current settings in a separate tab</a
+        >. Your draft is retained below.</p
+      ></div
+    >
+  {{end}}
+  <form
+    class="editor"
+    action="/actions/selection-preview#selection-preview-title"
+    method="post"
+  >
+    <input type="hidden" name="csrf" value="{{.CSRF}}" />
+    <input type="hidden" name="revision" value="{{.Revision}}" />
+    <input type="hidden" name="id" value="{{.Channel.ID}}" />
+    <input type="hidden" name="back" value="{{.BackURL}}" />
+    <fieldset>
+      <legend>Content rules</legend>
+      <label class="checkbox"
+        ><input
+          type="checkbox"
+          name="separate"
+          {{if .SelectionEditor.Separate}}checked{{end}}
+        />Use separate limits for uploads, Shorts, and completed streams</label
+      >
+      <p class="hint"
+        >When unchecked, the existing shared channel selection applies. The
+        limits below are ignored.</p
+      >
+      <div class="settings-grid">
+        {{range .SelectionEditor.Content}}
+          <fieldset>
+            <legend>{{.Label}}</legend>
+            <label for="content-{{.Name}}-mode"
+              >Selection<select
+                id="content-{{.Name}}-mode"
+                name="{{.Name}}_mode"
+              >
+                <option
+                  value="latest"
+                  {{if eq .Mode "latest"}}selected{{end}}
+                  >Latest videos</option
+                >
+                <option
+                  value="all"
+                  {{if eq .Mode "all"}}selected{{end}}
+                  >All videos</option
+                >
+                <option
+                  value="skip"
+                  {{if eq .Mode "skip"}}selected{{end}}
+                  >Skip</option
+                >
+              </select></label
+            >
+            <label for="content-{{.Name}}-limit"
+              >Number of latest videos<input
+                id="content-{{.Name}}-limit"
+                name="{{.Name}}_limit"
+                type="number"
+                min="1"
+                value="{{.Limit}}"
+            /></label>
+          </fieldset>
+        {{end}}
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Individual recordings</legend>
+      <p class="hint"
+        >Use one YouTube video ID per line. Keep can add an older recording,
+        including a skipped content type. It does not archive media. Exclude
+        takes a recording out of the automatic window; the next eligible
+        recording fills its place after discovery.</p
+      >
+      <label for="selection-keep"
+        >Keep<textarea id="selection-keep" name="keep" rows="3">
+{{.SelectionEditor.Keep}}</textarea>
+      </label>
+      <label for="selection-exclude"
+        >Exclude<textarea id="selection-exclude" name="exclude" rows="3">
+{{.SelectionEditor.Exclude}}</textarea>
+      </label>
+    </fieldset>
+    <button>Preview selection</button>
+  </form>
+  {{with .SelectionPreview}}
+    <section class="panel" aria-labelledby="selection-preview-title">
+      <h2 id="selection-preview-title">Selection preview</h2>
+      <p
+        >{{.Selected}} selected · {{.Added}} additions ·
+        {{.Removed}}
+        removals</p
+      >
+      <p class="hint"
+        >Based on {{.Known}} last-discovered completed recordings. No source or
+        media requests were made. Discovery can find more recordings or change
+        availability.</p
+      >
+      {{if and .UnknownKind $.SelectionEditor.Separate}}
+        <p
+          >{{.UnknownKind}} recordings have no confirmed content type. Separate
+          automatic rules omit them until discovery identifies their type.
+          Explicit Keep still applies.</p
+        >
+      {{end}}
+      <p>First 25 selected recordings, newest first:</p>
+      <ul
+        >{{range .Items}}
+          <li
+            >{{.Title}}
+            <small
+              >{{if .Kind}}
+                {{.Kind}}
+              {{else}}
+                Type unknown
+              {{end}}{{if .Override}}· {{.Override}}{{end}}</small
+            ></li
+          >
+        {{else}}
+          <li>No known eligible recordings selected.</li>
+        {{end}}</ul
+      >
+      <form action="/actions/selection-save" method="post">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}" />
+        <input type="hidden" name="change" value="{{$.SelectionJSON}}" />
+        <input type="hidden" name="back" value="{{$.BackURL}}" />
+        <button>Save selection</button>
+      </form>
+    </section>
+  {{end}}
+{{end}}

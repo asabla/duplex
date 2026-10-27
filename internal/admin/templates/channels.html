@@ -131,7 +131,9 @@
                 >{{if not $settings.Enabled}}<small>Paused</small>{{end}}</th
               >
               <td
-                >{{if eq $selection.Mode "latest"}}
+                >{{if $settings.Content}}
+                  Separate content rules
+                {{else if eq $selection.Mode "latest"}}
                   Latest
                   {{$selection.Limit}}
                 {{else}}
@@ -290,7 +292,7 @@
     {{else}}
       <p class="breadcrumb"
         ><a href="{{.ChannelLink "/channel"}}">{{.ChannelName .Channel.ID}}</a>
-        / Video</p
+        / {{if eq .Page "/selection"}}Recording selection{{else}}Video{{end}}</p
       >
     {{end}}
     <nav class="context-tabs" aria-label="Channel navigation">
@@ -334,10 +336,16 @@
   {{if eq .Tab "settings"}}
     <h2>Library selection</h2>
     <p class="hint"
-      >Changes apply to uploads and inherited playlists. Existing episode
-      identities are retained.</p
+      >The shared selection applies to inherited playlists and to recordings
+      when separate content rules are disabled. Existing episode identities are
+      retained.</p
     >
     {{template "policy-form" (.PolicyForm .Channel.ID "")}}
+    <p
+      ><a href="{{.ChannelLink "/selection"}}"
+        >Content rules and individual videos</a
+      ></p
+    >
     <details class="danger-zone">
       <summary>Unfollow channel</summary>
       <p
@@ -473,7 +481,7 @@
       >{{if .PlaylistID}}
         Playlist selection
       {{else}}
-        Upload selection
+        Shared selection
       {{end}}<select id="{{.ID}}-mode" name="mode" data-policy>
         {{if .PlaylistID}}
           <option

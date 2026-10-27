@@ -17,7 +17,7 @@ func localPageURL(raw, fallback string) string {
 	}
 
 	switch u.Path {
-	case "/channels", "/channel", "/catalogue", "/playlists", "/jobs", "/artwork", "/settings", "/diagnostics":
+	case "/channels", "/channel", "/video", "/selection", "/catalogue", "/playlists", "/jobs", "/artwork", "/settings", "/diagnostics":
 		return u.RequestURI()
 	default:
 		return fallback

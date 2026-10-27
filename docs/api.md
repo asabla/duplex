@@ -31,6 +31,8 @@ Failed logins are rate limited. Do not send credentials in URLs.
 | DELETE `/api/v1/channels/{id}` | JSON `revision`; unfollow and retain identities. |
 | POST `/api/v1/channels/{id}/sync` | Queue one enabled channel; deduplicate queued or running work. |
 | PUT `/api/v1/policy` | Change one upload policy or playlist override. See below. |
+| POST `/api/v1/selection/preview` | Preview proposed channel recording rules against known records, without source or media work. |
+| POST `/api/v1/selection` | Save the same proposed rules using the expected configuration revision. |
 | GET `/api/v1/videos` | Bounded, filtered video page. Defaults to the selected library. |
 | POST `/api/v1/videos/{id}/prepare` | Prioritize a selected recording through the same preparation service as the HTML form; CSRF required. |
 | GET `/api/v1/playlists` | Bounded playlist page with effective policy and inheritance. |
@@ -76,7 +78,7 @@ Upload policy example:
 
 ```json
 {
-  "channel_id": "UCw7FkXsC00lH2v2yB5LQoYA",
+  "channel_id": "UCaaaaaaaaaaaaaaaaaaaaaa",
   "playlist_id": "",
   "revision": "<revision from GET /api/v1/config>",
   "selection": {"mode": "all"},
@@ -87,6 +89,42 @@ Upload policy example:
 A nonempty `playlist_id` writes an override. Its selection is `inherit`, `latest`
 with a positive `limit`, `all`, or `skip`. Inherit removes the override. The
 channel-wide playlist control still takes precedence.
+
+### Recording rule preview and save
+
+Both selection endpoints accept the same complete recording-rule draft:
+
+```json
+{
+  "channel_id": "UCaaaaaaaaaaaaaaaaaaaaaa",
+  "revision": "<revision from GET /api/v1/config>",
+  "selection": {"mode": "latest", "limit": 20},
+  "content": {
+    "uploads": {"mode": "latest", "limit": 20},
+    "shorts": {"mode": "skip"},
+    "replays": {"mode": "latest", "limit": 2}
+  },
+  "video_overrides": {"video000001": "keep", "video000002": "exclude"}
+}
+```
+
+The IDs above are controlled examples. `selection` retains the shared default,
+including playlist inheritance. A null or omitted `content` restores the shared
+recording rule. Each separate rule is Latest, All, or Skip. `video_overrides`
+replaces the channel's recording overrides; null or an empty object clears them.
+These endpoints preserve playlist policies and artwork settings.
+
+The preview returns `known`, `unknown_kind`, `selected`, `added`, and `removed`
+counts plus `items`, capped at 25 selected recordings. Each item contains `id`,
+`title`, `kind`, and an optional `override`. Content kinds are `upload`, `short`,
+`replay`, or an empty string when unknown. Counts cover the last-discovered
+completed recordings, not future source results. Preview does not save settings,
+change membership, queue jobs, or fetch source metadata or media.
+
+Save validates the same rules, applies changes to known recordings, and queues
+enabled channel discovery. Source and preparation requirements still apply.
+Stale previews and saves return HTTP 409. Session and CSRF requirements are the
+same as other mutations, including for the read-only POST preview.
 
 ## Artwork scopes
 
