@@ -2,7 +2,13 @@ name: Quality
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -15,8 +21,20 @@ jobs:
         with:
           fetch-depth: 0
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+      - name: Restore Go build caches
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions', 'go.sum', '.golangci.yml') }}-${{ github.sha }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions', 'go.sum', '.golangci.yml') }}-
+        env:
+          SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
       - name: Install system prerequisites
-        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y fuse3 ffmpeg ripgrep
+        run: ./scripts/install-ci-prerequisites.sh
       - name: Install pinned source check tools
         run: npm ci --ignore-scripts --prefix tools/readability
       - name: Check
