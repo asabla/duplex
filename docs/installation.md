@@ -36,7 +36,7 @@ contains non-secret settings for both examples.
 
 ```sh
 export COMPOSE_FILE=compose.yaml  # Or compose.plex.yaml to include Plex.
-docker compose build
+docker compose pull
 docker compose run --rm --no-deps duplex-mount init \
   --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
 docker compose up -d --wait
@@ -192,7 +192,7 @@ export COMPOSE_FILE=compose.yaml  # Or compose.plex.yaml to include Plex.
 colima start
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/prepare-host.sh
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/check-host.sh
-docker --context colima compose build
+docker --context colima compose pull
 docker --context colima compose run --rm --no-deps duplex-mount init \
   --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
 docker --context colima compose up -d --wait

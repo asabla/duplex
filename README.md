@@ -5,15 +5,13 @@ playlists become seasons. Media is fetched as you watch and cached for reuse.
 
 ## Docker Compose
 
-Run on Linux amd64 or arm64 with `/dev/fuse` and Docker Compose v2. From a checkout,
-use [compose.yaml](compose.yaml):
+Run on Linux amd64 or arm64 with `/dev/fuse` and Docker Compose v2.
+Use [compose.yaml](compose.yaml):
 
 ```yaml
 services:
   duplex-mount:
-    build:
-      context: .
-    image: duplex:local
+    image: ghcr.io/asabla/duplex:latest
     restart: unless-stopped
     init: true
     read_only: true
@@ -43,12 +41,14 @@ services:
       retries: 6
 ```
 
-The image builds locally from this repository. Complete the one-time
+GitHub Actions publishes the [container image](https://github.com/asabla/duplex/pkgs/container/duplex)
+after checks pass on `main`. Complete the one-time
 [host preparation](docs/installation.md#prepare-the-host) and
 [initialization](docs/installation.md#initialize-and-start), then start the service:
 
 ```sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 Open [duplex](http://localhost:8765), sign in as `admin`, and use the password from
