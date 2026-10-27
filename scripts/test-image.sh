@@ -10,8 +10,8 @@ docker run --rm --network none --read-only --init \
   --entrypoint /bin/sh "$image" -ec '
     test "$(yt-dlp --version)" = 2026.10.21
     deno --version | grep "^deno 2.9.8 "
-    python3 -c '\''import sys; sys.path.insert(0, "/opt/yt-dlp/yt-dlp"); import yt_dlp_ejs.yt.solver as s; print(s.lib()); print(s.core())'\'' > /tmp/solver.js
-    printf '\''\nconst r = jsc({type: "preprocessed", preprocessed_player: "_result.n = s => s.split(\"\").reverse().join(\"\")", requests: [{type: "n", challenges: ["abc"]}]}); if (r.responses[0].data.abc !== "cba") throw new Error("solver failed");\n'\'' >> /tmp/solver.js
+    python3 -c '\''import sys; sys.path.insert(0, "/opt/yt-dlp/yt-dlp"); import yt_dlp_ejs.yt.solver as s; print(s.lib()); print("const {meriyah, astring} = lib;"); print(s.core())'\'' > /tmp/solver.js
+    printf '\''\nconst r = jsc({type: "preprocessed", preprocessed_player: "_result.n = s => s.toUpperCase()", requests: [{type: "n", challenges: ["abc"]}]}); if (r.responses[0].data.abc !== "ABC") throw new Error("solver failed");\n'\'' >> /tmp/solver.js
     deno run --no-config --no-remote /tmp/solver.js
     for file in /LICENSE /THIRD_PARTY_NOTICES.txt /licenses/deno-LICENSE.txt /opt/yt-dlp/LICENSE /opt/yt-dlp/THIRD_PARTY_LICENSES.txt /runtime-packages.txt; do
       test -s "$file"
