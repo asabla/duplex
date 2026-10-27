@@ -38,6 +38,7 @@ done
 ruff format --check scripts
 python3 scripts/test-notices.py
 python3 scripts/test-check.py
+python3 scripts/test-ci-prerequisites.py
 
 # These fixtures use a controlled source adapter, without external services.
 rm -rf .cache/markup

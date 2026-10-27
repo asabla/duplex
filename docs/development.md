@@ -57,6 +57,16 @@ Compose configuration. Use `golangci-lint fmt` only for an authorized formatting
 change, then review the diff. It can rewrite Go files across the checkout; keep
 concurrent work outside its scope.
 
+CI runs for pull requests and pushes to `main`; a pull request update does not
+also start a branch-push run. New updates cancel obsolete runs for the same pull
+request or branch. Manual runs are available through GitHub Actions.
+Go module, compiler, and lint caches use the runner platform and tool/dependency
+versions. Tests and coverage evidence are regenerated; cached results do not
+replace checks. Package index and archive downloads have a 120-second limit per
+command. A failed download retries against the official Ubuntu archives with
+archive signature checks retained. Package installation uses downloaded archives
+without a timeout that could interrupt `dpkg`.
+
 Each production package needs at least 80% statement coverage. The gate merges
 unique statement blocks from the same source fingerprint across native and Linux
 runs. On Linux, it needs FUSE and root or sudo for isolated mount tests. On macOS,
