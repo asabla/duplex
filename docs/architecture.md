@@ -75,7 +75,16 @@ operation. Its mutex only protects channel creation; it does not span I/O.
 They remain inside `App` and use the existing shared mutex; transitions across
 these groups retain their original atomicity. The scheduler alone uses its
 `lastIntegration` timestamp. Lifecycle code owns acquisition, worker startup, and
-cancel/wait/close ordering. No additional mutex or lock order is introduced.
+cancel/wait/close ordering.
+
+Configuration publication has a separate mutex and retains the last applied
+visibility policies and configuration revision. A visibility change advances
+the affected channel's durable directory time and requests a managed scan,
+without waiting for source discovery. Pausing, unfollowing, playlist exclusion,
+and return retain media revisions and occurrence identities. Startup republishes
+retained visible directories. Unchanged publication and unrelated settings do
+not advance directory times. Publication does not hold `App.mu` during database
+work or wait for a Plex request.
 
 Channel configuration operations live in `channels.go`; compatibility status is
 in `status.go`; publication and scan scheduling are in `publication.go`. Durable
