@@ -184,3 +184,26 @@ percentiles or remove late arrivals. If worker logs split benchmark names and
 numeric result lines, join them before giving the output to `benchstat`; keep
 the original logs privately. The structured results retain these normalized
 sample values without local paths or source locators.
+
+## Retained-recording restart
+
+Use the same controlled media files and `DUPLEX_APP_MEDIA_FIXTURES` setting as
+the readiness workloads above. Run each committed source version separately:
+
+```sh
+GOMAXPROCS=2 go test ./internal/app -run '^$' \
+  -bench '^BenchmarkRetainedStartupOpen$' -benchtime=1x -count=10
+```
+
+Each sample retains one recording's verified catalogue and indexes, replaces
+the media cache with an empty directory, and clears runtime bindings. The source
+fixture adds a fixed 250 ms resolver delay. The benchmark runs restart queue
+work to completion, then opens the recording and reads its first 64 KiB.
+
+Compare `restart-work-ns` and `open-read-ns` together. `ns/op` includes both.
+Also compare warmed recording count, resolver calls, HTTP requests, and bytes.
+Warming moves source work before the read; a shorter later open does not imply
+less work or immediate playback after mount readiness. This fixture does not
+measure worker concurrency, FFmpeg decoding, Plex scanning, or live source
+latency. Use the playback profiler for those separate measurements and keep
+installation-specific reports outside Git.
