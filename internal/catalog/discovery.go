@@ -33,11 +33,12 @@ func (s *Store) ReconcileDiscovery(ctx context.Context, run int64, collection, o
 	}
 
 	if collection == "uploads" {
-		if _, err = tx.ExecContext(ctx, `UPDATE videos SET selected=0,exposed=0 WHERE channel_id=?`, owner); err != nil {
+		removalArgs := append([]any{owner}, args...)
+		if _, err = tx.ExecContext(ctx, `UPDATE videos SET selected=0,exposed=0 WHERE channel_id=? AND (selected<>0 OR exposed<>0) AND id NOT IN (`+selection+`)`, removalArgs...); err != nil {
 			return err
 		}
 
-		_, err = tx.ExecContext(ctx, `UPDATE videos SET selected=1,exposed=(revision<>'' AND number>0) WHERE id IN (`+selection+`)`, args...)
+		_, err = tx.ExecContext(ctx, `UPDATE videos SET selected=1,exposed=(revision<>'' AND number>0) WHERE id IN (`+selection+`) AND (selected<>1 OR exposed<>(revision<>'' AND number>0))`, args...)
 	} else {
 		removalArgs := append([]any{time.Now().Unix(), collection}, args...)
 		if _, err = tx.ExecContext(ctx, `UPDATE playlist_members SET selected=0,updated=MAX(updated+1,?) WHERE playlist_id=? AND selected=1 AND video_id NOT IN (`+selection+`)`, removalArgs...); err != nil {

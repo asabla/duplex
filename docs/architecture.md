@@ -299,6 +299,12 @@ of aggregating its episodes. Channel and playlist metadata remain joined at
 read time, and YAML visibility rules apply immediately. Migration backfills the
 derived records and retains existing representation revisions and scanner slots.
 
+Schema 8 advances show and season directory timestamps when a visible upload
+leaves, returns, moves, or changes its published metadata. An index supplies the
+latest recording timestamp for that channel. Unchanged upload discovery updates
+only membership differences, so it retains directory times. Recording file times,
+media revisions, scanner slots, and Plex bindings remain unchanged by selection.
+
 Projection reads retain at most 32 prepared SQL statements and 128 KiB of SQL
 text per catalogue store. Additional query variants use ordinary uncached reads.
 The cache retains query plans; each call binds current values and reads current

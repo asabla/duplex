@@ -8,39 +8,24 @@ import (
 )
 
 func (s *Store) migrate(ctx context.Context, version int) error {
-	if version < 2 {
-		if err := s.migrateCollections(ctx); err != nil {
-			return err
-		}
+	steps := []struct {
+		version int
+		apply   func(context.Context) error
+	}{
+		{2, s.migrateCollections},
+		{3, s.migrateProjection},
+		{4, s.migratePlaylistRoots},
+		{5, s.migratePlaylistPaths},
+		{6, s.migrateProjectionTimes},
+		{7, s.migrateEpisodeMetadata},
+		{8, s.migrateUploadTimes},
 	}
 
-	if version < 3 {
-		if err := s.migrateProjection(ctx); err != nil {
-			return err
-		}
-	}
-
-	if version < 4 {
-		if err := s.migratePlaylistRoots(ctx); err != nil {
-			return err
-		}
-	}
-
-	if version < 5 {
-		if err := s.migratePlaylistPaths(ctx); err != nil {
-			return err
-		}
-	}
-
-	if version < 6 {
-		if err := s.migrateProjectionTimes(ctx); err != nil {
-			return err
-		}
-	}
-
-	if version < 7 {
-		if err := s.migrateEpisodeMetadata(ctx); err != nil {
-			return err
+	for _, step := range steps {
+		if version < step.version {
+			if err := step.apply(ctx); err != nil {
+				return err
+			}
 		}
 	}
 
