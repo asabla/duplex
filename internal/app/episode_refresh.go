@@ -27,7 +27,7 @@ func (a *App) recordEpisodeAssets(ctx context.Context, id string, entries []libr
 
 func (a *App) runEpisodeRefresh(ctx context.Context, job catalog.EpisodeRefresh) {
 	work, cancel := context.WithTimeout(ctx, 20*time.Second)
-	err := a.refreshEpisodeMetadata(work, job.Video)
+	err := a.refreshEpisodeMetadata(work, job)
 
 	cancel()
 
@@ -43,7 +43,7 @@ func (a *App) runEpisodeRefresh(ctx context.Context, job catalog.EpisodeRefresh)
 	a.operationFailure("episode metadata result", a.Catalog.FinishEpisodeRefresh(cleanup, job, err))
 }
 
-func (a *App) refreshEpisodeMetadata(ctx context.Context, video string) error {
+func (a *App) refreshEpisodeMetadata(ctx context.Context, job catalog.EpisodeRefresh) error {
 	release, err := a.acquireLibraryUpdate(ctx)
 	if err != nil {
 		return err
@@ -71,17 +71,17 @@ func (a *App) refreshEpisodeMetadata(ctx context.Context, video string) error {
 
 	after := ""
 	for {
-		items, err := a.Catalog.EpisodeRefreshPage(ctx, connection.URL, video, after, 128)
+		items, err := a.Catalog.EpisodeRefreshPage(ctx, connection.URL, job.Video, after, 128)
 		if err != nil {
 			return err
 		}
 
-		if len(items) == 0 && after == "" {
-			return errors.New("plex episode has not been observed")
-		}
-
 		for _, item := range items {
 			if err = client.RefreshEpisode(ctx, connection.Section, item.Key, item.Occurrence); err != nil {
+				return err
+			}
+
+			if err = a.Catalog.AppliedEpisodeAssets(ctx, job, connection.URL, item); err != nil {
 				return err
 			}
 

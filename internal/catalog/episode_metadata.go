@@ -16,6 +16,7 @@ func (s *Store) migrateEpisodeMetadata(ctx context.Context) error {
 
 	for _, statement := range []string{
 		`CREATE TABLE IF NOT EXISTS episode_metadata(video_id TEXT PRIMARY KEY REFERENCES videos(id),digest TEXT NOT NULL,pending INTEGER NOT NULL DEFAULT 1,attempted INTEGER NOT NULL DEFAULT 0,error TEXT NOT NULL DEFAULT '')`,
+		`CREATE TABLE IF NOT EXISTS episode_asset_versions(video_id TEXT NOT NULL REFERENCES videos(id),server TEXT NOT NULL,occurrence_id TEXT NOT NULL,rating_key TEXT NOT NULL,digest TEXT NOT NULL,PRIMARY KEY(server,occurrence_id))`,
 		`CREATE INDEX IF NOT EXISTS pending_episode_metadata ON episode_metadata(pending,attempted,video_id)`,
 		`CREATE INDEX IF NOT EXISTS episode_video_bindings ON episode_bindings(video_id,server,seen_run,occurrence_id)`,
 		`PRAGMA user_version=7`,
@@ -77,7 +78,7 @@ func (s *Store) EpisodeRefreshPage(ctx context.Context, server, video, after str
 		return nil, errors.New("invalid episode metadata page size")
 	}
 
-	rows, err := s.DB.QueryContext(ctx, `SELECT occurrence_id,rating_key,guid,current_index FROM episode_bindings WHERE video_id=? AND server=? AND seen_run=(SELECT MAX(seen_run) FROM episode_bindings WHERE server=?) AND occurrence_id>? ORDER BY occurrence_id LIMIT ?`, video, server, server, after, limit)
+	rows, err := s.DB.QueryContext(ctx, `SELECT b.occurrence_id,b.rating_key,b.guid,b.current_index FROM episode_bindings b JOIN episode_metadata m ON m.video_id=b.video_id LEFT JOIN episode_asset_versions a ON a.server=b.server AND a.occurrence_id=b.occurrence_id AND a.rating_key=b.rating_key AND a.digest=m.digest WHERE b.video_id=? AND b.server=? AND b.seen_run=(SELECT MAX(seen_run) FROM episode_bindings WHERE server=?) AND b.occurrence_id>? AND a.occurrence_id IS NULL ORDER BY b.occurrence_id LIMIT ?`, video, server, server, after, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +96,14 @@ func (s *Store) EpisodeRefreshPage(ctx context.Context, server, video, after str
 	}
 
 	return result, rows.Err()
+}
+
+// AppliedEpisodeAssets checkpoints each occurrence so partial failures do not
+// repeatedly refresh earlier occurrences or prevent a large job from finishing.
+func (s *Store) AppliedEpisodeAssets(ctx context.Context, job EpisodeRefresh, server string, item ObservedEpisode) error {
+	_, err := s.DB.ExecContext(ctx, `INSERT INTO episode_asset_versions(video_id,server,occurrence_id,rating_key,digest) SELECT ?,?,?,?,? WHERE EXISTS(SELECT 1 FROM episode_metadata WHERE video_id=? AND digest=?) ON CONFLICT(server,occurrence_id) DO UPDATE SET video_id=excluded.video_id,rating_key=excluded.rating_key,digest=excluded.digest`, job.Video, server, item.Occurrence, item.Key, job.Digest, job.Video, job.Digest)
+
+	return err
 }
 
 // FinishEpisodeRefresh cannot acknowledge a newer asset version.

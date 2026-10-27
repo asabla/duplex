@@ -220,6 +220,8 @@ upload and playlist occurrences under the existing library-update lock. Each
 request verifies the current Plex section, episode type, and occurrence identity.
 Completion acknowledges only the queued digest. Interrupted work resumes after
 restart; failed work retains a redacted error and a fifteen-minute retry delay.
+Each successful occurrence records its asset digest and Plex key so a partial
+failure resumes remaining work. A changed digest or Plex key requires a refresh.
 Queue counts and errors share the existing metadata diagnostics fields.
 
 Preparation state is independent of source lifecycle. An upcoming broadcast is
