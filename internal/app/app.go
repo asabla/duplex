@@ -22,6 +22,7 @@ type App struct {
 	preparationState
 	representationState
 	libraryState
+	publicationState
 	assetState
 
 	httpClient       *http.Client
