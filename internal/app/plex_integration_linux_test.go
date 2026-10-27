@@ -59,6 +59,7 @@ func TestMountedPlexProtocolKeepsOrderingFailuresUntilReconciled(t *testing.T) {
 	var (
 		unhealthy        atomic.Bool
 		scans, refreshes atomic.Int32
+		episodeRefreshes atomic.Int32
 	)
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -94,6 +95,16 @@ func TestMountedPlexProtocolKeepsOrderingFailuresUntilReconciled(t *testing.T) {
 			body = fmt.Sprintf(`<MediaContainer><Directory ratingKey="42" guid="tv.plex.agents.nfo.series://show/%s"/></MediaContainer>`, url.PathEscape("youtube-channel:"+testOwner))
 		case "/library/metadata/42/refresh":
 			refreshes.Add(1)
+		case "/library/metadata/50":
+			body = `<MediaContainer><Video type="episode" librarySectionID="7" guid="tv.plex.agents.nfo.series://episode/youtube-video%3Avideo000000"/></MediaContainer>`
+		case "/library/metadata/51":
+			body = fmt.Sprintf(`<MediaContainer><Video type="episode" librarySectionID="7" guid="tv.plex.agents.nfo.series://episode/%s"/></MediaContainer>`, url.PathEscape(catalog.PlaylistOccurrenceID(testOwner, "PLfixture0001", "video000000")))
+		case "/library/metadata/50/refresh", "/library/metadata/51/refresh":
+			if r.Method != http.MethodPut {
+				t.Error("episode refresh must use PUT")
+			}
+
+			episodeRefreshes.Add(1)
 		default:
 			http.NotFound(w, r)
 			return
@@ -139,6 +150,39 @@ func TestMountedPlexProtocolKeepsOrderingFailuresUntilReconciled(t *testing.T) {
 	pending, failure, err := a.Catalog.ShowRefreshStatus(t.Context())
 	if err != nil || pending != 0 || failure != "" || refreshes.Load() != 2 {
 		t.Fatal(pending, failure, refreshes.Load(), err)
+	}
+
+	caption, err := a.saveAsset("video000000", ".en.srt", []byte("1\n00:00:00,000 --> 00:00:01,000\nControlled caption\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = a.saveAssetManifest("video000000", []library.Entry{caption}); err != nil {
+		t.Fatal(err)
+	}
+
+	if changed, err := a.recordEpisodeAssets(t.Context(), "video000000", []library.Entry{caption}); err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+
+	if pending, _, err := a.metadataRefreshStatus(t.Context()); err != nil || pending < 1 {
+		t.Fatal("metadata work was not visible", pending, err)
+	}
+
+	a.refreshMetadataQueues(t.Context())
+
+	if pending, failure, err := a.Catalog.EpisodeRefreshStatus(t.Context()); err != nil || pending != 0 || failure != "" || episodeRefreshes.Load() != 2 {
+		t.Fatal("late caption did not refresh every occurrence", pending, failure, episodeRefreshes.Load(), err)
+	}
+
+	if changed, err := a.recordEpisodeAssets(t.Context(), "video000000", []library.Entry{caption}); err != nil || changed {
+		t.Fatal("unchanged captions queued another refresh", changed, err)
+	}
+
+	a.refreshMetadataQueues(t.Context())
+
+	if episodeRefreshes.Load() != 2 {
+		t.Fatal("unchanged captions refreshed Plex", episodeRefreshes.Load())
 	}
 
 	unhealthy.Store(true)

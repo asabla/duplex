@@ -28,7 +28,7 @@ func (a *App) Summary(ctx context.Context) (Status, catalog.Counts, error) {
 		return s, counts, err
 	}
 
-	if s.MetadataPending, s.MetadataError, err = a.Catalog.ShowRefreshStatus(ctx); err != nil {
+	if s.MetadataPending, s.MetadataError, err = a.metadataRefreshStatus(ctx); err != nil {
 		return s, counts, err
 	}
 

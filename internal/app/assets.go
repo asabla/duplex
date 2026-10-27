@@ -406,7 +406,12 @@ func (a *App) refreshAssets(ctx context.Context, id string) error {
 	assets, err := a.acquireMetadataAssets(ctx, m)
 	if len(assets) > 0 {
 		err = errors.Join(err, a.Publish())
-		a.requestScan()
+		changed, queueErr := a.recordEpisodeAssets(ctx, id, assets)
+		err = errors.Join(err, queueErr)
+
+		if changed {
+			a.requestScan()
+		}
 	}
 
 	return err

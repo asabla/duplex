@@ -47,7 +47,7 @@ func (a *App) Status(ctx context.Context) (Status, error) {
 		return s, e
 	}
 
-	if s.MetadataPending, s.MetadataError, e = a.Catalog.ShowRefreshStatus(ctx); e != nil {
+	if s.MetadataPending, s.MetadataError, e = a.metadataRefreshStatus(ctx); e != nil {
 		return s, e
 	}
 

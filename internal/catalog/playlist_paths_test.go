@@ -147,6 +147,11 @@ func TestPlaylistPathMigrationPreservesExposedPathsAndBindings(t *testing.T) {
 
 func removeSchema5(t *testing.T, s *Store) {
 	t.Helper()
+
+	if _, err := s.DB.ExecContext(t.Context(), `DROP INDEX episode_video_bindings`); err != nil {
+		t.Fatal(err)
+	}
+
 	removeSchema6(t, s)
 
 	for _, query := range []string{
