@@ -40,6 +40,10 @@ type page struct {
 	OOB                      bool
 	ErrorFieldID             string
 	Video                    catalog.Video
+	SelectionEditor          selectionEditor
+	SelectionPreview         *catalog.SelectionPreview
+	SelectionJSON            string
+	VideoChannel             config.Channel
 }
 
 func (p page) ChannelName(id string) string {

@@ -76,6 +76,8 @@
           {{template "follow-page" .}}
         {{else if eq .Page "/video"}}
           {{template "video-inspection" .}}
+        {{else if eq .Page "/selection"}}
+          {{template "selection-page" .}}
         {{else if eq .Page "/channel"}}
           {{template "channel-detail" .}}
         {{else if eq .Page "/channels"}}

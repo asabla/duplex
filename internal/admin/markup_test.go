@@ -46,6 +46,7 @@ func TestRenderedMarkupFixtures(t *testing.T) {
 		{"follow", "/follow"},
 		{"channel", "/channel?channel=" + workflowChannel},
 		{"channel-settings", "/channel?channel=" + workflowChannel + "&tab=settings"},
+		{"selection", "/selection?channel=" + workflowChannel},
 		{"videos", "/catalogue"},
 		{"video", "/video?id=aqz-KE-bpKQ&channel=" + workflowChannel},
 		{"playlists", "/playlists"},

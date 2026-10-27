@@ -48,6 +48,9 @@ Use a dedicated test library and preserve existing user state. Verify:
   unchanged refresh; exact media identity and saved Plex progress.
 - Channel and playlist identities, reorder, removal and return, separate occurrence
   history, named seasons, title changes, and artwork refresh.
+- Independent upload, Shorts, and replay windows; individual Keep/Exclude and
+  return to Automatic; preview and save through HTML and JSON; retained Plex
+  identity and progress across these selection changes.
 - Source expiry and truncated reads, disk exhaustion, cache pressure, and recovery
   after a killed mount process. Failed bytes must reach the client as errors.
 - Read-only projection and stable-parent mount propagation while Plex stays running.

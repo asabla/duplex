@@ -296,4 +296,49 @@
       </dd>
     </dl>
   </details>
+  {{if .VideoChannel.ID}}
+    <section class="editor">
+      <h2>Channel recording selection</h2>
+      <p class="hint"
+        >Keep adds this recording beyond the normal window. Exclude removes it
+        from this channel's recording collection. Playlist selections are
+        separate. Source availability still applies.</p
+      >
+      <form
+        action="/actions/video-selection-preview#selection-preview-title"
+        method="post"
+      >
+        <input type="hidden" name="csrf" value="{{.CSRF}}" />
+        <input type="hidden" name="revision" value="{{.Revision}}" />
+        <input type="hidden" name="id" value="{{.VideoChannel.ID}}" />
+        <input type="hidden" name="video" value="{{.Video.ID}}" />
+        <label for="video-override"
+          >Selection<select id="video-override" name="override">
+            <option
+              value="automatic"
+              {{if not (index .VideoChannel.VideoOverrides .Video.ID)}}
+                selected
+              {{end}}
+              >Automatic</option
+            >
+            <option
+              value="keep"
+              {{if eq (index .VideoChannel.VideoOverrides .Video.ID) "keep"}}
+                selected
+              {{end}}
+              >Keep</option
+            >
+            <option
+              value="exclude"
+              {{if eq (index .VideoChannel.VideoOverrides .Video.ID) "exclude"}}
+                selected
+              {{end}}
+              >Exclude</option
+            >
+          </select></label
+        >
+        <button>Preview selection</button>
+      </form>
+    </section>
+  {{end}}
 {{end}}

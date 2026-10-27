@@ -15,6 +15,10 @@ func (s *Server) actions(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 
+	if s.selectionAction(w, r) {
+		return true
+	}
+
 	switch r.URL.Path {
 	case "/actions/policy":
 		limit, err := wholeNumber(r, "limit", 1, int(^uint(0)>>1))
@@ -144,7 +148,7 @@ func actionReturnURL(r *http.Request) string {
 	candidate, err := url.Parse(location)
 	if err == nil && candidate.User == nil && (candidate.Host == "" || candidate.Host == r.Host) && (candidate.Scheme == "" || candidate.Scheme == "http" || candidate.Scheme == "https") && len(candidate.RawQuery) <= 8192 {
 		switch candidate.Path {
-		case "/channels", "/channel", "/follow", "/video", "/playlists", "/catalogue", "/jobs", "/settings", "/artwork", "/diagnostics":
+		case "/channels", "/channel", "/follow", "/video", "/selection", "/playlists", "/catalogue", "/jobs", "/settings", "/artwork", "/diagnostics":
 			return candidate.RequestURI()
 		}
 	}

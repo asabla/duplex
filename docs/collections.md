@@ -77,6 +77,23 @@ Use the UI where possible. For external YAML edits, change the existing entry;
 do not replace the complete settings file with this fragment. Invalid edits keep
 the previous settings active until corrected, but can prevent the next startup.
 
+## Separate content and keep individual recordings
+
+In Channel Settings, open **Content rules and individual videos** to give
+uploads, Shorts, and completed streams separate Latest, All, or Skip rules.
+The shared rule remains the default for existing settings and inherited
+playlists. These separate rules affect only the channel's recording collection.
+
+Use Keep for an older recording or Exclude for one that should leave that
+collection. The same controls are available on a video's details page. Preview
+the known selected, added, and removed counts before saving. Preview does not
+fetch source metadata or media; discovery can find more recordings. Unknown
+content types are omitted by separate automatic rules until identified.
+
+Keep does not create an archive, select active live content, or bypass source
+availability and media verification. See the [configuration fields](configuration.md#separate-content-and-individual-recordings)
+for complete examples and override behavior.
+
 ## Captions and metadata refresh
 
 duplex selects available subtitles for the original audio language. Explicit

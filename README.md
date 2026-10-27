@@ -94,6 +94,8 @@ Use [troubleshooting](docs/troubleshooting.md) before repeating a failed operati
 - Stable year seasons and playlist seasons. Shared videos use the same media data,
   with separate Plex progress for each playlist occurrence.
 - Original audio and available original-language sidecar subtitles.
+- Optional separate upload, Shorts, and replay limits, with individual Keep/Exclude
+  controls and a selection preview before saving.
 - A compact administration panel with filters, sorting, pagination, and artwork controls.
 - One writable YAML file. UI edits use revision checks; invalid external edits keep
   the last valid settings active.

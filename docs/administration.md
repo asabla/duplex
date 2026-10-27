@@ -43,6 +43,33 @@ current revision. Other drafts remain intact. If settings changed elsewhere,
 duplex rejects the stale save, keeps the draft, and offers the current page in a
 separate tab for comparison. Field validation links to the affected input.
 
+### Select uploads, Shorts, and completed streams
+
+From Channel Settings, open **Content rules and individual videos**. Enable
+separate limits to choose Latest, All, or Skip for each content type. When this
+option is disabled, the existing shared channel selection applies. Playlist
+policies remain separate and inherit the shared selection when configured.
+
+Use **Keep** for a recording that must remain beyond the automatic window, or
+**Exclude** to remove one from this channel's recording collection. Enter one
+video ID per line, or open a video and change its **Channel recording selection**.
+Choose **Automatic** on that video to remove its override. These controls do not
+archive media or bypass source availability and preparation requirements.
+
+Select **Preview selection** before saving. The preview shows selected,
+added, and removed counts from the last discovered catalogue and at most 25
+selected titles. It does not fetch source metadata or media. Unknown content
+types are identified in the preview; discovery must classify them before separate
+automatic rules can select them. Explicit Keep can select an eligible recording
+whose type is unknown.
+
+**Save selection** applies the rules to known recordings and queues discovery
+when the channel is enabled. Discovery can find more recordings. A stale save
+retains the draft and requires comparison with current settings. Recording paths,
+slots, and media revisions are retained when membership changes.
+
+### Artwork and unfollow
+
 Artwork opens in the current channel and poster scope. **Change show or season**
 contains bounded season search and paging. Upload a JPEG or PNG, or select
 **Reset to automatic**. The saved preview keeps the target and return context.

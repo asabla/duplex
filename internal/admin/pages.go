@@ -120,10 +120,14 @@ func (s *Server) pageData(r *http.Request, v *page) error {
 
 		return err
 	case "/video":
-		video, err := s.App.Video(r.Context(), r.URL.Query().Get("id"))
-		v.Video = video
+		return s.videoInspectionData(r, v)
+	case "/selection":
+		if v.Channel.ID == "" {
+			return errors.New("channel is not followed")
+		}
 
-		return err
+		v.Tab = "settings"
+		v.SelectionEditor = editorFor(v.Channel)
 	case "/catalogue", "/fragments/catalogue":
 		return s.videoPageData(r, v)
 	case "/fragments/playlist-options":
@@ -158,6 +162,14 @@ func (s *Server) pageData(r *http.Request, v *page) error {
 	}
 
 	return nil
+}
+
+func (s *Server) videoInspectionData(r *http.Request, v *page) error {
+	video, err := s.App.Video(r.Context(), r.URL.Query().Get("id"))
+	v.Video = video
+	v.VideoChannel = v.ChannelSettings[video.ChannelID]
+
+	return err
 }
 
 func (s *Server) videoPageData(r *http.Request, v *page) error {
@@ -252,7 +264,7 @@ func (s *Server) artworkPageData(r *http.Request, v *page) error {
 
 func validReadPage(path string) bool {
 	switch path {
-	case "/", "/follow", "/channel", "/video", "/channels", "/playlists", "/catalogue", "/jobs", "/settings", "/diagnostics", "/artwork", "/fragments/channel", "/fragments/catalogue", "/fragments/channels", "/fragments/status", "/fragments/jobs", "/fragments/playlist-options":
+	case "/", "/follow", "/channel", "/video", "/selection", "/channels", "/playlists", "/catalogue", "/jobs", "/settings", "/diagnostics", "/artwork", "/fragments/channel", "/fragments/catalogue", "/fragments/channels", "/fragments/status", "/fragments/jobs", "/fragments/playlist-options":
 		return true
 	default:
 		return false

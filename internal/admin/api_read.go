@@ -51,6 +51,10 @@ func (s *Server) readAPI(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (s *Server) mutateAPI(w http.ResponseWriter, r *http.Request) bool {
+	if s.selectionAPI(w, r) {
+		return true
+	}
+
 	switch {
 	case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/api/v1/videos/") && strings.HasSuffix(r.URL.Path, "/prepare"):
 		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/videos/"), "/prepare")
