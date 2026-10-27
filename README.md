@@ -1,74 +1,62 @@
 # duplex
 
-Watch YouTube channels in Plex. Channels become shows, recordings become episodes,
-and playlists become seasons. Media is fetched as you watch, with a shared cache
-for playback and seeking.
+YouTube channels in Plex. Channels become shows, recordings become episodes, and
+playlists become seasons. Media is fetched as you watch and cached for reuse.
 
-- Recorded uploads, Shorts, and completed streams, up to 4K.
-- Separate content limits, individual Keep/Exclude rules, and previews before saving.
-- Original audio, available subtitles, and local artwork.
-- A web interface to manage channels, recordings, and playlists.
+## Docker Compose
 
-**Experimental** · Linux amd64/arm64 · [MIT](LICENSE).
-See [current limits](docs/validation.md) before relying on it for daily use.
+Run on Linux amd64 or arm64 with `/dev/fuse` and Docker Compose v2. From a checkout,
+use [compose.yaml](compose.yaml):
 
-## Quick start
-
-Requires Linux with `/dev/fuse`, Docker Compose v2, and Git. Run these commands
-on the Docker host. For macOS, use the [Colima guide](docs/installation.md#colima-on-macos).
-
-This example uses [compose.plex.yaml](compose.plex.yaml) to start duplex with Plex:
-
-```sh
-git clone https://github.com/asabla/duplex.git
-cd duplex
-export COMPOSE_FILE=compose.plex.yaml
-
-sudo ./scripts/prepare-host.sh /var/lib/duplex
-sudo ./scripts/check-host.sh /var/lib/duplex
-docker compose build
-docker compose run --rm --no-deps duplex-mount init \
-  --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
-docker compose up -d --wait
+```yaml
+services:
+  duplex-mount:
+    build:
+      context: .
+    image: duplex:local
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    devices:
+      - /dev/fuse:/dev/fuse
+    cap_drop: [ALL]
+    cap_add: [SYS_ADMIN]
+    security_opt:
+      - apparmor=unconfined
+      - no-new-privileges:true
+    ports:
+      - 127.0.0.1:${DUPLEX_PORT:-8765}:8765
+    volumes:
+      - type: bind
+        source: ${DUPLEX_HOST_DIR:-/var/lib/duplex}
+        target: /state
+        bind:
+          propagation: rshared
+          create_host_path: false
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, /usr/local/bin/duplex, health]
+      interval: 10s
+      timeout: 6s
+      retries: 6
 ```
 
-Open [duplex](http://localhost:8765) and sign in as `admin`. Read the initial
-password on the host:
+The image builds locally from this repository. Complete the one-time
+[host preparation](docs/installation.md#prepare-the-host) and
+[initialization](docs/installation.md#initialize-and-start), then start the service:
 
 ```sh
-sudo cat /var/lib/duplex/data/secrets/initial-admin-password
+docker compose up -d --build
 ```
 
-For an existing Plex server, select [compose.yaml](compose.yaml) instead and follow the
-[existing Plex setup](docs/installation.md#use-an-existing-plex-server).
-For a remote machine, use the [SSH connection steps](docs/installation.md#connect-from-another-machine).
+Open [duplex](http://localhost:8765), sign in as `admin`, and use the password from
+`/var/lib/duplex/data/secrets/initial-admin-password` on the Docker host.
 
-## Connect Plex
-
-Open [Plex](http://localhost:32499/web/) and claim the server. Create a dedicated
-**TV Shows** library with these settings:
-
-| Setting | Value |
-| --- | --- |
-| Folder | `/data/media` |
-| Agent | **Plex NFO Series** |
-| Local assets and season titles | On |
-| Automatic trash emptying | Off |
-| Preview thumbnails, intro/credits detection, loudness analysis | Off |
-
-Then [connect duplex to that library](docs/installation.md#connect-duplex-to-plex)
-with its section ID and a protected token file. Plex requires version 1.43.1 or
-later with the NFO agent available.
-
-## Follow a channel and play a video
-
-1. In duplex, open **Channels → Follow channel** and enter a public channel URL.
-2. Choose **Latest videos**, start with a small count, and leave playlists off.
-3. Wait for **Prepared** in Videos, then open the show in Plex and play an episode.
-
-Use channel Settings for separate upload, Shorts, and stream rules. Add playlist
-seasons after the first playback check. See [collection setup](docs/collections.md)
-for selection behavior and [troubleshooting](docs/troubleshooting.md) if an item fails.
+[Connect your Plex library](docs/installation.md#use-an-existing-plex-server), then
+open **Channels → Follow channel** in duplex. Choose recordings, preview the
+selection, and save.
 
 ## Documentation
 
@@ -78,6 +66,8 @@ for selection behavior and [troubleshooting](docs/troubleshooting.md) if an item
 - [Development](docs/development.md) · [Architecture](docs/architecture.md) · [API](docs/api.md)
 - [Performance](docs/performance.md) · [Validation](docs/validation.md)
 - [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Licensing](docs/licensing.md)
+
+Experimental. See [current limits](docs/validation.md) before relying on it for daily use.
 
 ## License
 

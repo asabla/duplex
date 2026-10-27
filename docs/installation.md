@@ -35,7 +35,7 @@ and shutdown, or save it in your local `.env`. [.env.example](../.env.example)
 contains non-secret settings for both examples.
 
 ```sh
-export COMPOSE_FILE=compose.plex.yaml  # Or compose.yaml for an existing Plex server.
+export COMPOSE_FILE=compose.yaml  # Or compose.plex.yaml to include Plex.
 docker compose build
 docker compose run --rm --no-deps duplex-mount init \
   --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
@@ -84,8 +84,12 @@ you changed them.
 
 ## Plex library
 
-The bundled example starts Plex after duplex is healthy and already mounts the
-media folder. Open [Plex](http://localhost:32499/web/) and claim the server. Keep remote
+Use your existing Plex server's web interface. For a container, follow the
+[shared mount setup](#use-an-existing-plex-server) below.
+
+If you selected `compose.plex.yaml`, it starts Plex after duplex is healthy and
+already mounts the media folder. Open [Plex](http://localhost:32499/web/) and claim
+that server. Keep remote
 access disabled. If **Plex NFO Series** is absent after claim, restart Plex and
 check again. duplex checks the actual agent; it does not infer support from the
 server version.
@@ -171,7 +175,7 @@ a Plex server on another machine.
 
 Follow the [collection setup guide](collections.md) for channel and playlist
 selection, Plex settings, and the current limitations. Then use the
-[first playback steps](../README.md#follow-a-channel-and-play-a-video).
+[first playback steps](collections.md#start-with-a-small-channel-selection).
 
 ## Colima on macOS
 
@@ -184,7 +188,7 @@ Use the existing Colima profile. If it is stopped, start it. Then run from the
 repository on macOS:
 
 ```sh
-export COMPOSE_FILE=compose.plex.yaml  # Or compose.yaml for an existing Plex server.
+export COMPOSE_FILE=compose.yaml  # Or compose.plex.yaml to include Plex.
 colima start
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/prepare-host.sh
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/check-host.sh
