@@ -43,7 +43,9 @@ func (a *App) Publish() error {
 		if err := a.Catalog.TouchProjection(a.ctx, changed); err != nil {
 			return err
 		}
+	}
 
+	if len(changed) > 0 || a.publicationRevision == "" {
 		a.requestScan()
 	}
 
