@@ -54,6 +54,25 @@ func (c *Client) WaitScan(ctx context.Context, section string) error {
 	}
 }
 
+// WaitIdle checks immediately before a targeted metadata update. After starting
+// a new asynchronous scan, callers must use WaitScan to retain its initial grace.
+func (c *Client) WaitIdle(ctx context.Context, section string) error {
+	if !validSection(section) {
+		return errors.New("invalid Plex library section")
+	}
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	busy, err := c.libraryScanning(ctx, section)
+	if err != nil || !busy {
+		return err
+	}
+
+	return c.WaitScan(ctx, section)
+}
+
 func (c *Client) libraryScanning(ctx context.Context, section string) (bool, error) {
 	var response struct {
 		Items []struct {

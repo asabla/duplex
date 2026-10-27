@@ -339,6 +339,10 @@ unlocked. It waits for the scanner and reconciles bindings again. Failed work is
 visible and can resume from a fresh observation. A shared library-update lock
 serializes duplex scans, reconciliation, and targeted metadata refreshes.
 
+Targeted metadata refreshes check scanner state immediately and wait only when
+it is busy. Newly requested scans retain their initial two-second grace before
+binding reconciliation, because a queued scan can briefly report idle.
+
 Show NFO changes have durable content identities and a paced metadata-refresh
 queue. A completed refresh acknowledges only that version. Newer metadata remains
 pending. Local text artifacts and artwork are durable data, outside the media

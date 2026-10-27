@@ -90,7 +90,7 @@ func (a *App) refreshShowMetadata(ctx context.Context, channel string) error {
 		return err
 	}
 
-	if err = client.WaitScan(ctx, connection.Section); err != nil {
+	if err = client.WaitIdle(ctx, connection.Section); err != nil {
 		return err
 	}
 
