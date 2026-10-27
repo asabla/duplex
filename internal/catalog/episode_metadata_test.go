@@ -52,8 +52,26 @@ func TestEpisodeAssetsKeepVersionsRetriesAndAllOccurrences(t *testing.T) {
 		t.Fatal("shared video occurrences were lost", count)
 	}
 
+	if err = s.AppliedEpisodeAssets(t.Context(), job, "server", items[0]); err != nil {
+		t.Fatal(err)
+	}
+
+	remaining, err := s.EpisodeRefreshPage(t.Context(), "server", "fixture", "", 128)
+	if err != nil || len(remaining) != 1 || remaining[0].Key != "43" {
+		t.Fatal("partial completion was not checkpointed", remaining, err)
+	}
+
 	if changed, err := s.RecordEpisodeAssets(t.Context(), "fixture", "second"); err != nil || !changed {
 		t.Fatal(changed, err)
+	}
+
+	if err = s.AppliedEpisodeAssets(t.Context(), job, "server", items[1]); err != nil {
+		t.Fatal(err)
+	}
+
+	remaining, err = s.EpisodeRefreshPage(t.Context(), "server", "fixture", "", 128)
+	if err != nil || len(remaining) != 2 {
+		t.Fatal("old completion acknowledged new assets", remaining, err)
 	}
 
 	if err = s.FinishEpisodeRefresh(t.Context(), job, nil); err != nil {
