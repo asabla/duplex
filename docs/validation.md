@@ -35,6 +35,16 @@ skipped tests; live Plex qualification needs a separate controlled installation.
 These checks establish the tested code contracts. They do not establish browser
 rendering, provider availability, conversion capacity, or household acceptance.
 
+## Container publication
+
+The [CI workflow](../.github/workflows/ci.yml) also builds and tests the packaged
+runtime on native Linux amd64 and arm64. It publishes a multi-platform image to
+GitHub Container Registry only after the quality gate and both image tests pass.
+Verify that a new package is public with an anonymous registry request; repository
+visibility alone does not establish package visibility. Check both platforms and
+the source revision on the published manifest. These checks establish image
+availability and controlled startup, and do not replace the live gates below.
+
 ## Live media and Plex gate
 
 Use a dedicated test library and preserve existing user state. Verify:

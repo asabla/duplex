@@ -2,9 +2,7 @@
 # Docker Desktop/macOS mounts are not a replacement for a Colima Linux path.
 services:
   duplex-mount:
-    build:
-      context: .
-    image: duplex:local
+    image: ghcr.io/asabla/duplex:latest
     restart: unless-stopped
     init: true
     read_only: true

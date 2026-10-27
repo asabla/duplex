@@ -67,6 +67,19 @@ command. A failed download retries against the official Ubuntu archives with
 archive signature checks retained. Package installation uses downloaded archives
 without a timeout that could interrupt `dpkg`.
 
+After the quality gate passes, CI builds the Docker image on native Linux amd64
+and arm64 runners. Each image must pass `scripts/test-image.sh`: pinned tool
+versions, bundled JavaScript solver, license files, initialization, FUSE startup,
+mount health, and the sign-in page, with external networking disabled. Pull
+requests run these checks without publishing. Successful runs on `main` publish
+`ghcr.io/asabla/duplex:latest` and `:sha-<full-commit>` as multi-platform images.
+Image layers use separate architecture caches. Publication uses the repository
+`GITHUB_TOKEN`; it needs no personal registry credential.
+
+For an intentional local development build, use `docker build -t duplex:local .`
+and set `image: duplex:local` in a local Compose copy. The committed Compose
+examples use the image built by GitHub Actions.
+
 Each production package needs at least 80% statement coverage. The gate merges
 unique statement blocks from the same source fingerprint across native and Linux
 runs. On Linux, it needs FUSE and root or sudo for isolated mount tests. On macOS,

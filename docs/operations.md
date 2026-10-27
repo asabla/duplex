@@ -126,10 +126,14 @@ installation backup. Do not copy a live SQLite file without a transactional back
 With Compose:
 
 ```sh
-docker compose build duplex-mount
+docker compose pull duplex-mount
 docker compose up -d --no-deps --wait duplex-mount
 curl --fail http://127.0.0.1:8765/mountz
 ```
+
+`ghcr.io/asabla/duplex:latest` follows checked commits on `main`. For a fixed
+deployment or rollback, use `ghcr.io/asabla/duplex:sha-<full-commit>` or the image
+digest from the [publication workflow](../.github/workflows/ci.yml).
 
 Catalogue migrations are transactional. Existing numeric upload limits and
 excluded-playlist behavior remain until a policy is changed. Year paths, episode

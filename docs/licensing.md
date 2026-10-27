@@ -21,12 +21,17 @@ The project license does not replace third-party licenses:
 - Development packages retain the licenses supplied with their pinned versions.
   They are not part of the application runtime.
 
-The Docker build obtains a pinned yt-dlp standalone directory and Deno binary.
-The yt-dlp directory remains intact under `/opt/yt-dlp`, including its bundled
-components and notices. Those components can have different licenses from the
-yt-dlp Python source. Review the exact archive's notices and distribution
-requirements before redistributing a built image. OS packages also keep their
-own licenses; the image records installed versions in `/runtime-packages.txt`.
+The Docker build obtains the checksum-pinned yt-dlp Python zip executable and
+Deno binary. The zip includes matching EJS code and the ISC-licensed meriyah and
+MIT-licensed astring libraries, with their notices in the JavaScript bundle.
+The executable and upstream license files remain under `/opt/yt-dlp`. The full
+upstream third-party notice file also describes components of other upstream
+builds; it is not an inventory of the installed image.
+
+The image uses Debian Python instead of the upstream PyInstaller archive.
+The separate native installation script still uses that archive and retains its
+bundled components and notices. OS packages keep their own licenses under
+`/usr/share/doc`; the image records installed versions in `/runtime-packages.txt`.
 
 The image includes the project license at `/LICENSE`, linked-module notices at
 `/THIRD_PARTY_NOTICES.txt`, and supporting notices under `/licenses`.
@@ -40,6 +45,5 @@ The project license does not grant rights to videos, audio, subtitles, artwork,
 trademarks, or other content obtained from external services. Follow the terms
 and permissions that apply to the content and service you use.
 
-Publishing this source repository does not establish binary or container
-redistribution acceptance. Build and release validation is described in
-[validation](validation.md).
+Review licenses and source requirements when updating any bundled component.
+Build and release validation is described in [validation](validation.md).
