@@ -20,7 +20,7 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/var/lib/duplex
+ReadWritePaths=/var/lib/duplex /etc/duplex
 LimitNOFILE=8192
 
 [Install]
