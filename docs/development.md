@@ -69,12 +69,15 @@ without a timeout that could interrupt `dpkg`.
 
 After the quality gate passes, CI builds the Docker image on native Linux amd64
 and arm64 runners. Each image must pass `scripts/test-image.sh`: pinned tool
-versions, bundled JavaScript solver, license files, initialization, FUSE startup,
-mount health, and the sign-in page, with external networking disabled. The test
-runs as root on an AppArmor-enabled Docker host, loads the helper profile, and
-checks zero service capabilities, enforced AppArmor/seccomp, rejected helper
-mounts and network sockets, read-only consumer propagation, and recovery after
-service and helper crashes. It removes only its own disposable installation.
+versions, bundled JavaScript solver, license files, initialization, NFS export
+health, and the sign-in page. The NFS gate uses a fixed loopback host port and
+Docker's local NFS volume driver. It checks non-root server and consumer
+containers with zero capabilities, default AppArmor/seccomp, private-export
+refusal, read-only access, and recovery after graceful and forced restarts.
+Separate legacy tests retain the enforced FUSE helper restrictions and crash
+recovery checks with external networking disabled. The scripts remove only their
+own disposable installations. The Linux test host needs AppArmor, FUSE for those
+legacy checks, and kernel NFS client support; application containers do not mount NFS.
 Pull requests run these checks without publishing. Successful runs on `main` publish
 `ghcr.io/asabla/duplex:latest` and `:sha-<full-commit>` as multi-platform images.
 Image layers use separate architecture caches. Publication uses the repository

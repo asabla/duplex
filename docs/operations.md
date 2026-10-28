@@ -90,7 +90,7 @@ Back up these together:
 - `indexes`.
 - Plex configuration, including its claim and watch history.
 
-The media cache and FUSE projection are not backup sources. Protect backups as
+The media cache and exported library are not backup sources. Protect backups as
 credentials. For a complete installation backup, stop Plex first, then duplex,
 and use your protected host backup system to copy durable state. Keep the same
 paths and file ownership when restoring.
@@ -105,7 +105,7 @@ duplex backup --config /etc/duplex/config.yaml \
 For Compose, choose a new destination inside the state bind:
 
 ```sh
-docker compose exec duplex-mount \
+docker compose exec duplex \
   duplex backup --config /state/config.yaml --output /state/catalogue-backup.sqlite
 ```
 
@@ -126,33 +126,53 @@ installation backup. Do not copy a live SQLite file without a transactional back
 With Compose:
 
 ```sh
-docker compose pull mount-helper duplex-mount
-docker compose up -d --no-deps --wait mount-helper duplex-mount
+docker compose pull duplex
+docker compose up -d --no-deps --wait duplex
 curl --fail http://127.0.0.1:8765/mountz
 ```
 
 `ghcr.io/asabla/duplex:latest` follows checked commits on `main`. For a fixed
 deployment or rollback, use `ghcr.io/asabla/duplex:sha-<full-commit>` or the image
 digest from the [publication workflow](../.github/workflows/ci.yml).
-Use the same image revision for the helper and service.
+Keep the NFS port and the durable data directory unchanged across upgrades.
 
-When upgrading from the earlier root container, first stop Duplex and save its
-backup. Install the [helper AppArmor profile](installation.md#prepare-the-host),
-then change state ownership without traversing the public filesystem:
+### Migrate from the FUSE Compose deployment
+
+Keep a complete backup and the same Compose project name. Using the old Compose
+file, stop Plex, Duplex, and its helper before changing the deployment. Remove
+only the stopped old Duplex containers; retain all state and Plex volumes:
 
 ```sh
-docker compose stop duplex-mount
-sudo find /var/lib/duplex -xdev -path /var/lib/duplex/library -prune -o \
-  -exec chown -h 10001:10001 {} +
-sudo ./scripts/prepare-host.sh /var/lib/duplex
-sudo ./scripts/check-host.sh /var/lib/duplex
+docker compose stop plex duplex-mount mount-helper
+docker compose rm -f duplex-mount mount-helper
 ```
 
-Use your dedicated state path in each command if it differs. Perform these host
-commands inside the Colima VM when Docker runs there. Keep `library` and its
-`media` mountpoint owned by root; the service must not replace the helper's mount
-destination. Restart both containers with the upgrade commands above. Settings,
-credentials, catalogue identities, and Plex progress do not change.
+For a separate Plex installation, stop that server through its own service
+manager instead of naming `plex` here. Then update the Compose examples and add
+an override to retain the existing state bind, rather than creating an empty
+named volume:
+
+```yaml
+services:
+  duplex:
+    volumes:
+      - type: bind
+        source: /var/lib/duplex
+        target: /state
+        bind:
+          create_host_path: false
+```
+
+Use the actual Linux daemon-host state directory. Keep its existing configuration,
+credentials, ownership (UID/GID 10001), catalogue, indexes, and media cache. Do not
+initialize over it. Start with the new Compose file and this override. Replace
+Plex's old library bind with the documented NFS volume, keeping `/data/media` as
+the Plex library path and retaining its existing configuration volume.
+
+No catalogue or occurrence identity migration is required. The NFS handle database
+is created in the private data directory on first use. Validate playback and
+saved Plex progress before retiring the old FUSE host setup. Keep the old backup
+and deployment files for rollback. Do not remove volumes to repair a mount.
 
 Catalogue migrations are transactional. Existing numeric upload limits and
 excluded-playlist behavior remain until a policy is changed. Year paths, episode
@@ -160,12 +180,15 @@ identities, Plex bindings, and artwork overrides are retained. A rollback across
 a schema migration requires the matching durable-state backup, not only an older
 binary. Do not point an old binary at an unsupported schema.
 
-## Recover a failed mount
+## Recover a failed export
 
-A normal shutdown unmounts FUSE. After a process crash, duplex detaches only a
-disconnected mount whose path, filesystem identity, and source match its own
-configuration. It refuses a live or unrelated mount.
+A hard NFS client mount waits while Duplex is unavailable. Restore Duplex at the
+same host address and port, with the same data directory and `nfs.sqlite` identity
+database. Unchanged file handles can then reconnect. A changed or unavailable
+representation fails rather than returning different bytes through an old handle.
 
-Keep Plex's read-only bind on the stable parent. Old handles fail; new opens use
-the replacement mount. Correct a stale root bind before retrying playback. Never
-empty Plex trash as a mount repair step. See [troubleshooting](troubleshooting.md).
+The `/mountz` endpoint reports the export listener, not the Plex client's mount.
+Check both service health and access from the Plex container. Do not empty Plex
+trash during recovery. If the endpoint or durable identity database changes,
+stop Plex and recreate its NFS volume mount; retain the Plex configuration and
+library path. See [Troubleshooting](troubleshooting.md).

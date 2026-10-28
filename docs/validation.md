@@ -40,12 +40,14 @@ rendering, provider availability, conversion capacity, or household acceptance.
 The [CI workflow](../.github/workflows/ci.yml) also builds and tests the packaged
 runtime on native Linux amd64 and arm64. It publishes a multi-platform image to
 GitHub Container Registry only after the quality gate and both image tests pass.
-Image tests must verify the enforced helper profile, non-root service with zero
-capabilities and no FUSE device, rejected mount types, targets and writable
-flags, denied helper internet sockets and unauthorized peers, and mount lease
-cleanup across service and helper crashes. A running read-only consumer must see
-the replacement mount without a restart. This tests the Plex bind contract, not
-Plex rendering or saved watch state.
+Image tests must verify non-root NFS server and consumer containers with zero
+capabilities and no FUSE device, default AppArmor/seccomp, a Docker-managed NFS
+mount through the fixed loopback host port, private-state export refusal, write
+rejection, and recovery across graceful and forced service restarts while the
+consumer stays running. Retained legacy FUSE tests separately verify the enforced
+helper profile, rejected mount types and targets, denied network sockets and
+unauthorized peers, and replacement mount propagation. These checks establish
+filesystem deployment contracts, not Plex rendering or saved watch state.
 Verify that a new package is public with an anonymous registry request; repository
 visibility alone does not establish package visibility. Check both platforms and
 the source revision on the published manifest. These checks establish image
@@ -69,7 +71,10 @@ Use a dedicated test library and preserve existing user state. Verify:
   identity and progress across these selection changes.
 - Source expiry and truncated reads, disk exhaustion, cache pressure, and recovery
   after a killed mount process. Failed bytes must reach the client as errors.
-- Read-only projection and stable-parent mount propagation while Plex stays running.
+- Read-only NFS projection, unchanged file handles after restart, and reconnect
+  while Plex stays running. Old representation handles must return their original
+  bytes or fail, and must never return replacement content. Legacy FUSE deployments
+  retain their stable-parent propagation check.
 - Installation, backup, restore, upgrade, and service recovery on the target host.
 
 Earlier concurrent decoder and restart trials returned incomplete reads and a

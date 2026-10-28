@@ -10,15 +10,14 @@ Use one of the complete Compose examples from the repository root:
 | [compose.plex.yaml](../compose.plex.yaml) | duplex and Plex | Create a separate Plex installation for duplex. |
 
 Select one file; do not combine them. Use that same `-f` option for build, init,
-start, stop, logs, and upgrades. Both examples require a prepared Linux Docker
-host with `/dev/fuse` and shared mount propagation. See [Installation](installation.md).
+start, stop, logs, and upgrades. Both examples use Linux Docker Engine and its
+NFS client support. See [Installation](installation.md).
 The duplex-only example still requires Plex for browsing and playback.
 
-An existing Plex server must be able to read the same Linux FUSE projection.
-A Plex server on another machine cannot read the Docker host's local path.
-Network file sharing is not configured or qualified by these examples. For a
-Plex container, bind the stable `/var/lib/duplex/library` parent read-only with
-`rslave` propagation and select its `media` child. Do not bind the FUSE root.
+An existing Plex server reads the library through a read-only NFS volume mounted
+by Docker. Select `/data/media` in Plex. Duplex and Plex need no mount capability
+or FUSE device. The examples keep NFS on the Docker host; they do not secure or
+qualify access from another machine.
 
 ## Create the Plex library
 

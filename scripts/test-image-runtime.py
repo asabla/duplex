@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Controlled checks inside the exact service and mount-helper images."""
+"""Controlled checks inside the exact NFS service and legacy helper images."""
 
 import ctypes
 import errno
 from pathlib import Path
 import socket
+import struct
 import subprocess
 import sys
 import urllib.request
@@ -103,5 +104,38 @@ def service():
     )
 
 
+def nfs():
+    path = b"/state/data/secrets"
+    args = struct.pack("!I", len(path)) + path + bytes((-len(path)) % 4)
+    request = struct.pack("!10I", 1, 0, 2, 100005, 3, 1, 0, 0, 0, 0) + args
+    with socket.create_connection(("127.0.0.1", 2049), timeout=3) as connection:
+        connection.sendall(struct.pack("!I", len(request) | 0x80000000) + request)
+        header = connection.recv(4, socket.MSG_WAITALL)
+        length = struct.unpack("!I", header)[0] & 0x7FFFFFFF
+        reply = connection.recv(length, socket.MSG_WAITALL)
+    assert struct.unpack("!7I", reply) == (1, 1, 0, 0, 0, 0, 13)
+    print("NFS: private state export refused")
+
+
+def consumer():
+    status = Path("/proc/self/status").read_text()
+    for capability in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"):
+        assert f"{capability}:\t0000000000000000" in status
+    assert "NoNewPrivs:\t1" in status and "Seccomp:\t2" in status
+    assert not Path("/dev/fuse").exists()
+    assert "docker-default (enforce)" in Path("/proc/self/attr/current").read_text()
+    assert list(Path("/data/media").iterdir()) == []
+    assert not Path("/data/media/config.yaml").exists()
+    try:
+        Path("/data/media/forbidden").write_bytes(b"must fail")
+    except OSError as error:
+        assert error.errno in (errno.EROFS, errno.EACCES, errno.EPERM)
+    else:
+        raise AssertionError("NFS consumer wrote to the library")
+    print("NFS consumer: read-only projection with no capabilities or FUSE device")
+
+
 if __name__ == "__main__":
-    {"helper": helper, "service": service}[sys.argv[1]]()
+    {"helper": helper, "service": service, "nfs": nfs, "consumer": consumer}[
+        sys.argv[1]
+    ]()

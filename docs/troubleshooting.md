@@ -26,7 +26,7 @@ Check these in order:
 3. Check preparation. Queued, resolving, and preparing entries are not ready yet.
    Use **Prepare now** to raise one selected recording's priority.
 4. Check mount readiness and the Plex prerequisites in Diagnostics.
-5. Check that Plex uses the FUSE `media` child through the stable read-only parent.
+5. Check that Plex mounts the read-only NFS volume at `/data/media`.
 
 A failed preparation leaves its error visible. A previous verified revision can
 remain usable during refresh. An unsupported representation is not replaced by a
@@ -42,7 +42,7 @@ and check the available agents again. The server must actually advertise
 
 Enable **Use season titles** in the dedicated library's advanced settings. Keep
 **Use local assets** enabled. Refresh the show's metadata after the correct
-`tvshow.nfo` is visible. Do not rename the FUSE directories manually; season
+`tvshow.nfo` is visible. Do not rename the library directories manually; season
 numbers are durable identities and playlist titles are metadata.
 
 ## The poster is old
@@ -87,13 +87,18 @@ For an invalid external YAML edit, correct the file while the last valid setting
 remain active. Fix it before restarting. For a local file error, check ownership
 and write access to the configuration directory, not only the file itself.
 
-## The mount is disconnected after a crash
+## The library waits after a restart
 
-Restart duplex and check `/mountz`. The service detaches only a disconnected mount
-at its exact configured path with the expected duplex filesystem identity. It
-refuses a live or unrelated mount.
+Check Duplex health and its NFS port. A hard NFS mount waits while the server is
+unavailable. Restore Duplex at the same address and port with its retained data
+directory, including `nfs.sqlite`. Do not change the port during an upgrade.
 
-Plex must bind the stable parent with `rslave` propagation. A bind of the old FUSE
-root can remain stale even after duplex has mounted a replacement. Correct that
-bind and restart the affected Plex container while preserving its configuration
-volume. Keep automatic trash emptying disabled throughout recovery.
+If Docker reports a mount connection error during Plex startup, start Duplex
+first and wait for its health check. The NFS volume address is resolved by the
+Docker daemon, not inside Plex. Use the daemon-host loopback address and the
+published port, not the Compose service name.
+
+If the endpoint or NFS identity database was replaced, stop Plex and recreate its
+NFS mount, retaining Plex configuration, its library path, and saved progress.
+Keep automatic trash emptying disabled throughout recovery. The `/mountz` check
+reports the export listener; it does not check the client mount inside Plex.

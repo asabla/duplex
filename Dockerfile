@@ -21,7 +21,7 @@ FROM denoland/deno:bin-2.9.8@sha256:b507583d3c68ba69f3ed2ce5969ae5b8b70f43421c78
 # The official Python zip executable includes its matching EJS code.
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libstdc++6 python3 && \
-    dpkg-query -W > /runtime-packages.txt && rm -rf /var/lib/apt/lists/* && mkdir /state
+    dpkg-query -W > /runtime-packages.txt && rm -rf /var/lib/apt/lists/* && mkdir /state && chown 10001:10001 /state && chmod 0700 /state
 COPY --from=build /duplex /usr/local/bin/duplex
 COPY --from=build /yt-dlp /opt/yt-dlp
 RUN ln -s /opt/yt-dlp/yt-dlp /usr/local/bin/yt-dlp
@@ -33,4 +33,4 @@ ENV DENO_DIR=/tmp/deno
 WORKDIR /state
 USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/duplex"]
-CMD ["serve", "--config", "/state/config.yaml"]
+CMD ["serve", "--config", "/state/config.yaml", "--nfs-listen", "0.0.0.0:2049"]
