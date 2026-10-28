@@ -1,26 +1,59 @@
 # duplex
 
-YouTube channels in Plex. Channels become shows, recordings become episodes, and
-playlists become seasons. Media is fetched as you watch and cached for reuse.
+Watch YouTube channels in Plex. Channels become shows, recordings become
+episodes, and playlists become seasons. Media is fetched as you watch and
+cached for playback and seeking.
+
+- Select uploads, Shorts, and completed streams, up to 4K.
+- Set recording limits, keep individual videos, and preview changes before saving.
+- Use original audio, available subtitles, and local artwork.
 
 ## Docker Compose
 
-Run on Linux amd64 or arm64 with Docker Engine 28+, NFS client support, and Compose v2.
-Use [compose.yaml](compose.yaml) for Duplex, or [compose.plex.yaml](compose.plex.yaml)
-to include Plex.
+Requires Linux amd64 or arm64, Docker Engine 28+, NFS client support, and Compose v2.
+Save this service-only example as `compose.yaml`:
 
-Duplex serves a read-only NFS library as a non-root user with all capabilities
-dropped. Docker mounts the library for Plex. No FUSE device, privileged helper,
-or custom AppArmor profile is required.
+```yaml
+services:
+  duplex:
+    image: ghcr.io/asabla/duplex:latest
+    command: [serve, --config, /state/config.yaml, --nfs-listen, "0.0.0.0:2049"]
+    user: "10001:10001"
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 127.0.0.1:${DUPLEX_PORT:-8765}:8765
+      - 127.0.0.1:${DUPLEX_NFS_PORT:-2049}:2049
+    volumes:
+      - duplex-state:/state
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, /usr/local/bin/duplex, health]
+      interval: 5s
+      timeout: 6s
+      retries: 12
 
-GitHub Actions publishes [ghcr.io/asabla/duplex:latest](https://github.com/asabla/duplex/pkgs/container/duplex)
-after checks pass on `main`. Initialize once, then start:
+volumes:
+  duplex-state:
+```
+
+The same example is in [compose.yaml](compose.yaml). To include Plex, use the
+complete [compose.plex.yaml](compose.plex.yaml) instead. Run
+`export COMPOSE_FILE=compose.plex.yaml` before the commands below.
+
+Initialize once, then start:
 
 ```sh
 docker compose pull
 docker compose run --rm --no-deps duplex init \
   --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
-docker compose up -d
+docker compose up -d --wait
 ```
 
 Read the initial password:
@@ -29,12 +62,34 @@ Read the initial password:
 docker compose exec duplex cat /state/data/secrets/initial-admin-password
 ```
 
-Open [duplex](http://localhost:8765) and sign in as `admin`. State stays in a Docker
-volume. The web and NFS ports bind to localhost.
+Open [duplex](http://localhost:8765) and sign in as `admin`. Settings and data stay
+in the `duplex-state` volume. Both ports bind to localhost; use the
+[remote connection steps](docs/installation.md#connect-from-another-machine)
+for another machine.
 
-[Connect your Plex library](docs/installation.md#use-an-existing-plex-server), then
-open **Channels → Follow channel** in duplex. Choose recordings, preview the
-selection, and save.
+Duplex runs without added capabilities, a FUSE device, or a custom AppArmor
+profile. Docker mounts its read-only NFS library for Plex. GitHub Actions builds
+and publishes the [image](https://github.com/asabla/duplex/pkgs/container/duplex).
+
+## Connect Plex
+
+[Mount the library](docs/installation.md#use-an-existing-plex-server) in your Plex
+container. The combined example already mounts it at `/data/media`.
+Create a dedicated **TV Shows** library with **Plex NFO Series** as its agent.
+Enable local assets and season titles; disable automatic trash emptying and
+optional media analysis. The [Plex setup guide](docs/installation.md#plex-library)
+lists the exact settings and optional automatic scan connection.
+
+## Follow a channel
+
+1. Open **Channels → Follow channel** and enter a public YouTube channel URL.
+2. Start with a small **Latest videos** selection. Add playlist seasons when needed.
+3. Wait for **Prepared** in Videos, then open the show in Plex and play an episode.
+
+Use recording selection to set separate rules for uploads, Shorts, and completed
+streams, or to keep and exclude individual recordings. Preview before saving.
+See [collection setup](docs/collections.md) for selection rules and limitations.
+Active live streams and authenticated sources are outside the current scope.
 
 ## Documentation
 
