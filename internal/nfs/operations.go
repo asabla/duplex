@@ -25,7 +25,7 @@ func (s *Server) operation(ctx context.Context, procedure uint32, d *decoder) en
 	}
 
 	if r.info.Directory {
-		r.info, err = s.provider.Stat(ctx, r.name)
+		r, err = s.describe(ctx, r.name)
 		if err != nil {
 			return operationError(status(err), procedure)
 		}

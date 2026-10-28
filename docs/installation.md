@@ -143,13 +143,15 @@ volumes:
     driver_opts:
       type: nfs
       device: :/media
-      o: addr=127.0.0.1,port=2049,mountport=2049,nfsvers=3,tcp,mountproto=tcp,nolock,noacl,ro,hard,timeo=600,retrans=2
+      o: addr=127.0.0.1,port=2049,mountport=2049,nfsvers=3,tcp,mountproto=tcp,nolock,noacl,ro,hard,timeo=600,retrans=2,actimeo=1,lookupcache=positive
 ```
 
 The NFS client runs on the Docker daemon host, so `127.0.0.1` refers to that Linux
 host, not the Plex container. Use the published NFS port in both port options.
 Start Duplex and wait for its health check before starting Plex. `nocopy` prevents
 Docker from trying to populate the NFS volume during container creation.
+The mount caches attributes for one second and does not cache missing names. This
+keeps newly prepared recordings visible during later Plex scans.
 
 Select `/data/media` as the Plex library folder. For a native Plex installation,
 the host administrator can mount the same read-only NFS export through the normal
@@ -179,7 +181,7 @@ The host administrator mounts the library for Plex, independently of Duplex:
 
 ```sh
 sudo mkdir -p /srv/duplex/library/media
-sudo mount -t nfs -o ro,nfsvers=3,tcp,port=2049,mountport=2049,nolock,noacl \
+sudo mount -t nfs -o ro,nfsvers=3,tcp,port=2049,mountport=2049,nolock,noacl,actimeo=1,lookupcache=positive \
   127.0.0.1:/media /srv/duplex/library/media
 ```
 

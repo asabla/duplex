@@ -25,6 +25,32 @@ type mountedBytes struct {
 	data []byte
 }
 
+func TestRootMembershipChangesWhenFirstRecordingBecomesVisible(t *testing.T) {
+	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "all"}), fixtureCollection(0))
+	p := catalogueFS{app: a}
+
+	before, err := p.Stat(t.Context(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	projectionVideo(t, a, "video000001", 1)
+
+	after, err := p.Stat(t.Context(), "")
+	if err != nil || before.Revision == "" || before.Revision == after.Revision || before.Modified != after.Modified {
+		t.Fatal("root membership did not change independently of configuration", before, after, err)
+	}
+
+	if _, err = a.Catalog.DB.ExecContext(t.Context(), `UPDATE videos SET selected=0 WHERE id='video000001'`); err != nil {
+		t.Fatal(err)
+	}
+
+	hidden, err := p.Stat(t.Context(), "")
+	if err != nil || hidden.Revision != before.Revision {
+		t.Fatal("empty root membership was not restored", hidden, err)
+	}
+}
+
 func TestFilesystemVersionReadsNeverReturnReplacementBytes(t *testing.T) {
 	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "all"}), fixtureCollection(0))
 	prepared := projectionVideo(t, a, "video000001", 1)

@@ -47,7 +47,7 @@ wait_service
 docker exec -i "$service" python3 - service <scripts/test-image-runtime.py
 docker exec -i "$service" python3 - nfs <scripts/test-image-runtime.py
 docker volume create --driver local --opt type=nfs --opt device=:/media \
-  --opt "o=addr=127.0.0.1,port=$port,mountport=$port,nfsvers=3,tcp,mountproto=tcp,nolock,noacl,ro,hard,timeo=10,retrans=2" "$volume" >/dev/null
+  --opt "o=addr=127.0.0.1,port=$port,mountport=$port,nfsvers=3,tcp,mountproto=tcp,nolock,noacl,ro,hard,timeo=10,retrans=2,actimeo=1,lookupcache=positive" "$volume" >/dev/null
 docker run -d --name "$observer" --network none --read-only --user 65534:65534 --cap-drop ALL \
   --security-opt no-new-privileges:true --entrypoint sleep --tmpfs /tmp:size=8m,mode=1777 \
   --mount "type=volume,src=$volume,dst=/data/media,readonly,volume-nocopy" "$image" infinity >/dev/null

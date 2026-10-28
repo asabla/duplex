@@ -8,6 +8,7 @@ import socket
 import struct
 import subprocess
 import sys
+import time
 import urllib.request
 
 
@@ -125,6 +126,8 @@ def consumer():
     assert not Path("/dev/fuse").exists()
     assert "docker-default (enforce)" in Path("/proc/self/attr/current").read_text()
     assert list(Path("/data/media").iterdir()) == []
+    # A fresh name forces an RPC through the retained root handle after restart.
+    assert not Path(f"/data/media/.restart-probe-{time.time_ns()}").exists()
     assert not Path("/data/media/config.yaml").exists()
     try:
         Path("/data/media/forbidden").write_bytes(b"must fail")

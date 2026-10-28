@@ -76,11 +76,52 @@ CREATE UNIQUE INDEX IF NOT EXISTS handle_cookies ON handles(parent,cookie);`)
 }
 
 func (h *handles) describe(name string, info library.Node) record {
+	revision := info.Revision
+	if info.Directory {
+		revision = ""
+	}
+
 	identity := sha256.New()
 	identity.Write(h.seed)
-	identity.Write([]byte(name + "\x00" + info.Revision))
+	identity.Write([]byte(name + "\x00" + revision))
 
 	return record{id: identity.Sum(nil), name: name, info: info}
+}
+
+// A membership change must advance mtime even within the same clock second.
+// Persist the logical timestamp without changing the directory's file handle.
+func (h *handles) directoryTime(ctx context.Context, r record) (record, error) {
+	if !r.info.Directory || r.info.Revision == "" {
+		return r, nil
+	}
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	var (
+		revision string
+		modified int64
+	)
+
+	err := h.db.QueryRowContext(ctx, `SELECT revision,modified FROM handles WHERE id=?`, r.id).Scan(&revision, &modified)
+	if errors.Is(err, sql.ErrNoRows) {
+		return r, nil
+	}
+
+	if err != nil {
+		return r, err
+	}
+
+	r.info.Modified = max(r.info.Modified, modified)
+	if revision != r.info.Revision {
+		r.info.Modified = max(r.info.Modified, modified+1)
+	}
+
+	if revision != r.info.Revision || modified != r.info.Modified {
+		_, err = h.db.ExecContext(ctx, `UPDATE handles SET revision=?,modified=? WHERE id=?`, r.info.Revision, r.info.Modified, r.id)
+	}
+
+	return r, err
 }
 
 func cookie(id []byte) uint64 { return binary.BigEndian.Uint64(id[:8])&0x7fffffffffffffff | 2 }

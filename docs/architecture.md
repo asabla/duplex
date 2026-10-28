@@ -422,13 +422,20 @@ local volume driver performs the client mount for Plex. NFS listens on a publish
 loopback host port; AUTH_SYS does not authenticate individual users. The trusted
 host can read the projected library, and private state is never an export.
 
-`library.Node.Revision` identifies immutable bytes without resolving a source.
+For files, `library.Node.Revision` identifies immutable bytes without resolving a source.
 The export hashes the installation identity, path, and content revision into a
 32-byte handle. It persists handle attributes and lexical cursor names in a
 separate SQLite database under the private data directory. File handles survive
 restart. A changed representation gets a different handle; an old handle reads
 its matching cached representation or fails with STALE. It cannot follow the
 path to replacement bytes. This includes generated metadata and artwork.
+
+Directories retain path-based handles. The root also supplies a membership
+identity, because its children can appear when the first recording becomes
+ready without a configuration change. The handle database advances a durable
+logical modification time when that identity changes, including multiple
+changes within one clock second and a return to an earlier membership. The
+supplied mounts cache attributes for one second and do not cache missing names.
 
 READDIR and READDIRPLUS use lexical keyset pages of at most 129 provider entries.
 They persist one page of wire identities per transaction. No complete season

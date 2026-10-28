@@ -53,4 +53,4 @@ volumes:
     driver_opts:
       type: nfs
       device: :/media
-      o: addr=127.0.0.1,port=${DUPLEX_NFS_PORT:-2049},mountport=${DUPLEX_NFS_PORT:-2049},nfsvers=3,tcp,mountproto=tcp,nolock,noacl,ro,hard,timeo=600,retrans=2
+      o: addr=127.0.0.1,port=${DUPLEX_NFS_PORT:-2049},mountport=${DUPLEX_NFS_PORT:-2049},nfsvers=3,tcp,mountproto=tcp,nolock,noacl,ro,hard,timeo=600,retrans=2,actimeo=1,lookupcache=positive

@@ -16,7 +16,11 @@ func (s *Server) describe(ctx context.Context, name string) (record, error) {
 		return record{}, errors.New("file has no verified immutable identity")
 	}
 
-	return s.handles.describe(name, info), err
+	if err != nil {
+		return record{}, err
+	}
+
+	return s.handles.directoryTime(ctx, s.handles.describe(name, info))
 }
 
 func status(err error) uint32 {
