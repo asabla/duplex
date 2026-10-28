@@ -26,6 +26,7 @@ type handles struct {
 	db   *sql.DB
 	seed []byte
 	mu   sync.Mutex
+	hot  handleCache
 }
 
 func openHandles(ctx context.Context, filename string) (*handles, error) {
@@ -169,8 +170,19 @@ func (h *handles) load(ctx context.Context, id []byte) (record, error) {
 		return r, os.ErrNotExist
 	}
 
+	if err := ctx.Err(); err != nil {
+		return r, err
+	}
+
+	if cached, ok := h.hot.get([sha256.Size]byte(id)); ok {
+		return cached, nil
+	}
+
 	err := h.db.QueryRowContext(ctx, `SELECT name,directory,revision,size,modified FROM handles WHERE id=?`, id).
 		Scan(&r.name, &r.info.Directory, &r.info.Revision, &r.info.Size, &r.info.Modified)
+	if err == nil {
+		h.hot.put(r)
+	}
 
 	return r, err
 }

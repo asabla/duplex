@@ -38,7 +38,12 @@ func BenchmarkMountedFilesystemMetadata(b *testing.B) {
 			})
 			native := benchmarkNativeMetadata(b, provider, playlist)
 
-			for _, root := range []struct{ name, path string }{{"native", native}, {"fuse", mounted}} {
+			roots := []struct{ name, path string }{{"native", native}, {"fuse", mounted}}
+			if os.Getenv("DUPLEX_NFS_TEST") == "1" {
+				roots = append(roots, struct{ name, path string }{"nfs", benchmarkNFSMount(b, provider, 1)}, struct{ name, path string }{"nfs_no_attribute_cache", benchmarkNFSMount(b, provider, 0)})
+			}
+
+			for _, root := range roots {
 				for _, operation := range metadataOperations(playlist) {
 					b.Run(root.name+"/"+operation.name, func(b *testing.B) {
 						benchmarkMetadataStat(b, filepath.Join(root.path, operation.path))
