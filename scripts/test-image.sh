@@ -58,7 +58,7 @@ until docker exec "$helper" test -S /run/duplex/mount.sock; do
 done
 docker exec -i "$helper" python3 - helper <scripts/test-image-runtime.py
 
-docker run -d --name "$observer" --network none --read-only --cap-drop ALL \
+docker run -d --name "$observer" --network none --read-only --user 65534:65534 --cap-drop ALL \
   --security-opt no-new-privileges:true --entrypoint sleep \
   --mount "type=bind,src=$root/library,dst=/data,readonly,bind-propagation=rslave" \
   "$image" infinity >/dev/null
