@@ -34,9 +34,21 @@ if test -d "$root" && ! test -f "$root/.duplex-owner"; then
     exit 1
   }
 fi
+for directory in "$root/library" "$root/library/media"; do
+  test ! -L "$directory" || {
+    echo 'Refusing a symbolic link in the public mount path.' >&2
+    exit 1
+  }
+done
+if mountpoint -q "$root/library/media"; then
+  echo 'Stop Duplex before preparing the mount directory.' >&2
+  exit 1
+fi
 mkdir -p "$root/library/media"
-chmod 0755 "$root/library"
+chown 0:0 "$root/library" "$root/library/media"
+chmod 0755 "$root/library" "$root/library/media"
 touch "$root/.duplex-owner"
+chown 10001:10001 "$root"
 chmod 0700 "$root"
 if ! mountpoint -q "$root"; then mount --bind "$root" "$root"; fi
 mount --make-rshared "$root"

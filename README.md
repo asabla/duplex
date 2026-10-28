@@ -5,43 +5,15 @@ playlists become seasons. Media is fetched as you watch and cached for reuse.
 
 ## Docker Compose
 
-Run on Linux amd64 or arm64 with `/dev/fuse` and Docker Compose v2.
-Use [compose.yaml](compose.yaml):
+Run on Linux amd64 or arm64 with `/dev/fuse`, AppArmor, and Docker Compose v2.
+Use [compose.yaml](compose.yaml) for Duplex, or [compose.plex.yaml](compose.plex.yaml)
+to include Plex.
 
-```yaml
-services:
-  duplex-mount:
-    image: ghcr.io/asabla/duplex:latest
-    restart: unless-stopped
-    init: true
-    read_only: true
-    tmpfs:
-      - /tmp:size=256m,mode=1777
-    devices:
-      - /dev/fuse:/dev/fuse
-    cap_drop: [ALL]
-    cap_add: [SYS_ADMIN]
-    security_opt:
-      - apparmor=unconfined
-      - no-new-privileges:true
-    ports:
-      - 127.0.0.1:${DUPLEX_PORT:-8765}:8765
-    volumes:
-      - type: bind
-        source: ${DUPLEX_HOST_DIR:-/var/lib/duplex}
-        target: /state
-        bind:
-          propagation: rshared
-          create_host_path: false
-    stop_grace_period: 30s
-    healthcheck:
-      test: [CMD, /usr/local/bin/duplex, health]
-      interval: 10s
-      timeout: 6s
-      retries: 6
-```
+Duplex runs as a non-root user with all capabilities dropped. A separate helper
+creates the read-only filesystem under a restricted AppArmor profile. It has no
+network access or access to Duplex credentials and catalogue data.
 
-GitHub Actions publishes the [container image](https://github.com/asabla/duplex/pkgs/container/duplex)
+GitHub Actions publishes [ghcr.io/asabla/duplex:latest](https://github.com/asabla/duplex/pkgs/container/duplex)
 after checks pass on `main`. Complete the one-time
 [host preparation](docs/installation.md#prepare-the-host) and
 [initialization](docs/installation.md#initialize-and-start), then start the service:

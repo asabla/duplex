@@ -2,7 +2,9 @@
 
 This guide installs one household instance on a Linux Docker host. It then
 connects a dedicated Plex TV library. Use Linux amd64 or arm64. The mount requires
-`/dev/fuse`; Plex itself does not need access to that device.
+`/dev/fuse` and an AppArmor-enabled Docker host. Only the isolated mount helper
+receives FUSE access and `SYS_ADMIN`. Duplex runs as UID/GID 10001 without
+capabilities. Plex does not receive the FUSE device or mount capability.
 
 ## Prepare the host
 
@@ -13,12 +15,20 @@ cache limit does not provide 50 GiB of physical space.
 From the repository on the Linux Docker daemon host:
 
 ```sh
+sudo install -m 0644 deployment/duplex-mount.apparmor /etc/apparmor.d/duplex-mount-helper
+sudo apparmor_parser -r /etc/apparmor.d/duplex-mount-helper
 sudo ./scripts/prepare-host.sh /var/lib/duplex
 sudo ./scripts/check-host.sh /var/lib/duplex
 ```
 
 The checks must report shared mount propagation and a usable FUSE device. The
-preparation script refuses a nonempty, unmarked directory. Repeat the preparation
+helper profile must be in enforce mode. The installed profile loads through the
+host AppArmor service after reboot.
+The helper is limited to the fixed `/library/media` destination, read-only FUSE,
+and a local socket. It cannot mount other paths or access the service state.
+Do not replace the profile with `unconfined` when a host check fails.
+
+The preparation script refuses a nonempty, unmarked directory. Repeat the preparation
 and checks after a host reboot unless host startup already restores the shared
 bind mount. Do not substitute a macOS directory for this Linux path.
 
@@ -190,6 +200,8 @@ repository on macOS:
 ```sh
 export COMPOSE_FILE=compose.yaml  # Or compose.plex.yaml to include Plex.
 colima start
+colima ssh -- sudo tee /etc/apparmor.d/duplex-mount-helper < deployment/duplex-mount.apparmor >/dev/null
+colima ssh -- sudo apparmor_parser -r /etc/apparmor.d/duplex-mount-helper
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/prepare-host.sh
 colima ssh -- sudo sh -s -- /var/lib/duplex < scripts/check-host.sh
 docker --context colima compose pull

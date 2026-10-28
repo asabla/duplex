@@ -40,6 +40,12 @@ rendering, provider availability, conversion capacity, or household acceptance.
 The [CI workflow](../.github/workflows/ci.yml) also builds and tests the packaged
 runtime on native Linux amd64 and arm64. It publishes a multi-platform image to
 GitHub Container Registry only after the quality gate and both image tests pass.
+Image tests must verify the enforced helper profile, non-root service with zero
+capabilities and no FUSE device, rejected mount types, targets and writable
+flags, denied helper internet sockets and unauthorized peers, and mount lease
+cleanup across service and helper crashes. A running read-only consumer must see
+the replacement mount without a restart. This tests the Plex bind contract, not
+Plex rendering or saved watch state.
 Verify that a new package is public with an anonymous registry request; repository
 visibility alone does not establish package visibility. Check both platforms and
 the source revision on the published manifest. These checks establish image

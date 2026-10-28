@@ -7,6 +7,9 @@ import "errors"
 // Mount is unavailable on platforms without Linux FUSE support.
 type Mount struct{}
 
+// Done has no helper connection on unsupported platforms.
+func (m *Mount) Done() <-chan struct{} { return nil }
+
 // Ready reports false because this platform cannot host the production mount.
 func (m *Mount) Ready() bool { return false }
 

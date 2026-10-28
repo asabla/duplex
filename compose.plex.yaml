@@ -1,28 +1,60 @@
 # Run scripts/prepare-host.sh on the Linux Docker daemon host first.
 # Docker Desktop/macOS mounts are not a replacement for a Colima Linux path.
 services:
+  mount-helper:
+    image: ghcr.io/asabla/duplex:latest
+    command: [mount-helper]
+    user: "0:0"
+    restart: unless-stopped
+    read_only: true
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [SYS_ADMIN]
+    devices:
+      - /dev/fuse:/dev/fuse
+    security_opt:
+      - apparmor=duplex-mount-helper
+      - no-new-privileges:true
+    volumes:
+      - mount-control:/run/duplex
+      - type: bind
+        source: ${DUPLEX_HOST_DIR:-/var/lib/duplex}/library
+        target: /library
+        bind:
+          propagation: rshared
+          create_host_path: false
+    healthcheck:
+      test: [CMD, /usr/bin/test, -S, /run/duplex/mount.sock]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+    stop_grace_period: 10s
+
   duplex-mount:
     image: ghcr.io/asabla/duplex:latest
+    command: [serve, --config, /state/config.yaml, --mount-socket, /run/duplex/mount.sock]
+    user: "10001:10001"
+    depends_on:
+      mount-helper:
+        condition: service_healthy
+        restart: true
     restart: unless-stopped
     init: true
     read_only: true
     tmpfs:
       - /tmp:size=256m,mode=1777
-    devices:
-      - /dev/fuse:/dev/fuse
     cap_drop: [ALL]
-    cap_add: [SYS_ADMIN]
     security_opt:
-      - apparmor=unconfined
       - no-new-privileges:true
     ports:
       - 127.0.0.1:${DUPLEX_PORT:-8765}:8765
     volumes:
+      - mount-control:/run/duplex:ro
       - type: bind
         source: ${DUPLEX_HOST_DIR:-/var/lib/duplex}
         target: /state
         bind:
-          propagation: rshared
+          propagation: rslave
           create_host_path: false
     stop_grace_period: 30s
     healthcheck:
@@ -55,5 +87,6 @@ services:
           propagation: rslave
           create_host_path: false
 volumes:
+  mount-control:
   plex-config:
   plex-transcode:

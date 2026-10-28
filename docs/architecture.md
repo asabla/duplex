@@ -391,8 +391,20 @@ chunk cache.
 
 Plex sees a stable parent bind with shared mount propagation and opens its FUSE
 child. This allows a replacement mount to become visible after a crash. The
-mount service alone receives FUSE access and the required mount capability.
-Plex receives the public projection read-only.
+Docker mount helper alone receives FUSE access and the mount capability. It has
+no network or service-state bind. A Unix sequenced-packet socket authenticates
+UID 10001 through kernel peer credentials. The protocol accepts no paths or mount
+options: it creates only the fixed read-only FUSE mount and transfers its open
+descriptor. Duplex serves that descriptor as a non-root process without
+capabilities. No per-read helper round trip is required.
+
+The socket connection is the mount lease. Service disconnect triggers helper
+cleanup; helper loss stops the HTTP service so the container can restart. The
+helper rejects live or unrelated mounts and can detach only a disconnected
+Duplex mount during recovery. Ordinary shutdown unmounts before waiting for FUSE
+loops; busy external handles cause lazy detach and a reported shutdown error.
+Plex keeps a read-only slave bind of the stable public parent across replacement
+mounts. The native systemd path retains direct mounting as a separate deployment.
 
 Scans require mount readiness, the actual NFO series agent, disabled automatic
 trash emptying and optional media analysis, and enabled local assets and season

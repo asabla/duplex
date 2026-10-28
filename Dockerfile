@@ -31,5 +31,6 @@ COPY THIRD_PARTY_NOTICES.txt /THIRD_PARTY_NOTICES.txt
 COPY docs/licenses /licenses
 ENV DENO_DIR=/tmp/deno
 WORKDIR /state
+USER 10001:10001
 ENTRYPOINT ["/usr/local/bin/duplex"]
 CMD ["serve", "--config", "/state/config.yaml"]

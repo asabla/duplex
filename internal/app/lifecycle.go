@@ -18,6 +18,11 @@ import (
 
 // Open initializes storage and starts bounded workers under the supplied context.
 func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, noMount bool) (*App, error) {
+	return OpenWithMountSocket(ctx, m, adapter, noMount, "")
+}
+
+// OpenWithMountSocket uses an isolated mount helper when a socket is supplied.
+func OpenWithMountSocket(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, noMount bool, socket string) (*App, error) {
 	c := m.Snapshot().Config
 	for _, p := range []string{c.DataDir, c.IndexDir} {
 		if e := os.MkdirAll(p, 0o700); e != nil {
@@ -71,8 +76,14 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	}
 
 	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add}
+
 	if !noMount {
-		a.mount, e = library.MountProvider(c.Mountpoint, catalogueFS{app: a})
+		if socket == "" {
+			a.mount, e = library.MountProvider(c.Mountpoint, catalogueFS{app: a})
+		} else {
+			a.mount, e = library.MountProviderWithHelper(c.Mountpoint, catalogueFS{app: a}, socket)
+		}
+
 		if e != nil {
 			return nil, errors.Join(e, a.Close())
 		}
@@ -91,6 +102,15 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 	a.startWorkers(ctx, c.Workers)
 
 	return a, nil
+}
+
+// MountDone reports loss of the isolated mount helper, when configured.
+func (a *App) MountDone() <-chan struct{} {
+	if a.mount == nil {
+		return nil
+	}
+
+	return a.mount.Done()
 }
 
 // Close cancels workers before closing the mount, cache, and catalogue.

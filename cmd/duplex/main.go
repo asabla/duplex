@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"duplex/internal/library"
 )
 
 func main() {
@@ -39,6 +41,12 @@ func execute(ctx context.Context, args []string) error {
 		return initialize(args[1:])
 	case "serve":
 		return serve(ctx, args[1:])
+	case "mount-helper":
+		if len(args) != 1 {
+			return errors.New("mount-helper accepts no arguments")
+		}
+
+		return library.ServeMountHelper(ctx)
 	case "backup":
 		return backup(ctx, args[1:])
 	case "health":
