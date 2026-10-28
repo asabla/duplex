@@ -429,6 +429,11 @@ separate SQLite database under the private data directory. File handles survive
 restart. A changed representation gets a different handle; an old handle reads
 its matching cached representation or fails with STALE. It cannot follow the
 path to replacement bytes. This includes generated metadata and artwork.
+GETATTR also checks that the path still names that revision and size. A removed
+or replaced path returns STALE, so the NFS client can discard its cached name
+and look up the current handle. READ keeps its immutable revision contract.
+Without this attribute check, a client can retain an old poster or metadata
+handle even after the normal attribute cache expires.
 
 Directories retain path-based handles. The root also supplies a membership
 identity, because its children can appear when the first recording becomes

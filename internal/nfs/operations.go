@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/fs"
 	"math"
 	"path"
 	"strings"
@@ -26,6 +27,15 @@ func (s *Server) operation(ctx context.Context, procedure uint32, d *decoder) en
 
 	if r.info.Directory {
 		r, err = s.describe(ctx, r.name)
+		if err != nil {
+			return operationError(status(err), procedure)
+		}
+	} else if procedure == 1 {
+		current, err := s.provider.Stat(ctx, r.name)
+		if errors.Is(err, fs.ErrNotExist) || (err == nil && (current.Directory || current.Revision != r.info.Revision || current.Size != r.info.Size)) {
+			return operationError(70, procedure)
+		}
+
 		if err != nil {
 			return operationError(status(err), procedure)
 		}

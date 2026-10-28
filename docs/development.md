@@ -163,6 +163,34 @@ The [validation requirements](validation.md) define the release gates. Keep resu
 for each build separate. Active-live playback and explicit playlist URL import
 remain outside the current scope; discovered playlist seasons are implemented.
 
+### Controlled Plex and transport fixtures
+
+`TestPlexPlaylistQualification` requires an explicitly owned test library and
+private control directory. `DUPLEX_PLEX_GATE_DIR` selects that directory;
+`DUPLEX_PLEX_NFS_LISTEN` selects NFS instead of the legacy FUSE mount. The driver
+controls the recorded collection phases through the `command` and `phase` files.
+`DUPLEX_PLEX_GATE_SECTION` enables managed Plex updates using the isolated token
+at `/evidence/plex-test-token`.
+
+Use controlled 120-second video and audio files through
+`DUPLEX_APP_MEDIA_FIXTURES`. Set `DUPLEX_PLEX_GATE_VIDEO_PREFIX` to a fresh
+five-character URL-safe prefix for each independent run. Retain that prefix
+across restart and removal/return checks. Plex retains history by GUID after a
+test library is deleted, so a reused prefix can inherit an earlier result.
+Read Plex's `MinimumProgressTime` and record a resume position above that limit.
+Check separate occurrence GUIDs, resume position, watched state, and artwork.
+A removed occurrence can return with a new numeric Plex key while retaining its
+GUID and progress; verify both values instead of treating them as one identity.
+
+`TestKernelFixture` in `internal/nfs` exposes 10,000 generated 256 MiB files when
+`DUPLEX_NFS_FIXTURE=1`. Set `DUPLEX_NFS_FIXTURE_TRANSPORT=fuse` to use the same
+provider through FUSE at `/state/media`; the default serves NFS on TCP port 2049
+with durable handles under `/state`. SIGUSR1 hides or restores the entries.
+Use fresh owned mounts and alternate transport order for matched measurements.
+Separate first-pass requests, cached requests, direct reads, and concurrent reads.
+Record mount options, CPU time, memory, and exact byte checks. These generated
+bytes measure transport overhead and do not qualify source or Plex performance.
+
 ## Commits and documentation
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), with a
