@@ -2,7 +2,6 @@
 Description=duplex YouTube library for Plex
 After=network-online.target
 Wants=network-online.target
-ConditionPathExists=/dev/fuse
 
 [Service]
 Type=notify
@@ -10,19 +9,18 @@ NotifyAccess=main
 User=duplex
 Group=duplex
 UMask=0077
-ExecStart=/usr/local/bin/duplex serve --config /etc/duplex/config.yaml
+ExecStart=/usr/local/bin/duplex serve --config /etc/duplex/config.yaml --nfs-listen 127.0.0.1:2049
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=30
-AmbientCapabilities=CAP_SYS_ADMIN
-CapabilityBoundingSet=CAP_SYS_ADMIN
+CapabilityBoundingSet=
 NoNewPrivileges=yes
 DevicePolicy=closed
-DeviceAllow=/dev/fuse rw
-# Keep the host mount namespace. PrivateTmp/ProtectSystem/ReadWritePaths would
-# create a mount namespace that can hide the FUSE mount from the Plex service.
-PrivateMounts=no
-PrivateDevices=no
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/duplex
 LimitNOFILE=8192
 
 [Install]

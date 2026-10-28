@@ -91,11 +91,12 @@ jobs:
             org.opencontainers.image.description=YouTube channels in Plex
           cache-from: type=gha,scope=image-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=image-${{ matrix.arch }}
-      - name: Test packaged runtime and FUSE startup
+      - name: Test unprivileged NFS runtime and legacy FUSE recovery
         env:
           ARCH: ${{ matrix.arch }}
         run: |
           sudo modprobe fuse
+          sudo modprobe nfs
           sudo sh scripts/test-image.sh "$IMAGE:sha-$GITHUB_SHA-$ARCH"
       - name: Log in to GitHub Container Registry
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

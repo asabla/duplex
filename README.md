@@ -5,26 +5,32 @@ playlists become seasons. Media is fetched as you watch and cached for reuse.
 
 ## Docker Compose
 
-Run on Linux amd64 or arm64 with `/dev/fuse`, AppArmor, and Docker Compose v2.
+Run on Linux amd64 or arm64 with Docker Engine 28+, NFS client support, and Compose v2.
 Use [compose.yaml](compose.yaml) for Duplex, or [compose.plex.yaml](compose.plex.yaml)
 to include Plex.
 
-Duplex runs as a non-root user with all capabilities dropped. A separate helper
-creates the read-only filesystem under a restricted AppArmor profile. It has no
-network access or access to Duplex credentials and catalogue data.
+Duplex serves a read-only NFS library as a non-root user with all capabilities
+dropped. Docker mounts the library for Plex. No FUSE device, privileged helper,
+or custom AppArmor profile is required.
 
 GitHub Actions publishes [ghcr.io/asabla/duplex:latest](https://github.com/asabla/duplex/pkgs/container/duplex)
-after checks pass on `main`. Complete the one-time
-[host preparation](docs/installation.md#prepare-the-host) and
-[initialization](docs/installation.md#initialize-and-start), then start the service:
+after checks pass on `main`. Initialize once, then start:
 
 ```sh
 docker compose pull
+docker compose run --rm --no-deps duplex init \
+  --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
 docker compose up -d
 ```
 
-Open [duplex](http://localhost:8765), sign in as `admin`, and use the password from
-`/var/lib/duplex/data/secrets/initial-admin-password` on the Docker host.
+Read the initial password:
+
+```sh
+docker compose exec duplex cat /state/data/secrets/initial-admin-password
+```
+
+Open [duplex](http://localhost:8765) and sign in as `admin`. State stays in a Docker
+volume. The web and NFS ports bind to localhost.
 
 [Connect your Plex library](docs/installation.md#use-an-existing-plex-server), then
 open **Channels → Follow channel** in duplex. Choose recordings, preview the
