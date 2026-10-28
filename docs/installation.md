@@ -67,10 +67,9 @@ Use your existing Plex server's web interface. For a container, follow the
 
 If you selected `compose.plex.yaml`, it starts Plex after duplex is healthy and
 already mounts the media folder. Open [Plex](http://localhost:32499/web/) and claim
-that server. Keep remote
-access disabled. If **Plex NFO Series** is absent after claim, restart Plex and
-check again. duplex checks the actual agent; it does not infer support from the
-server version.
+that server. Keep remote access disabled. If **Plex NFO Series** is absent after
+claim, restart Plex and check again. duplex checks the actual agent; it does not
+infer support from the server version.
 
 Create a dedicated **TV Shows** library:
 
@@ -85,6 +84,10 @@ Create a dedicated **TV Shows** library:
 6. Put Plex transcode storage outside the duplex media cache.
 
 ### Connect duplex to Plex
+
+This optional connection enables automatic scans and metadata updates. Plex can
+read and play the mounted library without it. To scan manually, use **Scan Library
+Files** in Plex after recordings are prepared.
 
 Create a protected token file in the Duplex container:
 

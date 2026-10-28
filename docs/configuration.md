@@ -67,7 +67,8 @@ work remains queued in durable storage when discovery finishes.
 
 Existing YAML with only `limit` keeps its numeric upload window and skips
 playlists. Migration does not enable new collections without a settings edit.
-Newly followed channels write explicit policies and enable playlists.
+Newly followed channels write explicit policies. The web form starts with
+playlists disabled; select **Include this channel's playlists** to enable them.
 
 ### Separate content and individual recordings
 
