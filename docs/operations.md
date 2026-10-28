@@ -126,14 +126,33 @@ installation backup. Do not copy a live SQLite file without a transactional back
 With Compose:
 
 ```sh
-docker compose pull duplex-mount
-docker compose up -d --no-deps --wait duplex-mount
+docker compose pull mount-helper duplex-mount
+docker compose up -d --no-deps --wait mount-helper duplex-mount
 curl --fail http://127.0.0.1:8765/mountz
 ```
 
 `ghcr.io/asabla/duplex:latest` follows checked commits on `main`. For a fixed
 deployment or rollback, use `ghcr.io/asabla/duplex:sha-<full-commit>` or the image
 digest from the [publication workflow](../.github/workflows/ci.yml).
+Use the same image revision for the helper and service.
+
+When upgrading from the earlier root container, first stop Duplex and save its
+backup. Install the [helper AppArmor profile](installation.md#prepare-the-host),
+then change state ownership without traversing the public filesystem:
+
+```sh
+docker compose stop duplex-mount
+sudo find /var/lib/duplex -xdev -path /var/lib/duplex/library -prune -o \
+  -exec chown -h 10001:10001 {} +
+sudo ./scripts/prepare-host.sh /var/lib/duplex
+sudo ./scripts/check-host.sh /var/lib/duplex
+```
+
+Use your dedicated state path in each command if it differs. Perform these host
+commands inside the Colima VM when Docker runs there. Keep `library` and its
+`media` mountpoint owned by root; the service must not replace the helper's mount
+destination. Restart both containers with the upgrade commands above. Settings,
+credentials, catalogue identities, and Plex progress do not change.
 
 Catalogue migrations are transactional. Existing numeric upload limits and
 excluded-playlist behavior remain until a policy is changed. Year paths, episode

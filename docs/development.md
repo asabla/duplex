@@ -70,8 +70,12 @@ without a timeout that could interrupt `dpkg`.
 After the quality gate passes, CI builds the Docker image on native Linux amd64
 and arm64 runners. Each image must pass `scripts/test-image.sh`: pinned tool
 versions, bundled JavaScript solver, license files, initialization, FUSE startup,
-mount health, and the sign-in page, with external networking disabled. Pull
-requests run these checks without publishing. Successful runs on `main` publish
+mount health, and the sign-in page, with external networking disabled. The test
+runs as root on an AppArmor-enabled Docker host, loads the helper profile, and
+checks zero service capabilities, enforced AppArmor/seccomp, rejected helper
+mounts and network sockets, read-only consumer propagation, and recovery after
+service and helper crashes. It removes only its own disposable installation.
+Pull requests run these checks without publishing. Successful runs on `main` publish
 `ghcr.io/asabla/duplex:latest` and `:sha-<full-commit>` as multi-platform images.
 Image layers use separate architecture caches. Publication uses the repository
 `GITHUB_TOKEN`; it needs no personal registry credential.

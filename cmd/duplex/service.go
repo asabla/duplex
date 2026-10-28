@@ -26,6 +26,7 @@ func serve(ctx context.Context, args []string) (result error) {
 	profileKind := f.String("profile-kind", "cpu", "one of cpu, allocs, block, or trace")
 	profileDuration := f.Duration("profile-duration", time.Minute, "profile capture duration")
 	yt := f.String("yt-dlp", "yt-dlp", "pinned yt-dlp executable")
+	socket := f.String("mount-socket", "", "isolated FUSE mount helper socket")
 
 	deno := f.String("deno", "deno", "pinned Deno executable")
 	if e := f.Parse(args); e != nil {
@@ -44,7 +45,7 @@ func serve(ctx context.Context, args []string) (result error) {
 		return errors.New("cannot load administrator credentials; run duplex init first")
 	}
 
-	application, e := app.Open(ctx, manager, &source.YouTube{Executable: *yt, Deno: *deno}, *noMount)
+	application, e := app.OpenWithMountSocket(ctx, manager, &source.YouTube{Executable: *yt, Deno: *deno}, *noMount, *socket)
 	if e != nil {
 		return e
 	}
@@ -80,7 +81,7 @@ func serve(ctx context.Context, args []string) (result error) {
 
 	fmt.Println("duplex service started")
 
-	return serveHTTP(ctx, listener, handler.Handler())
+	return serveMountedHTTP(ctx, listener, handler.Handler(), application.MountDone())
 }
 
 func notifyReady(ctx context.Context, socket string) error {

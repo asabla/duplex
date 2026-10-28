@@ -21,6 +21,7 @@ type Mount struct {
 	provider Provider
 	tree     atomic.Pointer[snapshot]
 	path     string
+	lease    *mountLease
 }
 
 // Ready checks the mounted filesystem type before scans are permitted.
@@ -30,7 +31,28 @@ func (m *Mount) Ready() bool {
 }
 
 // Close unmounts the library after active workers stop.
-func (m *Mount) Close() error { return m.server.Unmount() }
+func (m *Mount) Close() error {
+	if m.lease != nil {
+		if err := m.lease.Close(); err != nil {
+			return err
+		}
+
+		m.server.Wait()
+
+		return nil
+	}
+
+	return m.server.Unmount()
+}
+
+// Done closes when a mount helper connection ends. Direct mounts return nil.
+func (m *Mount) Done() <-chan struct{} {
+	if m.lease != nil {
+		return m.lease.done
+	}
+
+	return nil
+}
 
 // prepareMount refuses live or unrelated mounts. Only a disconnected duplex
 // mount can be detached after a process crash.

@@ -1,0 +1,23 @@
+abi <abi/3.0>,
+#include <tunables/global>
+
+profile duplex-mount-helper flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  file,
+  network unix seqpacket,
+  deny network inet,
+  deny network inet6,
+  capability sys_admin,
+  signal (receive),
+
+  # No configuration, catalogue, credentials, or media parsing in this helper.
+  deny /state/** rwklx,
+  deny /proc/** wklx,
+  deny /sys/** wklx,
+  deny /sys/kernel/security/** rwklx,
+
+  # Mount flags are exact; no bind, remount, propagation, or other mount types.
+  mount fstype=fuse.duplex options=(ro,nosuid,nodev,noexec) -> /library/media/,
+  umount /library/media/,
+}

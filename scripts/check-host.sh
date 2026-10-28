@@ -14,6 +14,18 @@ test -d "$root/library" || {
   echo 'Public mount parent is missing.' >&2
   exit 1
 }
+test "$(stat -c %u "$root")" = 10001 || {
+  echo 'State must belong to UID 10001; see the container upgrade instructions.' >&2
+  exit 1
+}
+test "$(stat -c %u "$root/library")" = 0 || {
+  echo 'The public mount parent must belong to root.' >&2
+  exit 1
+}
+grep -qx 'duplex-mount-helper (enforce)' /sys/kernel/security/apparmor/profiles || {
+  echo 'Load deployment/duplex-mount.apparmor in enforce mode first.' >&2
+  exit 1
+}
 propagation=$(findmnt -n -o PROPAGATION -T "$root")
 case "$propagation" in *shared*) ;; *)
   echo 'State mount must have shared propagation.' >&2
