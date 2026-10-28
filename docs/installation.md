@@ -121,7 +121,7 @@ Create a dedicated **TV Shows** library:
 For a new installation, create a protected token file on the Docker host:
 
 ```sh
-sudo install -m 0600 /dev/null /var/lib/duplex/data/secrets/plex-token
+sudo install -o 10001 -g 10001 -m 0600 /dev/null /var/lib/duplex/data/secrets/plex-token
 sudoedit /var/lib/duplex/data/secrets/plex-token
 ```
 
