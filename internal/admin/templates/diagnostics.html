@@ -227,14 +227,14 @@
           Pinned versions accepted
         {{end}}</dd
       >
-      <dt>FUSE mount</dt>
+      <dt>Library filesystem</dt>
       <dd
         >{{if .Status.MountError}}
           {{.Status.MountError}}
         {{else if .Status.MountReady}}
-          Mounted
+          Ready
         {{else}}
-          Not mounted
+          Unavailable
         {{end}}</dd
       >
       <dt>Plex</dt>

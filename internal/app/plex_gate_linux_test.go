@@ -19,6 +19,7 @@ import (
 	"duplex/internal/config"
 	"duplex/internal/library"
 	"duplex/internal/media"
+	"duplex/internal/nfs"
 	"duplex/internal/source"
 )
 
@@ -88,7 +89,7 @@ func TestPlexPlaylistQualification(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mount, err := library.MountProvider(filepath.Join(root, "media"), catalogueFS{app: app})
+	mount, err := qualificationFilesystem(t.Context(), root, os.Getenv("DUPLEX_PLEX_NFS_LISTEN"), app)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,4 +220,12 @@ func TestPlexPlaylistQualification(t *testing.T) {
 
 		acknowledge(phase)
 	}
+}
+
+func qualificationFilesystem(ctx context.Context, root, address string, app *App) (libraryRuntime, error) {
+	if address != "" {
+		return nfs.Listen(ctx, address, root, catalogueFS{app: app})
+	}
+
+	return library.MountProvider(filepath.Join(root, "media"), catalogueFS{app: app})
 }

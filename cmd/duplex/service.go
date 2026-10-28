@@ -15,6 +15,7 @@ import (
 	"duplex/internal/admin"
 	"duplex/internal/app"
 	"duplex/internal/config"
+	"duplex/internal/diagnostics"
 	"duplex/internal/source"
 )
 
@@ -27,6 +28,7 @@ func serve(ctx context.Context, args []string) (result error) {
 	profileDuration := f.Duration("profile-duration", time.Minute, "profile capture duration")
 	yt := f.String("yt-dlp", "yt-dlp", "pinned yt-dlp executable")
 	socket := f.String("mount-socket", "", "isolated FUSE mount helper socket")
+	nfsAddress := f.String("nfs-listen", "", "read-only NFSv3 listener for the trusted Docker host")
 
 	deno := f.String("deno", "deno", "pinned Deno executable")
 	if e := f.Parse(args); e != nil {
@@ -45,7 +47,7 @@ func serve(ctx context.Context, args []string) (result error) {
 		return errors.New("cannot load administrator credentials; run duplex init first")
 	}
 
-	application, e := app.OpenWithMountSocket(ctx, manager, &source.YouTube{Executable: *yt, Deno: *deno}, *noMount, *socket)
+	application, e := openService(ctx, manager, &source.YouTube{Executable: *yt, Deno: *deno}, *noMount, *socket, *nfsAddress)
 	if e != nil {
 		return e
 	}
@@ -57,11 +59,7 @@ func serve(ctx context.Context, args []string) (result error) {
 		return e
 	}
 
-	defer func() {
-		if err := profile.Stop(); err != nil {
-			slog.Error("profile capture failed", "error", err)
-		}
-	}()
+	defer stopServiceProfile(profile)
 
 	handler, e := admin.New(application, auth)
 	if e != nil {
@@ -82,6 +80,24 @@ func serve(ctx context.Context, args []string) (result error) {
 	fmt.Println("duplex service started")
 
 	return serveMountedHTTP(ctx, listener, handler.Handler(), application.MountDone())
+}
+
+func stopServiceProfile(profile *diagnostics.Capture) {
+	if err := profile.Stop(); err != nil {
+		slog.Error("profile capture failed", "error", err)
+	}
+}
+
+func openService(ctx context.Context, manager *config.Manager, adapter source.SourceAdapter, disabled bool, socket, address string) (*app.App, error) {
+	if address != "" {
+		if disabled || socket != "" {
+			return nil, errors.New("nfs-listen cannot be combined with no-mount or mount-socket")
+		}
+
+		return app.OpenWithNFS(ctx, manager, adapter, address)
+	}
+
+	return app.OpenWithMountSocket(ctx, manager, adapter, disabled, socket)
 }
 
 func notifyReady(ctx context.Context, socket string) error {

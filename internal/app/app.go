@@ -12,7 +12,6 @@ import (
 	"duplex/internal/catalog"
 	"duplex/internal/config"
 	"duplex/internal/diagnostics"
-	"duplex/internal/library"
 	"duplex/internal/source"
 )
 
@@ -31,7 +30,7 @@ type App struct {
 	Catalog          *catalog.Store
 	Cache            *cache.Store
 	Source           source.SourceAdapter
-	mount            *library.Mount
+	mount            libraryRuntime
 	mu               sync.RWMutex // Retained across state groups to preserve cross-operation atomicity.
 	ctx              context.Context
 	cancel           context.CancelFunc
@@ -43,6 +42,12 @@ type App struct {
 	plexBindingError string
 	restart          bool
 	cacheError       string
+}
+
+type libraryRuntime interface {
+	Ready() bool
+	Done() <-chan struct{}
+	Close() error
 }
 
 func (a *App) operationFailure(operation string, err error) {
