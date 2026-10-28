@@ -44,6 +44,12 @@ a scan is not a full local download. Automatic trash emptying can remove history
 while a source or mount is temporarily unavailable. duplex checks the required
 library settings before managed scans.
 
+Plex can assign a new numeric item key when a removed recording returns. duplex
+keeps its NFO occurrence identity stable, so Plex can restore that occurrence's
+watch state. Shared recordings use separate occurrence identities in each
+collection. Verify resume and watched state after selection changes; a numeric
+key alone does not establish that history was preserved.
+
 Save the Plex token in a protected file accessible to duplex, with mode `0600`.
 In duplex Settings, set the Plex origin, the dedicated library's section ID, and
 the token file path. For the bundled example the origin is `http://plex:32400`.

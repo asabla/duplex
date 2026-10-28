@@ -57,19 +57,33 @@ func TestPlexPlaylistQualification(t *testing.T) {
 	base.ChannelID = qualificationOwner
 	base.Channel = "duplex playlist qualification"
 
+	prefix := os.Getenv("DUPLEX_PLEX_GATE_VIDEO_PREFIX")
+	if prefix == "" {
+		prefix = "video"
+	}
+
+	if len(prefix) != 5 || strings.Trim(prefix, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") != "" {
+		t.Fatal("qualification video prefix must contain five URL-safe characters")
+	}
+
+	var ids [3]string
+
+	adapter.entries["videos"] = nil
+
 	for i := range 3 {
-		id := fmt.Sprintf("video%06d", i)
+		id := fmt.Sprintf("%s%06d", prefix, i)
+		ids[i] = id
 		metadata := base
 		metadata.ID, metadata.Title = id, fmt.Sprintf("Qualification recording %d", i+1)
 		metadata.Timestamp += float64(i * 86400)
-		metadata.Duration = 30
+		metadata.Duration = 120
 		adapter.metadata[id] = metadata
 		adapter.entries["videos"] = append(adapter.entries["videos"], source.Entry{ID: id, Title: metadata.Title})
 	}
 
 	adapter.lists = []source.Playlist{{ID: "PLfixture0001", Title: "Ordered collection"}, {ID: "PLfixture0002", Title: "Shared recording"}}
-	adapter.entries["PLfixture0001"] = []source.Entry{{ID: "video000000"}, {ID: "video000001"}, {ID: "video000001"}, {ID: "video000002"}}
-	adapter.entries["PLfixture0002"] = []source.Entry{{ID: "video000000"}}
+	adapter.entries["PLfixture0001"] = []source.Entry{{ID: ids[0]}, {ID: ids[1]}, {ID: ids[1]}, {ID: ids[2]}}
+	adapter.entries["PLfixture0002"] = []source.Entry{{ID: ids[0]}}
 
 	if err := app.Sync(t.Context(), qualificationOwner); err != nil {
 		t.Fatal(err)
@@ -80,7 +94,7 @@ func TestPlexPlaylistQualification(t *testing.T) {
 	}
 
 	for i := range 3 {
-		if err := app.prepareRecording(t.Context(), fmt.Sprintf("video%06d", i), false); err != nil {
+		if err := app.prepareRecording(t.Context(), ids[i], false); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -159,23 +173,23 @@ func TestPlexPlaylistQualification(t *testing.T) {
 		switch phase {
 		case "reorder":
 			adapter.lists[0].Title = "Renamed ordered collection"
-			adapter.entries["PLfixture0001"] = []source.Entry{{ID: "video000002"}, {ID: "video000000"}, {ID: "video000001"}}
+			adapter.entries["PLfixture0001"] = []source.Entry{{ID: ids[2]}, {ID: ids[0]}, {ID: ids[1]}}
 
 			err = app.Sync(ctx, qualificationOwner)
 			if err == nil && app.Config.Snapshot().Config.Plex.URL != "" {
 				err = app.Scan(ctx)
 			}
 		case "restore":
-			adapter.entries["PLfixture0001"] = []source.Entry{{ID: "video000000"}, {ID: "video000001"}, {ID: "video000002"}}
+			adapter.entries["PLfixture0001"] = []source.Entry{{ID: ids[0]}, {ID: ids[1]}, {ID: ids[2]}}
 
 			err = app.Sync(ctx, qualificationOwner)
 			if err == nil && app.Config.Snapshot().Config.Plex.URL != "" {
 				err = app.Scan(ctx)
 			}
 		case "remove", "return":
-			adapter.entries["PLfixture0001"] = []source.Entry{{ID: "video000002"}, {ID: "video000001"}}
+			adapter.entries["PLfixture0001"] = []source.Entry{{ID: ids[2]}, {ID: ids[1]}}
 			if phase == "return" {
-				adapter.entries["PLfixture0001"] = []source.Entry{{ID: "video000001"}, {ID: "video000000"}, {ID: "video000002"}}
+				adapter.entries["PLfixture0001"] = []source.Entry{{ID: ids[1]}, {ID: ids[0]}, {ID: ids[2]}}
 			}
 
 			err = app.Sync(ctx, qualificationOwner)
