@@ -191,6 +191,13 @@ Separate first-pass requests, cached requests, direct reads, and concurrent read
 Record mount options, CPU time, memory, and exact byte checks. These generated
 bytes measure transport overhead and do not qualify source or Plex performance.
 
+On a Linux host with FUSE and NFS mount tools, set both `DUPLEX_FUSE_TEST=1` and
+`DUPLEX_NFS_TEST=1` for `BenchmarkMountedFilesystemMetadata`. Use
+`-benchtime=500x -count=3`. The benchmark compares native files, FUSE, the supplied
+one-second NFS attribute cache, and NFS without an attribute cache against the
+same 10,000-recording catalogue. Each NFS profile has its own listener and
+durable handle database. Unmount each client before cancelling its server.
+
 ## Commits and documentation
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), with a

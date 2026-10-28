@@ -435,6 +435,13 @@ and look up the current handle. READ keeps its immutable revision contract.
 Without this attribute check, a client can retain an old poster or metadata
 handle even after the normal attribute cache expires.
 
+A bounded LRU cache retains at most 1,024 committed wire records. Repeated reads
+can use those records without waiting for the SQLite connection. Only successful
+database reads populate this cache; handle issuance still commits to durable
+storage first. Cached records copy handle bytes instead of retaining RPC request
+buffers. File GETATTR checks and directory refreshes still use the current
+provider, so this cache cannot keep a replaced path valid.
+
 Directories retain path-based handles. The root also supplies a membership
 identity, because its children can appear when the first recording becomes
 ready without a configuration change. The handle database advances a durable
@@ -444,8 +451,8 @@ supplied mounts cache attributes for one second and do not cache missing names.
 
 READDIR and READDIRPLUS use lexical keyset pages of at most 129 provider entries.
 They persist one page of wire identities per transaction. No complete season
-listing or path map is retained in memory. Directory cookies identify the last
-returned name, and modification timestamps verify continuations. A changed or
+listing or catalogue-wide path map is retained in memory. Directory cookies
+identify the last returned name, and modification timestamps verify continuations. A changed or
 unknown cursor returns BAD_COOKIE, so the client can start a new traversal.
 Each page reads current catalogue state, rather than retaining a whole-directory
 transaction across client requests.
