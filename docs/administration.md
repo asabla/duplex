@@ -30,7 +30,8 @@ media file; it does not certify Plex discovery or playback. The service-health
 notice identifies integration failures that can still block playback. When Plex
 automation is not configured and the filesystem is ready, a setup notice links
 to the mount instructions and automatic scan settings. File access does not
-require automatic scans.
+require automatic scans. Diagnostics shows **Filesystem ready** in this state
+and identifies Plex automation as optional.
 
 When offered, **Retry preparation** moves the selected recording ahead of backfill.
 Correct a reported source or service problem before repeated retries. **Back to

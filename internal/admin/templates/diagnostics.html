@@ -11,7 +11,15 @@
     <dl class="summary">
       <div>
         <dt>Service</dt>
-        <dd>{{if .Status.Ready}}Ready{{else}}Needs attention{{end}}</dd>
+        <dd
+          >{{if .Status.Ready}}
+            Ready
+          {{else if and .Status.MountReady (not .Status.Config.Config.Plex.URL) (not .Status.ConfigError) (not .Status.SourceError) (not .Status.MountError) (not .Status.RestartRequired)}}
+            Filesystem ready
+          {{else}}
+            Needs attention
+          {{end}}</dd
+        >
       </div>
       <div>
         <dt>Media cache</dt>
@@ -42,7 +50,9 @@
     {{if .Status.SourceError}}
       <p class="error">{{.Status.SourceError}}</p>
     {{end}}
-    {{if .Status.PlexError}}<p class="error">{{.Status.PlexError}}</p>{{end}}
+    {{if and .Status.Config.Config.Plex.URL .Status.PlexError}}
+      <p class="error">{{.Status.PlexError}}</p>
+    {{end}}
     {{if .Status.MetadataError}}
       <p class="warning">{{.Status.MetadataError}}</p>
     {{end}}
@@ -239,10 +249,10 @@
       >
       <dt>Plex</dt>
       <dd
-        >{{if .Status.PlexError}}
+        >{{if not .Status.Config.Config.Plex.URL}}
+          Optional; automatic scans not configured
+        {{else if .Status.PlexError}}
           {{.Status.PlexError}}
-        {{else if not .Status.Config.Config.Plex.URL}}
-          Not configured
         {{else if .Status.Ready}}
           Connected and ready
         {{else}}
