@@ -764,6 +764,10 @@ details[open] > summary {
   gap: 20px;
 }
 
+[data-content-rules] {
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
 .settings-form {
   max-width: 850px;
 }
