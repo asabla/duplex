@@ -52,7 +52,7 @@ def helper():
             connection.send(b"M")
             data, rights, _, _ = connection.recvmsg(2, socket.CMSG_SPACE(16))
             assert data != b"F" and not rights
-        except ConnectionResetError:
+        except (ConnectionResetError, BrokenPipeError):
             pass
     print(
         "Helper: enforced profile; wrong mounts, internet sockets, and root client denied"
