@@ -13,6 +13,7 @@ import (
 	"duplex/internal/diagnostics"
 	"duplex/internal/library"
 	"duplex/internal/media"
+	"duplex/internal/nfs"
 	"duplex/internal/source"
 )
 
@@ -23,6 +24,15 @@ func Open(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, 
 
 // OpenWithMountSocket uses an isolated mount helper when a socket is supplied.
 func OpenWithMountSocket(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, noMount bool, socket string) (*App, error) {
+	return openApplication(ctx, m, adapter, noMount, socket, "")
+}
+
+// OpenWithNFS serves the projection over TCP without mounting a filesystem.
+func OpenWithNFS(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, address string) (*App, error) {
+	return openApplication(ctx, m, adapter, false, "", address)
+}
+
+func openApplication(ctx context.Context, m *config.Manager, adapter source.SourceAdapter, noMount bool, socket, address string) (*App, error) {
 	c := m.Snapshot().Config
 	for _, p := range []string{c.DataDir, c.IndexDir} {
 		if e := os.MkdirAll(p, 0o700); e != nil {
@@ -78,13 +88,7 @@ func OpenWithMountSocket(ctx context.Context, m *config.Manager, adapter source.
 	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add}
 
 	if !noMount {
-		if socket == "" {
-			a.mount, e = library.MountProvider(c.Mountpoint, catalogueFS{app: a})
-		} else {
-			a.mount, e = library.MountProviderWithHelper(c.Mountpoint, catalogueFS{app: a}, socket)
-		}
-
-		if e != nil {
+		if e = a.startLibrary(c, socket, address); e != nil {
 			return nil, errors.Join(e, a.Close())
 		}
 	} else {
@@ -102,6 +106,28 @@ func OpenWithMountSocket(ctx context.Context, m *config.Manager, adapter source.
 	a.startWorkers(ctx, c.Workers)
 
 	return a, nil
+}
+
+func (a *App) startLibrary(c config.Config, socket, address string) error {
+	var (
+		runtime libraryRuntime
+		err     error
+	)
+
+	switch {
+	case address != "":
+		runtime, err = nfs.Listen(a.ctx, address, c.DataDir, catalogueFS{app: a})
+	case socket == "":
+		runtime, err = library.MountProvider(c.Mountpoint, catalogueFS{app: a})
+	default:
+		runtime, err = library.MountProviderWithHelper(c.Mountpoint, catalogueFS{app: a}, socket)
+	}
+
+	if err == nil {
+		a.mount = runtime
+	}
+
+	return err
 }
 
 // MountDone reports loss of the isolated mount helper, when configured.

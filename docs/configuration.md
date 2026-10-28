@@ -4,6 +4,12 @@
 API validate the same schema and replace the file atomically. Secrets are kept in
 protected files outside YAML.
 
+The Docker image serves NFS with `serve --nfs-listen 0.0.0.0:2049`; Compose binds
+that port to the Docker host's loopback address. Native systemd uses
+`--nfs-listen 127.0.0.1:2049`. This selects the transport at startup and leaves the
+YAML storage, channel, and media settings unchanged. `mountpoint` applies only
+when the legacy FUSE transport is selected.
+
 ## Service settings
 
 | Field | Default | Meaning |
@@ -13,7 +19,7 @@ protected files outside YAML.
 | `data_dir` | `<state>/data` | SQLite, credentials, episode assets, and durable artwork. |
 | `index_dir` | `<state>/indexes` | Packaging indexes and representation descriptions. |
 | `cache_dir` | `<state>/media` | Evictable media chunks. |
-| `mountpoint` | `<state>/library/media` | Read-only FUSE child. Bind its stable parent into Plex. |
+| `mountpoint` | `<state>/library/media` | Legacy FUSE mount path; unused by the NFS export. |
 | `cache_gib` | `50` | Media cache maximum in GiB, including unfinished reservations. |
 | `refresh_minutes` | `30` | Scheduled channel refresh interval. |
 | `workers` | `2` | Channel discovery workers, from 1 to 4. Media preparation has a separate limit of 2; metadata operations have a limit of 4. |

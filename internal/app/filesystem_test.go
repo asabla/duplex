@@ -16,12 +16,63 @@ import (
 	"duplex/internal/catalog"
 	"duplex/internal/config"
 	"duplex/internal/library"
+	"duplex/internal/media"
 	"duplex/internal/source"
 )
 
 type mountedBytes struct {
 	id   string
 	data []byte
+}
+
+func TestFilesystemVersionReadsNeverReturnReplacementBytes(t *testing.T) {
+	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "all"}), fixtureCollection(0))
+	prepared := projectionVideo(t, a, "video000001", 1)
+	p := catalogueFS{app: a}
+	name := fmt.Sprintf("Channel-%s/Season 2026/Channel-%s - S2026E0001.mp4", testOwner, testOwner)
+	original := mountedBytes{id: prepared.Revision, data: []byte("immutable bytes!")}
+	a.cacheRepresentation(original, time.Now().Add(time.Hour), prepared.Metadata.ID)
+
+	if _, err := a.Catalog.DB.ExecContext(t.Context(), `UPDATE videos SET revision='replacement' WHERE id=?`, prepared.Metadata.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := p.OpenVersion(t.Context(), name, prepared.Revision)
+	if err != nil || rep.ID() != prepared.Revision {
+		t.Fatal("cached old revision was replaced", err)
+	}
+
+	a.mu.Lock()
+	delete(a.reps, prepared.Revision)
+	a.mu.Unlock()
+
+	if _, err = p.OpenVersion(t.Context(), name, prepared.Revision); !errors.Is(err, media.ErrChanged) {
+		t.Fatal("evicted old revision did not fail", err)
+	}
+
+	if _, err = p.OpenVersion(t.Context(), "missing.nfo", "revision"); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
+	}
+
+	nfo := strings.TrimSuffix(name, ".mp4") + ".nfo"
+
+	info, err := p.Stat(t.Context(), nfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = p.OpenVersion(t.Context(), nfo, info.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	prepared.Metadata.Title = "Replacement metadata"
+	if err = a.Catalog.SaveMetadata(t.Context(), prepared.Metadata); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = p.OpenVersion(t.Context(), nfo, info.Revision); !errors.Is(err, media.ErrChanged) {
+		t.Fatal("old metadata handle served changed bytes", err)
+	}
 }
 
 func (r mountedBytes) ID() string  { return r.id }

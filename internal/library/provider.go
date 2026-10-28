@@ -11,6 +11,14 @@ type Node struct {
 	Directory bool
 	Size      int64
 	Modified  int64
+	Revision  string // Immutable content identity; directories have no revision.
+}
+
+// VersionedProvider refuses to replace the bytes identified by an earlier lookup.
+// An unavailable revision must fail rather than resolve to current path contents.
+type VersionedProvider interface {
+	Provider
+	OpenVersion(context.Context, string, string) (media.Representation, error)
 }
 
 // Child is one stable directory entry. Names are ordered lexically for paging.

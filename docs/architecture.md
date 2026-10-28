@@ -16,13 +16,14 @@ readability policy. This document owns responsibility and dependency boundaries.
 | --- | --- | --- |
 | `cmd/duplex` | CLI dispatch, startup, HTTP service lifetime, backup, and qualification commands. | `admin`, `app`, `cache`, `catalog`, `config`, `diagnostics`, `library`, `media`, `plex`, `source`. |
 | `internal/admin` | HTTP routing, authentication, request parsing, HTML and JSON responses, embedded templates and assets. | `app`, `catalog`, `config`. |
-| `internal/app` | Coordinates discovery, preparation, publication, runtime bindings, Plex integration, artwork, and worker lifetime. | `artwork`, `cache`, `catalog`, `config`, `diagnostics`, `library`, `media`, `plex`, `source`. |
+| `internal/app` | Coordinates discovery, preparation, publication, runtime bindings, Plex integration, artwork, and worker lifetime. | `artwork`, `cache`, `catalog`, `config`, `diagnostics`, `library`, `media`, `nfs`, `plex`, `source`. |
 | `internal/catalog` | SQLite schema, migrations, identities, selections, durable work, bounded queries, and projection state. | `config`, `source`. |
 | `internal/config` | YAML schema, policy validation, revision-checked saves, and reload snapshots. | None. |
 | `internal/source` | Resolver process adapter, collection enumeration, metadata, candidate selection, and transient source locators. | `config`. |
 | `internal/media` | HTTP range sources, verification, MP4 mapping, and representation indexes. | `cache`, `config`. |
 | `internal/cache` | Chunk storage, reservations, pins, eviction, exclusive ownership, and recovery. | None. |
-| `internal/library` | Read-only FUSE mechanics and the filesystem provider contract. | `media`. |
+| `internal/library` | Legacy FUSE mechanics and the shared filesystem provider contract. | `media`. |
+| `internal/nfs` | Read-only NFSv3 TCP, durable wire handles, and bounded directory requests. | `library`, `media`. |
 | `internal/plex` | Plex protocol requests, library checks, observations, and metadata operations. | None. |
 | `internal/artwork` | Image composition, normalization, fonts, and output files. | `config`. |
 | `internal/diagnostics` | Bounded operation measurements, counters, and private profiling. | None. |
@@ -36,7 +37,7 @@ rule or require new packages.
 
 The `library.Provider` interface is defined by the filesystem consumer. The
 application implements it with bounded catalogue reads and representation binding.
-This permits FUSE callbacks to request data without importing `app`. The
+This permits NFS and FUSE callbacks to request data without importing `app`. The
 `media.Representation` contract keeps identity, exact size, and offset reads
 separate from the application that publishes them. Preserve these boundaries.
 
@@ -51,10 +52,11 @@ responsibility extraction.
 | Owner | State and synchronization | Lifetime and persistence |
 | --- | --- | --- |
 | Service command | Configuration manager, authentication, application, listener, and profiling session. | Startup constructs them; HTTP serving returns before the deferred application close. |
-| `app.App` | Shared runtime maps and status fields use `mu`. It also owns queues, wake channels, preparation slots, library-update serialization, cancellation, and worker waiting. | `Open` acquires cache ownership, opens the catalogue, mounts the provider, and starts workers. `Close` cancels and waits, then closes the mount, cache, and catalogue. |
+| `app.App` | Shared runtime maps and status fields use `mu`. It also owns queues, wake channels, preparation slots, library-update serialization, cancellation, and worker waiting. | `Open` acquires cache ownership, opens the catalogue, starts the selected filesystem transport, and starts workers. `Close` cancels and waits, then closes the mount, cache, and catalogue. |
 | `config.Manager` | `fileMu` serializes file operations; `mu` protects the active snapshot. | YAML saves use expected revisions and atomic replacement. Invalid reloads keep the last valid snapshot. |
 | `catalog.Store` | Owns one write connection and at most two read-only projection connections. Catalogue operations manage rows and transactions. | SQLite retains identities, selections, preparation work, and projection state through restart. Readers open after migration and recovery and see committed WAL state. Callers must close rows and finish transactions; shutdown closes both pools. |
 | `cache.Store` | A mutex protects reservations, entries, pins, and close state; a directory lock enforces one process owner. | Chunk reads hold pins until release. Publication and recovery preserve accounting; the application closes the store. |
+| `nfs.Server` | Owns its listener, connection/request bounds, and a separate `data/nfs.sqlite` database of wire identities. | Shutdown cancels requests, closes connections, waits, then closes the handle database. The application closes the cache and catalogue afterward. |
 | `library.Mount` and open handles | The mount owns the FUSE server and provider. Each handle retains one representation; static qualification snapshots use atomic replacement. | The application unmounts after its workers stop. Cache eviction or source renewal must not change an open handle's representation. |
 | Source adapter and diagnostics | The resolver bounds listing and metadata work with slots. The recorder protects its aggregates with a mutex. | Process calls have contexts and deadlines. Locators remain transient; measurements retain bounded operation data. |
 | `admin.Auth` | A mutex protects session and login-attempt state. | Protected files hold credentials; sessions and rate limits are process state. |
@@ -289,7 +291,7 @@ separate storage classes.
 
 ## Filesystem and Plex
 
-The Linux FUSE projection is read-only. Attribute queries use durable verified
+The library projection is read-only. Attribute queries use durable verified
 sizes. Directory reads use lexical keyset pages. Publication does not retain a
 complete path or episode map. New media handles bind a cached representation or
 verify a fresh source against the saved revision before reads begin.
@@ -368,7 +370,7 @@ occurrences use one canonical warm-up task. Paused channels, skipped playlists,
 and failed preparations are excluded. The existing two workers verify sources
 and reuse matching indexes; other retained recordings bind when opened.
 
-The Linux FUSE projection is read-only. Channels are shows, year and playlist
+The library projection is read-only. Channels are shows, year and playlist
 collections are seasons, and verified recordings are episodes. NFO files contain
 source titles, descriptions, independent IDs, and named seasons. Local artwork
 uses show, season, and episode asset naming conventions.
@@ -389,9 +391,9 @@ queue. A completed refresh acknowledges only that version. Newer metadata remain
 pending. Local text artifacts and artwork are durable data, outside the media
 chunk cache.
 
-Plex sees a stable parent bind with shared mount propagation and opens its FUSE
-child. This allows a replacement mount to become visible after a crash. The
-Docker mount helper alone receives FUSE access and the mount capability. It has
+The legacy FUSE deployment uses a stable parent bind with shared mount propagation
+and opens its FUSE child. This allows a replacement mount to become visible after
+a crash. The Docker mount helper alone receives FUSE access and the mount capability. It has
 no network or service-state bind. A Unix sequenced-packet socket authenticates
 UID 10001 through kernel peer credentials. The protocol accepts no paths or mount
 options: it creates only the fixed read-only FUSE mount and transfers its open
@@ -404,12 +406,50 @@ helper rejects live or unrelated mounts and can detach only a disconnected
 Duplex mount during recovery. Ordinary shutdown unmounts before waiting for FUSE
 loops; busy external handles cause lazy detach and a reported shutdown error.
 Plex keeps a read-only slave bind of the stable public parent across replacement
-mounts. The native systemd path retains direct mounting as a separate deployment.
+mounts in that legacy deployment. Native commands retain direct FUSE mounting for
+existing installations; the supplied systemd unit uses NFS.
 
 Scans require mount readiness, the actual NFO series agent, disabled automatic
 trash emptying and optional media analysis, and enabled local assets and season
 titles. Plex performs any client conversion. Its transcode storage is not part of
 the duplex media cache.
+
+## NFS export
+
+Docker and the supplied systemd unit use the userspace NFSv3 TCP export. Duplex
+needs no mount capability, device, privileged helper, or Docker socket. The Docker
+local volume driver performs the client mount for Plex. NFS listens on a published
+loopback host port; AUTH_SYS does not authenticate individual users. The trusted
+host can read the projected library, and private state is never an export.
+
+`library.Node.Revision` identifies immutable bytes without resolving a source.
+The export hashes the installation identity, path, and content revision into a
+32-byte handle. It persists handle attributes and lexical cursor names in a
+separate SQLite database under the private data directory. File handles survive
+restart. A changed representation gets a different handle; an old handle reads
+its matching cached representation or fails with STALE. It cannot follow the
+path to replacement bytes. This includes generated metadata and artwork.
+
+READDIR and READDIRPLUS use lexical keyset pages of at most 129 provider entries.
+They persist one page of wire identities per transaction. No complete season
+listing or path map is retained in memory. Directory cookies identify the last
+returned name, and modification timestamps verify continuations. A changed or
+unknown cursor returns BAD_COOKIE, so the client can start a new traversal.
+Each page reads current catalogue state, rather than retaining a whole-directory
+transaction across client requests.
+
+The server accepts at most 64 TCP connections and executes at most 32 requests
+at once. Records are limited to 1 MiB, reads to 128 KiB, and a record to 64
+fragments. Idle connections have read deadlines; requests have cancellation and
+a two-minute limit. Responses on one connection are serialized, while reads can
+execute concurrently. Truncated source reads fail with IO rather than successful
+short data or zero-filled ranges. Every mutating NFS operation returns ROFS.
+
+The handle database is durable transport state, outside the evictable media
+cache. Back it up with the data directory. It retains identities issued for old
+representations; it does not store media payloads or signed source locators.
+`mount_ready` and `/mountz` retain their API names and report export readiness
+when NFS is selected. They do not prove that Plex has mounted or scanned it.
 
 ## Administration and artwork
 

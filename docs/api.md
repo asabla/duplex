@@ -47,7 +47,7 @@ Failed logins are rate limited. Do not send credentials in URLs.
 | DELETE `/api/v1/artwork?channel={id}&scope={scope}&revision={revision}` | Reset the selected show or season to automatic artwork. |
 | POST `/logout` | End the session; CSRF required. |
 | GET `/healthz` | Public process health. |
-| GET `/mountz` | Public mount readiness; 503 when unavailable. |
+| GET `/mountz` | Public filesystem readiness: NFS export listener or legacy FUSE mount; 503 when unavailable. Does not check Plex's client mount. |
 | GET `/readyz` | Public application integration readiness. Per-video preparation is separate. |
 
 ## Read pages and filters

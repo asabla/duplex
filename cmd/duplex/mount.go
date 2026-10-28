@@ -11,7 +11,7 @@ func serveMountedHTTP(ctx context.Context, listener net.Listener, handler http.H
 	ctx, cancel := context.WithCancelCause(ctx)
 	defer cancel(nil)
 
-	lost := errors.New("mount helper connection lost; restart duplex")
+	lost := errors.New("library filesystem stopped; restart duplex")
 
 	go func() {
 		select {

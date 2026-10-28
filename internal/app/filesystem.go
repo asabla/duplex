@@ -50,6 +50,30 @@ func (p catalogueFS) Open(ctx context.Context, name string) (media.Representatio
 	return file.data, file.info.Modified, nil
 }
 
+func (p catalogueFS) OpenVersion(ctx context.Context, name, revision string) (media.Representation, error) {
+	if strings.HasSuffix(name, ".mp4") {
+		if rep := p.app.cachedRepresentation(revision); rep != nil {
+			return rep, nil
+		}
+	}
+
+	info, err := p.Stat(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+
+	if info.Revision != revision {
+		return nil, media.ErrChanged
+	}
+
+	rep, _, err := p.Open(ctx, name)
+	if err == nil && rep.ID() != revision {
+		return nil, media.ErrChanged
+	}
+
+	return rep, err
+}
+
 func (p catalogueFS) channel(name string) (config.Channel, error) {
 	id, ok := strings.CutPrefix(name, "Channel-")
 	if !ok {
@@ -140,7 +164,7 @@ func (p catalogueFS) episodeItem(ctx context.Context, ch config.Channel, visible
 	}
 
 	if suffix == ".mp4" {
-		return resolvedFile{info: library.Node{Size: ep.Size, Modified: ep.Updated}, episode: &ep}, nil
+		return resolvedFile{info: library.Node{Size: ep.Size, Modified: ep.Updated, Revision: ep.Revision}, episode: &ep}, nil
 	}
 
 	if suffix == ".nfo" {
@@ -167,7 +191,7 @@ func entryFile(entry library.Entry) resolvedFile {
 		return resolvedFile{}
 	}
 
-	return resolvedFile{info: library.Node{Size: entry.Media.Size(), Modified: entry.Modified}, data: entry.Media}
+	return resolvedFile{info: library.Node{Size: entry.Media.Size(), Modified: entry.Modified, Revision: entry.Media.ID()}, data: entry.Media}
 }
 
 func seasonNumber(name string) (int, error) {

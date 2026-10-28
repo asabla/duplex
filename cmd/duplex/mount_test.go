@@ -19,7 +19,7 @@ func TestMountLossStopsHTTPService(t *testing.T) {
 	close(done)
 
 	err = serveMountedHTTP(t.Context(), listener, http.NotFoundHandler(), done)
-	if err == nil || !strings.Contains(err.Error(), "mount helper connection lost") {
+	if err == nil || !strings.Contains(err.Error(), "library filesystem stopped") {
 		t.Fatal(err)
 	}
 
