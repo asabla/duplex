@@ -11,7 +11,7 @@ type Node struct {
 	Directory bool
 	Size      int64
 	Modified  int64
-	Revision  string // Immutable content identity; directories have no revision.
+	Revision  string // Immutable file content or optional directory membership identity.
 }
 
 // VersionedProvider refuses to replace the bytes identified by an earlier lookup.

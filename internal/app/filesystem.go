@@ -106,7 +106,8 @@ func (p catalogueFS) lookup(ctx context.Context, name string) (resolvedFile, err
 	}
 
 	if name == "" {
-		return resolvedFile{info: library.Node{Directory: true, Modified: p.app.Config.Snapshot().LoadedAt.Unix()}}, ctx.Err()
+		info, err := p.rootInfo(ctx)
+		return resolvedFile{info: info}, err
 	}
 
 	parts := strings.Split(name, "/")

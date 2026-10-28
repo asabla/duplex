@@ -22,11 +22,12 @@ import (
 )
 
 type fixture struct {
-	count    int
-	version  atomic.Int64
-	fail     atomic.Bool
-	maxPage  atomic.Int64
-	pageWork atomic.Int64
+	count      int
+	version    atomic.Int64
+	fail       atomic.Bool
+	maxPage    atomic.Int64
+	pageWork   atomic.Int64
+	membership atomic.Int64
 }
 
 func (p *fixture) Stat(ctx context.Context, name string) (library.Node, error) {
@@ -35,7 +36,11 @@ func (p *fixture) Stat(ctx context.Context, name string) (library.Node, error) {
 	}
 
 	if name == "" {
-		return library.Node{Directory: true, Modified: 123}, nil
+		return library.Node{Directory: true, Modified: 123, Revision: fmt.Sprint(p.membership.Load())}, nil
+	}
+
+	if p.membership.Load() < 0 {
+		return library.Node{}, fs.ErrNotExist
 	}
 
 	n, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(name, "Recording-"), ".bin"))
@@ -63,6 +68,10 @@ func (p *fixture) OpenVersion(ctx context.Context, name, revision string) (media
 func (p *fixture) ReadDir(ctx context.Context, name, after string, limit int) ([]library.Child, error) {
 	if name != "" || limit < 1 || limit > 256 {
 		return nil, fs.ErrInvalid
+	}
+
+	if p.membership.Load() < 0 {
+		return nil, ctx.Err()
 	}
 
 	p.maxPage.Store(max(p.maxPage.Load(), int64(limit)))
@@ -161,6 +170,41 @@ func rootHandle(t *testing.T, s *Server) []byte {
 	}
 
 	return d.opaque(64)
+}
+
+func TestDirectoryMembershipAdvancesTimeWithStableHandleAcrossRestart(t *testing.T) {
+	p := &fixture{count: 1}
+	state := t.TempDir()
+	s := start(t, state, p)
+	root := rootHandle(t, s)
+
+	for change := int64(0); change < 3; change++ {
+		p.membership.Store(change % 2) // Return to an earlier membership in the same second.
+
+		var args encoder
+		args.opaque(root)
+
+		d := call(t, s, 100003, 1, args)
+		if d.u32() != 0 {
+			t.Fatal("directory handle became stale")
+		}
+
+		d.take(68)
+
+		if modified := d.u32(); modified != uint32(123+change) {
+			t.Fatalf("mtime %d does not identify membership change %d", modified, change)
+		}
+
+		if handle := rootHandle(t, s); string(handle) != string(root) {
+			t.Fatal("membership change replaced the root handle")
+		}
+
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		s = start(t, state, p)
+	}
 }
 
 func fileHandle(t *testing.T, s *Server, root []byte) []byte {
@@ -469,13 +513,27 @@ func TestKernelFixture(t *testing.T) {
 	ctx, cancel := signal.NotifyContext(t.Context(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	s, err := Listen(ctx, "0.0.0.0:2049", "/state", &fixture{count: 10000})
+	p := &fixture{count: 10000}
+
+	s, err := Listen(ctx, "0.0.0.0:2049", "/state", p)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	t.Log("NFS fixture ready")
-	<-ctx.Done()
+
+	changes := make(chan os.Signal, 1)
+
+	signal.Notify(changes, syscall.SIGUSR1)
+	defer signal.Stop(changes)
+
+	for ctx.Err() == nil {
+		select {
+		case <-ctx.Done():
+		case <-changes:
+			p.membership.Store(^p.membership.Load())
+		}
+	}
 
 	if err = s.Close(); err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
