@@ -54,6 +54,22 @@ func TestOptionalPlexSetupDoesNotHideServiceFailures(t *testing.T) {
 					t.Fatal("setup guidance hid a service failure")
 				}
 			}
+
+			body.Reset()
+
+			if err := server.templates.ExecuteTemplate(&body, "status", page{Status: state}); err != nil {
+				t.Fatal(err)
+			}
+
+			if failure == "" {
+				requireElement(t, body.Bytes(), "dd", nil, "Filesystem ready")
+
+				if strings.Contains(body.String(), "plex connection is not configured") {
+					t.Fatal("optional integration was presented as a diagnostic error")
+				}
+			} else {
+				requireElement(t, body.Bytes(), "dd", nil, "Needs attention")
+			}
 		})
 	}
 }
