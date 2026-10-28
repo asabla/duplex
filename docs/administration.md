@@ -3,15 +3,17 @@
 ## Follow a channel
 
 Open Channels and select **Follow channel**. Enter the YouTube channel URL, choose
-Latest videos or All videos, and choose whether to include its playlists. Latest
-videos defaults to 50. All videos has no numeric selection field.
+Latest videos or All videos. Latest videos defaults to 50. All videos has no
+numeric selection field. Playlists start disabled; add them after the first
+playback check. Each included playlist can add a season with its own selection.
 
 After the channel resolves, duplex opens its channel page. The overview shows
 selected recordings, prepared files, and recordings that need attention. Discovery
 progress and counts update while live updates are enabled. Videos can appear
 before their media files are prepared.
 
-Use the channel tabs to inspect Videos, Playlists, Activity, Artwork, and Settings.
+Use **Manage recordings** or the **Selection** tab to choose what appears in Plex.
+The other channel tabs open Videos, Playlists, Activity, Artwork, and Settings.
 **Back to results** returns to the originating filtered list and page. The global
 navigation opens views across all channels.
 
@@ -25,7 +27,10 @@ The primary state describes preparation availability. YouTube lifecycle and
 library selection remain separate facts. A previous quality verification does
 not make a failed preparation ready. **Prepared** means that duplex verified a
 media file; it does not certify Plex discovery or playback. The service-health
-notice identifies integration failures that can still block playback.
+notice identifies integration failures that can still block playback. When Plex
+automation is not configured and the filesystem is ready, a setup notice links
+to the mount instructions and automatic scan settings. File access does not
+require automatic scans.
 
 When offered, **Retry preparation** moves the selected recording ahead of backfill.
 Correct a reported source or service problem before repeated retries. **Back to
@@ -45,7 +50,7 @@ separate tab for comparison. Field validation links to the affected input.
 
 ### Select uploads, Shorts, and completed streams
 
-From Channel Settings, open **Content rules and individual videos**. Enable
+Open the channel's **Selection** tab. Enable
 separate limits to choose Latest, All, or Skip for each content type. When this
 option is disabled, the existing shared channel selection applies. Playlist
 policies remain separate and inherit the shared selection when configured.
@@ -66,8 +71,8 @@ archive media or bypass source availability and preparation requirements.
 Select **Preview selection** before saving. The preview shows selected,
 added, and removed counts from the last discovered catalogue. Select a review
 list to inspect its titles, with at most 25 recordings per page. It does not
-fetch source metadata or media. Unknown content
-types are identified in the preview; discovery must classify them before separate
+fetch source metadata or media. Unknown content types are identified in the
+preview; discovery must classify them before separate
 automatic rules can select them. Explicit Keep can select an eligible recording
 whose type is unknown.
 
@@ -115,9 +120,10 @@ an affected region contains a draft, a focused control, or an open inspection.
 
 ## Design references and verification scope
 
-The panel applies a small set of documented administrative patterns using Go
-templates, embedded HTMX, semantic HTML, CSS, and plain JavaScript. It adds no
-component library or frontend build.
+The panel uses Plex's charcoal and gold palette. The side navigation keeps the
+main views available on desktop; it moves above the content on narrow screens.
+Status messages include text as well as colour. The panel uses Go templates,
+embedded HTMX, semantic HTML, CSS, and plain JavaScript.
 
 - [PatternFly tables](https://www.patternfly.org/components/table/design-guidelines/),
   [toolbars](https://www.patternfly.org/components/toolbar/design-guidelines/),

@@ -193,9 +193,20 @@
           {{else}}
             <tr>
               <td colspan="6" class="empty">
-                <strong>No matching channels</strong>
-                <p>Change the filters or follow a YouTube channel.</p>
-                <a href="/follow">Follow channel</a>
+                {{if .Filtered}}
+                  <strong>No matching channels</strong>
+                  <p>Try a different search or remove the filters.</p>
+                  <a href="/channels">Clear filters</a>
+                {{else}}
+                  <strong>Bring your first channel into Plex</strong>
+                  <p
+                    >Follow a channel, choose its recordings, and let duplex
+                    prepare the library.</p
+                  >
+                  <div class="form-actions"
+                    ><a class="button" href="/follow">Follow channel</a></div
+                  >
+                {{end}}
               </td>
             </tr>
           {{end}}</tbody
@@ -255,12 +266,12 @@
       />
     </label>
     <label class="checkbox">
-      <input type="checkbox" name="include_playlists" checked /> Include this
-      channel's playlists</label
+      <input type="checkbox" name="include_playlists" /> Include this channel's
+      playlists</label
     >
     <p class="hint"
-      >Playlists inherit the upload selection. Each playlist can have its own
-      override.</p
+      >Start with this channel's recordings. You can add playlist seasons later;
+      each playlist can have its own selection.</p
     >
     <div class="form-actions">
       <button>Follow channel</button>
@@ -304,6 +315,11 @@
         >Overview</a
       >
       <a
+        href="{{.ChannelLink "/selection"}}"
+        {{if eq .Page "/selection"}}aria-current="page"{{end}}
+        >Selection</a
+      >
+      <a
         href="{{.ChannelLink "/catalogue"}}"
         {{if eq .Page "/catalogue"}}aria-current="page"{{end}}
         >Videos</a
@@ -325,7 +341,9 @@
       >
       <a
         href="{{.ChannelLink "/channel"}}&amp;tab=settings"
-        {{if eq .Tab "settings"}}aria-current="page"{{end}}
+        {{if and (eq .Page "/channel") (eq .Tab "settings")}}
+          aria-current="page"
+        {{end}}
         >Settings</a
       >
     </nav>
@@ -425,13 +443,19 @@
       </div>
     </dl>
     <section class="editor">
-      <h2>Discovery and playback</h2>
+      <h2>Your Plex selection</h2>
       <p
-        >Recordings appear in Videos during discovery. Selected recordings are
-        prepared in the background. Plex scans the prepared media files.</p
+        >Choose the recordings to show in Plex. Duplex prepares selected files
+        in the background. When they are prepared, scan the library and confirm
+        playback in Plex.</p
       >
-      <p>Prepared media and successful Plex playback are separate checks.</p>
       <div class="form-actions">
+        <a class="button" href="{{.ChannelLink "/selection"}}"
+          >Manage recordings</a
+        >
+        <a class="button secondary" href="{{.ChannelLink "/catalogue"}}"
+          >Browse videos</a
+        >
         <form
           action="/actions/sync"
           method="post"
@@ -441,9 +465,8 @@
         >
           <input type="hidden" name="csrf" value="{{.CSRF}}" />
           <input type="hidden" name="id" value="{{.Channel.ID}}" />
-          <button>Refresh channel</button>
+          <button class="quiet">Refresh channel</button>
         </form>
-        <a href="{{.ChannelLink "/catalogue"}}">Inspect videos</a>
         <a href="{{.ChannelLink "/jobs"}}">View activity</a>
       </div>
     </section>

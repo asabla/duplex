@@ -84,7 +84,7 @@ func TestSelectionValidationIdentifiesFieldsAndIgnoresInactiveLimits(t *testing.
 	requireElement(t, body, "a", map[string]string{"href": "#content-uploads-limit"}, "Enter a positive whole number for Uploads.")
 	requireElement(t, body, "input", map[string]string{"id": "content-uploads-limit", "aria-invalid": "true", "aria-describedby": "content-uploads-limit-error"}, "")
 
-	requireElement(t, body, "title", nil, "Error: duplex administration")
+	requireElement(t, body, "title", nil, "Error: duplex")
 
 	if strings.Contains(string(body), "Open current settings") {
 		t.Fatal("ordinary validation used conflict guidance or missed error title")

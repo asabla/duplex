@@ -60,8 +60,8 @@ value in YAML or a Compose file. See the exact [Plex setup steps](installation.m
 ## Start with a small channel selection
 
 1. In Channels, select **Follow channel** and enter a public YouTube channel URL.
-2. Select **Latest videos**, set a small count such as `20`, and disable playlists
-   for the first check. New-channel defaults otherwise include playlists.
+2. Select **Latest videos** and set a small count such as `20`. Leave playlists
+   disabled for the first check. The follow form starts with uploads only.
 3. Wait for discovery, then inspect Videos. Discovery completion does not mean
    every media file is prepared. Use **Retry preparation** when a failed item is
    eligible for a retry, and inspect Diagnostics before repeated attempts.
@@ -84,7 +84,7 @@ the previous settings active until corrected, but can prevent the next startup.
 
 ## Separate content and keep individual recordings
 
-In Channel Settings, open **Content rules and individual videos** to give
+Open the channel's **Selection** tab to give
 uploads, Shorts, and completed streams separate Latest, All, or Skip rules.
 The shared rule remains the default for existing settings and inherited
 playlists. These separate rules affect only the channel's recording collection.

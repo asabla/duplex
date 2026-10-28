@@ -3,9 +3,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title
     >{{if .Error}}
-      Error: duplex administration
+      Error: duplex
+    {{else if .Channel.ID}}
+      {{.ChannelName .Channel.ID}} · duplex
     {{else}}
-      duplex administration
+      duplex
     {{end}}</title
   >
   <meta name="csrf-token" content="{{.CSRF}}" />
@@ -32,7 +34,7 @@
         <nav aria-label="Main navigation">
           <a
             href="/channels"
-            {{if or (eq .Page "/channels") (eq .Page "/channel") (eq .Page "/follow") (eq .Page "/artwork")}}
+            {{if or (eq .Page "/channels") (eq .Page "/channel") (eq .Page "/follow") (eq .Page "/artwork") (eq .Page "/selection")}}
               aria-current="page"
             {{end}}
             >Channels</a
@@ -44,7 +46,9 @@
           >
           <a
             href="/catalogue"
-            {{if eq .Page "/catalogue"}}aria-current="page"{{end}}
+            {{if or (eq .Page "/catalogue") (eq .Page "/video")}}
+              aria-current="page"
+            {{end}}
             >Videos</a
           >
           <a
@@ -116,11 +120,12 @@
     <body class="login">
       <main>
         <p class="wordmark">duplex</p>
+        <p class="hint">Your YouTube library, in Plex.</p>
         <h1>Sign in</h1>
         {{if .Error}}<p class="error" role="alert">{{.Error}}</p>{{end}}
         <form method="post" action="/login" class="stack">
           <input type="hidden" name="csrf" value="{{.CSRF}}" />
-          <label for="username">Administrator</label>
+          <label for="username">Username</label>
           <input
             id="username"
             name="username"
@@ -174,7 +179,22 @@
 {{end}}
 
 {{define "service-alert"}}
-  {{if or .Status.ConfigError .Status.SourceError .Status.MountError .Status.PlexError .Status.RestartRequired}}
+  {{if and .Status.MountReady (not .Status.Config.Config.Plex.URL) (not .Status.ConfigError) (not .Status.SourceError) (not .Status.MountError) (not .Status.RestartRequired)}}
+    <aside class="setup-notice" aria-label="Plex setup">
+      <strong>Connect your Plex library</strong>
+      <span
+        >Mount the library in Plex. Connect automatic scans when you are
+        ready.</span
+      >
+      <a
+        href="https://github.com/asabla/duplex/blob/main/docs/installation.md#plex-library"
+        target="_blank"
+        rel="noreferrer"
+        >Setup guide</a
+      >
+      <a href="/settings#plex-connection">Configure automatic scans</a>
+    </aside>
+  {{else if or .Status.ConfigError .Status.SourceError .Status.MountError .Status.PlexError .Status.RestartRequired}}
     <aside class="service-alert" aria-label="Service needs attention">
       <strong>Service needs attention</strong>
       <span

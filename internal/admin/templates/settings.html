@@ -11,8 +11,8 @@
   <details class="editor advanced-settings">
     <summary>Advanced configuration</summary>
     <p class="hint"
-      >YAML remains the settings authority. Storage paths, listener, mountpoint,
-      and worker changes require a restart.</p
+      >Edit settings that are not listed above. Changes to storage paths, the
+      listener, or workers require a service restart.</p
     >{{template "yaml-form" .}}</details
   >
 {{end}}
@@ -93,8 +93,13 @@
         </label>
       </div>
     </fieldset>
-    <fieldset>
+    <fieldset id="plex-connection">
       <legend>Plex connection</legend>
+      <p class="hint"
+        >Optional. Enable automatic library scans and metadata updates after the
+        library is mounted in Plex. Media file access works without this
+        connection.</p
+      >
       <label for="settings-form-plex_url"
         >Plex server URL<input
           id="settings-form-plex_url"
