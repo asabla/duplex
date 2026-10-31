@@ -92,6 +92,21 @@
           >
         </label>
       </div>
+      <label class="checkbox" for="settings-form-fetch_captions">
+        <input
+          id="settings-form-fetch_captions"
+          type="checkbox"
+          name="fetch_captions"
+          {{if .Status.Config.Config.FetchCaptions}}checked{{end}}
+          aria-describedby="captions-hint"
+        />
+        Fetch captions
+      </label>
+      <p id="captions-hint" class="hint"
+        >Off by default to reduce source rate limits. Fetch available captions
+        for the original audio language. Captions already stored remain
+        available.</p
+      >
     </fieldset>
     <fieldset id="plex-connection">
       <legend>Plex connection</legend>

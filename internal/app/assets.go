@@ -47,9 +47,15 @@ func (a *App) acquireAssets(ctx context.Context, m source.Metadata, c source.Can
 		assets[fallback.Path] = fallback
 	}
 
-	caption, captionErr := a.captionAsset(ctx, m, subtitleLanguage(m, c))
-	if caption.Media != nil {
-		assets[caption.Path] = caption
+	var captionErr error
+
+	if a.Config.Snapshot().Config.FetchCaptions {
+		var caption library.Entry
+
+		caption, captionErr = a.captionAsset(ctx, m, subtitleLanguage(m, c))
+		if caption.Media != nil {
+			assets[caption.Path] = caption
+		}
 	}
 
 	out := make([]library.Entry, 0, len(assets))

@@ -59,7 +59,8 @@ Use a dedicated test library and preserve existing user state. Verify:
 
 - A public 2160p upload and a completed long replay, from preparation through
   rendered Plex Web playback, distant seeking, and resume.
-- Original audio and available original-language subtitles, including after seeks.
+- Original audio and, with caption fetching enabled, available original-language
+  subtitles, including after seeks.
 - Sustained playback for four independent viewers with the documented host,
   quality, cache limit, source workload, and Plex conversion settings.
 - Restart with retained catalogue and indexes and a new empty media cache;

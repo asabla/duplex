@@ -101,9 +101,14 @@ for complete examples and override behavior.
 
 ## Captions and metadata refresh
 
-duplex selects available subtitles for the original audio language. Explicit
-subtitles take priority over automatic captions. A regional audio tag can use
-original captions for its base language, such as `en-US` with `en-orig`.
+Caption fetching is off by default to reduce source rate limits. Enable **Fetch
+captions** in Settings or set `fetch_captions: true` in YAML. The setting applies
+to subsequent optional asset work; it does not start downloads for all stored
+videos. Disabling it retains captions already stored.
+
+When enabled, duplex selects available subtitles for the original audio language.
+Explicit subtitles take priority over automatic captions. A regional audio tag
+can use original captions for its base language, such as `en-US` with `en-orig`.
 
 Optional captions can arrive after Plex's first scan. Changed assets queue a
 targeted metadata refresh for each observed occurrence of that recording.

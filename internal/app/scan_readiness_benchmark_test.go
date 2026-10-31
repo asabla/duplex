@@ -44,6 +44,7 @@ func scanMediaPipeline(b *testing.B, delay time.Duration, failed bool) (*App, *c
 	b.Helper()
 
 	a, adapter, origin := mediaPipeline(b)
+	setCaptionFetching(b, a, true)
 
 	var picture bytes.Buffer
 	if err := png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 128, 72))); err != nil {

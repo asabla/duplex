@@ -49,6 +49,8 @@ func (f assetFixtureTransport) RoundTrip(r *http.Request) (*http.Response, error
 
 func TestOptionalAssetsRetainValidImagesAndOriginalCaptions(t *testing.T) {
 	a := pipelineApp(t, pipelineChannel(config.DefaultSelection()), fixtureCollection(1))
+	setCaptionFetching(t, a, true)
+
 	picture := image.NewRGBA(image.Rect(0, 0, 128, 72))
 	picture.Set(20, 20, color.White)
 
@@ -125,6 +127,69 @@ func TestOptionalAssetsRetainValidImagesAndOriginalCaptions(t *testing.T) {
 
 	if got := a.loadAssets(metadata.ID); len(got) != 1 || got[0].Media.ID() != fallback[0].Media.ID() {
 		t.Fatal("fallback was not durable", got)
+	}
+}
+
+func setCaptionFetching(t testing.TB, a *App, enabled bool) {
+	t.Helper()
+
+	snapshot := a.Config.Snapshot()
+	snapshot.Config.FetchCaptions = enabled
+
+	if err := a.Config.Save(snapshot.Config, snapshot.Revision); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCaptionFetchingDefaultsOffAndCanChangeWithoutRestart(t *testing.T) {
+	a := pipelineApp(t, pipelineChannel(config.DefaultSelection()), fixtureCollection(1))
+	metadata := source.Metadata{ID: "video000000", ChannelID: testOwner, Thumbnail: "https://i.ytimg.com/poster", Language: "en", Subtitles: map[string][]source.Subtitle{"en": {{Ext: "srt", URL: "https://www.youtube.com/captions"}}}}
+
+	var picture bytes.Buffer
+	if err := png.Encode(&picture, image.NewRGBA(image.Rect(0, 0, 128, 72))); err != nil {
+		t.Fatal(err)
+	}
+
+	transport := &scanAssetTransport{base: assetFixtureTransport{
+		"/poster":   {data: picture.Bytes()},
+		"/captions": {status: http.StatusTooManyRequests},
+	}}
+	previous := http.DefaultTransport
+	http.DefaultTransport = transport
+
+	t.Cleanup(func() { http.DefaultTransport = previous })
+
+	entries, err := a.acquireAssets(t.Context(), metadata, source.Candidate{})
+	if err != nil || len(entries) != 1 || entries[0].Path != ".jpg" || transport.requests.Load() != 1 {
+		t.Fatal("default asset work fetched captions or lost artwork", entries, err, transport.requests.Load())
+	}
+
+	setCaptionFetching(t, a, true)
+
+	if _, err = a.acquireAssets(t.Context(), metadata, source.Candidate{}); err == nil || transport.requests.Load() != 3 {
+		t.Fatal("enabled caption failure was not reported", err, transport.requests.Load())
+	}
+
+	transport.base["/captions"] = assetFixtureResponse{data: []byte("original captions")}
+
+	entries, err = a.acquireAssets(t.Context(), metadata, source.Candidate{})
+	if err != nil || len(entries) != 2 || transport.requests.Load() != 5 {
+		t.Fatal("enabled captions were not fetched", entries, err, transport.requests.Load())
+	}
+
+	setCaptionFetching(t, a, false)
+
+	transport.base["/captions"] = assetFixtureResponse{status: http.StatusTooManyRequests}
+
+	retained, err := a.acquireAssets(t.Context(), metadata, source.Candidate{})
+	if err != nil || len(retained) != 2 || transport.requests.Load() != 6 {
+		t.Fatal("disabled caption work retried or lost stored captions", retained, err, transport.requests.Load())
+	}
+
+	for i, entry := range retained {
+		if entry.Media.ID() != entries[i].Media.ID() {
+			t.Fatal("disabling captions changed stored assets")
+		}
 	}
 }
 
