@@ -1,29 +1,31 @@
 # JSON API version 1
 
-The JSON API and HTML forms use the same application services. Configuration,
-catalogue, jobs, policies, artwork, and diagnostics require an administrator session.
-Responses exclude tokens, passwords, source locators, and raw resolver output.
+The JSON API and HTML forms use the same application services. No sign-in is
+required. Any client that can reach the web listener can read and change the
+installation. Keep access within the configured trusted network boundary.
+Responses exclude protected service tokens, source locators, and raw resolver output.
 Status includes optional `measurements` and `counters` arrays. Counter items have
 `name` and cumulative integer `value`; media counters reset with the process.
 See [measurement fields](performance.md#current-measurement-fields) for scope and units.
 
-## Session and CSRF
+## CSRF
 
-1. GET `/api/v1/session` with a cookie jar. It returns `authenticated` and `csrf`.
-2. POST `/api/v1/login` with JSON `username`, `password`, and `csrf`, retaining the
-   sign-in CSRF cookie.
-3. GET the session again for its session CSRF token.
-4. Retain the session cookie and send `X-CSRF-Token` on mutations from the same origin.
+1. GET `/api/v1/session` with a cookie jar. It returns `csrf` and sets a
+   `duplex_csrf` cookie when needed. This endpoint retains its existing name;
+   it does not create an authenticated session.
+2. Retain that cookie and send the returned token in `X-CSRF-Token` on mutations
+   from the same origin. HTML forms send the token in their `csrf` field.
 
-A restart ends sessions. Cross-origin writes and invalid CSRF tokens are rejected.
-Failed logins are rate limited. Do not send credentials in URLs.
+GET requests do not require a cookie. Cross-origin writes, missing cookies, and
+invalid CSRF tokens return HTTP 403. The cookie is HttpOnly and SameSite=Strict;
+HTTPS also sets Secure. A restart does not invalidate the cookie. Login and
+logout endpoints have been removed.
 
 ## Endpoints
 
 | Method and path | Response or mutation |
 | --- | --- |
-| GET `/api/v1/session` | Authentication state and CSRF token. |
-| POST `/api/v1/login` | Sign in with the administrator credential. |
+| GET `/api/v1/session` | CSRF token for the requesting client's cookie. |
 | GET `/api/v1/config` | Settings, revision, load time, and configuration error. |
 | PUT `/api/v1/config` | Complete JSON `config` plus expected `revision`; validate and atomically replace YAML. |
 | GET `/api/v1/channels` | Existing compatibility shape: `settings` and durable `channels`. |
@@ -40,12 +42,11 @@ Failed logins are rate limited. Do not send credentials in URLs.
 | GET `/api/v1/jobs` | Compatibility array of the latest 100 jobs. |
 | GET `/api/v1/summary` | Small `status` and `counts`; use this for polling. |
 | GET `/api/v1/status` | Compatibility status including the complete video array; avoid frequent polling. |
-| GET `/api/v1/diagnostics` | Protected summary and redacted stage measurements. |
+| GET `/api/v1/diagnostics` | Summary and redacted stage measurements. |
 | GET `/api/v1/artwork/seasons?channel={id}` | Bounded season titles and stable artwork scopes; accepts `q`, `page`, and `per_page`. |
 | GET `/api/v1/artwork?channel={id}&scope={scope}` | Active reference and whether it is an override. |
 | POST `/api/v1/artwork?channel={id}&scope={scope}&revision={revision}` | Raw JPEG or PNG body; validate, normalize, save, and update YAML. |
 | DELETE `/api/v1/artwork?channel={id}&scope={scope}&revision={revision}` | Reset the selected show or season to automatic artwork. |
-| POST `/logout` | End the session; CSRF required. |
 | GET `/healthz` | Public process health. |
 | GET `/mountz` | Public filesystem readiness: NFS export listener or legacy FUSE mount; 503 when unavailable. Does not check Plex's client mount. |
 | GET `/readyz` | Public application integration readiness. Per-video preparation is separate. |
@@ -131,7 +132,7 @@ change membership, queue jobs, or fetch source metadata or media.
 
 Save validates the same rules, applies changes to known recordings, and queues
 enabled channel discovery. Source and preparation requirements still apply.
-Stale previews and saves return HTTP 409. Session and CSRF requirements are the
+Stale previews and saves return HTTP 409. CSRF requirements are the
 same as other mutations, including for the read-only POST preview.
 
 ## Artwork scopes
@@ -146,8 +147,7 @@ reference; it does not delete a shared content-addressed asset.
 
 JSON bodies must contain one document and known fields. Configuration and artwork
 writes require the expected disk revision. Stale JSON saves return 409; reload
-before retrying. Invalid input returns 400. Session and authorization failures
-return 401 or 403 as appropriate.
+before retrying. Invalid input returns 400. CSRF and origin failures return 403.
 
 Valid external settings edits reload. Invalid edits retain the last valid
 in-memory configuration and change the observed disk revision, so a stale save

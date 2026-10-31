@@ -20,7 +20,7 @@ func TestRenderedMarkupFixtures(t *testing.T) {
 	}
 
 	fixture := newWorkflowFixture(t)
-	fixture.signIn(t)
+	fixture.loadCSRF(t)
 
 	export := func(name, path string) {
 		body, _ := fixture.request(t, http.MethodGet, path, "", nil, http.StatusOK)
@@ -41,7 +41,6 @@ func TestRenderedMarkupFixtures(t *testing.T) {
 	fixture.waitDiscovery(t)
 
 	for _, item := range []struct{ name, path string }{
-		{"login", "/login"},
 		{"channels", "/channels"},
 		{"follow", "/follow"},
 		{"channel", "/channel?channel=" + workflowChannel},

@@ -113,7 +113,7 @@ func TestListPagesAndChannelPolling(t *testing.T) {
 	}
 	defer closeTest(t, c)
 
-	s, err := New(&app.App{Config: m, Catalog: db, Cache: c}, &Auth{})
+	s, err := New(&app.App{Config: m, Catalog: db, Cache: c})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -59,7 +59,7 @@ func TestActionReturnURLRejectsExternalAndActionLocations(t *testing.T) {
 }
 
 func TestFormResultsRedirectOrRetainTheCorrectPage(t *testing.T) {
-	s, err := New(nil, nil)
+	s, err := New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestSortARIAReflectsDefaultsAndDirections(t *testing.T) {
 }
 
 func TestArtworkReturnRetainsMatchingSeasonSearch(t *testing.T) {
-	s, err := New(nil, nil)
+	s, err := New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,7 +2,6 @@ package admin
 
 import (
 	"bytes"
-	"encoding/json"
 	"image"
 	"image/png"
 	"mime/multipart"
@@ -23,7 +22,7 @@ func (f *workflowFixture) form(t *testing.T, path string, values url.Values, sta
 
 func TestCaptionSettingCanBeEnabledAndDisabledThroughHTML(t *testing.T) {
 	f := newWorkflowFixture(t)
-	f.signIn(t)
+	f.loadCSRF(t)
 	f.hx = true
 
 	body, _ := f.request(t, http.MethodGet, "/settings", "", nil, http.StatusOK)
@@ -54,26 +53,7 @@ func TestCaptionSettingCanBeEnabledAndDisabledThroughHTML(t *testing.T) {
 
 func TestHTMLFormsUseTheSameAuthorityAndValidationAsJSON(t *testing.T) {
 	f := newWorkflowFixture(t)
-	data, _ := f.request(t, http.MethodGet, "/api/v1/session", "", nil, http.StatusOK)
-
-	var session struct {
-		CSRF string `json:"csrf"`
-	}
-	if err := json.Unmarshal(data, &session); err != nil {
-		t.Fatal(err)
-	}
-
-	f.csrf = session.CSRF
-	f.form(t, "/login", url.Values{"username": {"admin"}, "password": {strings.Repeat("a", 1025)}}, http.StatusBadRequest)
-	f.form(t, "/login", url.Values{"username": {"admin"}, "password": {"wrong"}}, http.StatusUnauthorized)
-	f.form(t, "/login", url.Values{"username": {"admin"}, "password": {f.password}}, http.StatusSeeOther)
-
-	data, _ = f.request(t, http.MethodGet, "/api/v1/session", "", nil, http.StatusOK)
-	if err := json.Unmarshal(data, &session); err != nil {
-		t.Fatal(err)
-	}
-
-	f.csrf = session.CSRF
+	f.loadCSRF(t)
 	f.hx = true
 	values := url.Values{"url": {"https://www.youtube.com/@controlled"}, "limit": {"0"}, "revision": {f.app.Config.Snapshot().Revision}}
 	f.form(t, "/actions/follow", values, http.StatusBadRequest)

@@ -97,8 +97,8 @@ def service():
     assert "docker-default (enforce)" in Path("/proc/self/attr/current").read_text()
     assert not Path("/dev/fuse").exists()
     assert denied_mount(b"/tmp", b"tmpfs", 0, b"size=4096") == errno.EPERM
-    with urllib.request.urlopen("http://127.0.0.1:8765/login") as response:
-        assert response.status == 200 and b"password" in response.read()
+    with urllib.request.urlopen("http://127.0.0.1:8765/channels") as response:
+        assert response.status == 200 and b"Follow a channel" in response.read()
     tools()
     print(
         "Service: non-root; zero capabilities; AppArmor and seccomp enforced; no FUSE device"

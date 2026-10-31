@@ -20,10 +20,10 @@ included in decoder arguments or URLs.
 ```
 
 Replace `ITEM_KEY` with a numeric episode key. The output directory must be new
-and absolute. Add `--duplex-url` and `--duplex-password-file` together to retain
-source-operation counters, stage times, and cache allocation. The tool closes
-the administrator session that it creates. Plex credentials and Duplex cookies
-use separate clients; authenticated redirects cannot cross origins.
+and absolute. Add `--duplex-url http://127.0.0.1:8765` to retain source-operation
+counters, stage times, and cache allocation. Duplex reads require no password.
+Plex and Duplex use separate clients; redirects cannot cross origins, and the
+Plex token is sent only to the configured Plex origin.
 
 The default workload reads a frame at the beginning, middle, and near the end,
 then repeats those reads. It also decodes two seconds of both audio and video;

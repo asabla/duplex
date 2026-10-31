@@ -19,6 +19,8 @@ func (s *Server) readAPI(w http.ResponseWriter, r *http.Request) bool {
 	)
 
 	switch r.URL.Path {
+	case "/api/v1/session":
+		result = map[string]string{"csrf": csrfToken(r)}
 	case "/api/v1/videos":
 		result, err = s.App.Videos(r.Context(), videoFilter(r))
 	case "/api/v1/playlists":

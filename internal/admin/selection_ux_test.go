@@ -15,7 +15,7 @@ import (
 func selectionWorkflow(t *testing.T) (*workflowFixture, url.Values) {
 	t.Helper()
 	f := newWorkflowFixture(t)
-	f.signIn(t)
+	f.loadCSRF(t)
 	f.json(t, http.MethodPost, "/api/v1/channels", map[string]any{"url": "https://www.youtube.com/@controlled", "limit": 50, "revision": f.app.Config.Snapshot().Revision}, http.StatusOK)
 	f.waitDiscovery(t)
 

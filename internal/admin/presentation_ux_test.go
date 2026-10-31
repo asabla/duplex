@@ -11,7 +11,7 @@ import (
 )
 
 func TestOptionalPlexSetupDoesNotHideServiceFailures(t *testing.T) {
-	server, err := New(nil, nil)
+	server, err := New(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestOptionalPlexSetupDoesNotHideServiceFailures(t *testing.T) {
 
 func TestFirstChannelStartsWithUploadsAndExposesRecordingSelection(t *testing.T) {
 	f := newWorkflowFixture(t)
-	f.signIn(t)
+	f.loadCSRF(t)
 
 	body, _ := f.request(t, http.MethodGet, "/channels", "", nil, http.StatusOK)
 	requireElement(t, body, "strong", nil, "Bring your first channel into Plex")

@@ -32,9 +32,7 @@ func (s *Server) selectionDraft(r *http.Request) (page, error) {
 		return page{}, err
 	}
 
-	session, _ := s.Auth.Session(r)
-
-	v := page{Page: "/selection", Tab: "settings", CSRF: session.CSRF, Status: status, Counts: counts, Revision: r.FormValue("revision"), ChannelSettings: map[string]config.Channel{}, BackURL: localPageURL(r.FormValue("back"), actionReturnURL(r)), RecordingQuery: r.FormValue("recording_q")}
+	v := page{Page: "/selection", Tab: "settings", CSRF: csrfToken(r), Status: status, Counts: counts, Revision: r.FormValue("revision"), ChannelSettings: map[string]config.Channel{}, BackURL: localPageURL(r.FormValue("back"), actionReturnURL(r)), RecordingQuery: r.FormValue("recording_q")}
 	for _, ch := range status.Config.Config.Channels {
 		v.ChannelSettings[ch.ID] = ch
 	}

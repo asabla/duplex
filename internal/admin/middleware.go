@@ -26,21 +26,14 @@ func secureHandler(next http.Handler) http.Handler {
 
 func (s *Server) protected(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, e := s.Auth.Authorize(r)
-		if e != nil {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodOptions {
+			ensureCSRF(w, r)
+		} else if err := checkCSRF(r); err != nil {
 			if strings.HasPrefix(r.URL.Path, "/api/") {
-				code := 403
-				if _, ok := s.Auth.Session(r); !ok {
-					code = 401
-				}
-
-				reply(w, code, map[string]string{"error": e.Error()})
+				reply(w, http.StatusForbidden, map[string]string{"error": err.Error()})
 			} else {
-				if r.Header.Get("HX-Request") == "true" {
-					w.Header().Set("HX-Redirect", "/login")
-				}
-
-				http.Redirect(w, r, "/login", http.StatusSeeOther)
+				w.WriteHeader(http.StatusForbidden)
+				s.render(w, "notice", page{Error: err.Error(), ReturnURL: actionReturnURL(r)})
 			}
 
 			return

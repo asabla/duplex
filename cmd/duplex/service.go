@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,11 +41,6 @@ func serve(ctx context.Context, args []string) (result error) {
 
 	c := manager.Snapshot().Config
 
-	auth, e := admin.OpenAuth(filepath.Join(c.DataDir, "secrets", "admin.json"))
-	if e != nil {
-		return errors.New("cannot load administrator credentials; run duplex init first")
-	}
-
 	application, e := openService(ctx, manager, &source.YouTube{Executable: *yt, Deno: *deno}, *noMount, *socket, *nfsAddress)
 	if e != nil {
 		return e
@@ -61,7 +55,7 @@ func serve(ctx context.Context, args []string) (result error) {
 
 	defer stopServiceProfile(profile)
 
-	handler, e := admin.New(application, auth)
+	handler, e := admin.New(application)
 	if e != nil {
 		return e
 	}

@@ -1,8 +1,12 @@
 # Security
 
 This project is experimental. There is no supported stable release or guaranteed
-response time. The administration panel is intended for a trusted local network;
-keep it behind a loopback binding or an access-controlled private connection.
+response time. The administration panel and JSON API do not require sign-in.
+Any client that can reach the web listener can read settings and change the
+installation. Keep it behind a loopback binding or an access-controlled private
+connection. CSRF cookies and origin checks protect writes from other websites;
+they do not authenticate clients. Existing administrator credential files are
+ignored and do not provide access control.
 
 The Docker examples run Duplex as UID/GID 10001 with all capabilities dropped,
 the default Docker AppArmor and seccomp profiles, and `no-new-privileges`.
@@ -12,7 +16,8 @@ the host administrator performs the client mount for Plex. Keep the NFS port on
 localhost: AUTH_SYS is not authentication, and local host users can read the
 exported library. Never publish this endpoint to an untrusted network. Only the
 library projection is exported; configuration, credentials, and private state
-are outside that projection. The administrator interface has separate authentication.
+are outside that projection. Access to the administrator interface depends on
+the web listener's network boundary.
 
 The legacy FUSE deployment has a separate helper that receives `SYS_ADMIN` and
 `/dev/fuse`, uses an enforced [AppArmor profile](deployment/duplex-mount.apparmor),

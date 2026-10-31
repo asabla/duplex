@@ -34,7 +34,7 @@ body {
     sans-serif;
 }
 
-body:not(.login) {
+body {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   min-height: 100vh;
@@ -882,18 +882,6 @@ textarea {
   margin: 0;
 }
 
-.login main {
-  max-width: 420px;
-  margin: 80px auto;
-  padding: 28px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-}
-
-.login h1 {
-  margin: 12px 0 20px;
-}
-
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -988,7 +976,7 @@ th[aria-sort='descending'] a::after {
 }
 
 @media (max-width: 900px) {
-  body:not(.login) {
+  body {
     grid-template-columns: minmax(0, 1fr);
   }
   .app-header {
@@ -1162,8 +1150,4 @@ button[aria-pressed='true'] {
 
 .empty .form-actions {
   justify-content: center;
-}
-
-.login .hint {
-  margin-top: 8px;
 }

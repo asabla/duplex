@@ -72,6 +72,19 @@ func TestCommandHelpAndErrors(t *testing.T) {
 
 func TestInitializationBackupAndHealth(t *testing.T) {
 	file := initializedConfig(t)
+
+	manager, err := config.Open(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, name := range []string{"admin.json", "initial-admin-password"} {
+		path := filepath.Join(manager.Snapshot().Config.DataDir, "secrets", name)
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("initialization created administrator credentials", name, err)
+		}
+	}
+
 	if err := initialize([]string{"--config", file}); err == nil {
 		t.Fatal("overwrote initialized installation")
 	}
@@ -80,11 +93,6 @@ func TestInitializationBackupAndHealth(t *testing.T) {
 	// The catalogue must first exist; backup must not invent an installation.
 	if err := backup(t.Context(), []string{"--config", file, "--output", output}); err == nil {
 		t.Fatal("backed up a missing catalogue")
-	}
-
-	manager, err := config.Open(file)
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	application, err := app.Open(t.Context(), manager, nilSource{}, true)
