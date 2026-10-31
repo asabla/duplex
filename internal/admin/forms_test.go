@@ -21,6 +21,37 @@ func (f *workflowFixture) form(t *testing.T, path string, values url.Values, sta
 	return f.request(t, http.MethodPost, path, "application/x-www-form-urlencoded", strings.NewReader(values.Encode()), status)
 }
 
+func TestCaptionSettingCanBeEnabledAndDisabledThroughHTML(t *testing.T) {
+	f := newWorkflowFixture(t)
+	f.signIn(t)
+	f.hx = true
+
+	body, _ := f.request(t, http.MethodGet, "/settings", "", nil, http.StatusOK)
+
+	checkbox := requireElement(t, body, "input", map[string]string{"id": "settings-form-fetch_captions", "name": "fetch_captions", "type": "checkbox", "aria-describedby": "captions-hint"}, "")
+	if hasAttributes(checkbox, map[string]string{"checked": ""}) || f.app.Config.Snapshot().Config.FetchCaptions {
+		t.Fatal("caption fetching is enabled by default")
+	}
+
+	settings := url.Values{"_form": {"settings-form"}, "cache_gib": {"1"}, "refresh_minutes": {"30"}, "max_height": {"2160"}}
+	for _, enabled := range []bool{true, false} {
+		settings.Set("revision", f.app.Config.Snapshot().Revision)
+
+		if enabled {
+			settings.Set("fetch_captions", "on")
+		} else {
+			settings.Del("fetch_captions")
+		}
+
+		body, _ = f.form(t, "/actions/settings", settings, http.StatusOK)
+
+		checkbox = requireElement(t, body, "input", map[string]string{"name": "fetch_captions"}, "")
+		if hasAttributes(checkbox, map[string]string{"checked": ""}) != enabled || f.app.Config.Snapshot().Config.FetchCaptions != enabled {
+			t.Fatal("saved caption setting and rendered checkbox disagree", enabled)
+		}
+	}
+}
+
 func TestHTMLFormsUseTheSameAuthorityAndValidationAsJSON(t *testing.T) {
 	f := newWorkflowFixture(t)
 	data, _ := f.request(t, http.MethodGet, "/api/v1/session", "", nil, http.StatusOK)

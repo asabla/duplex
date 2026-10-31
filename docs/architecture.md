@@ -203,9 +203,9 @@ The pipeline has separate boundaries:
    binding is available for playback before optional asset work starts.
 6. For a recording's first preparation, retain a local thumbnail or write a
    deterministic fallback. Allow up to 250 ms for optional source artwork and
-   original-language captions, including any wait for the single asset slot.
-   Then request the prepared-recording scan. Discovery can request an earlier
-   scan before any media is ready; subsequent requests are coalesced.
+   original-language captions when enabled, including any wait for the single
+   asset slot. Then request the prepared-recording scan. Discovery can request
+   an earlier scan before any media is ready; subsequent requests are coalesced.
 
 Optional asset jobs have a durable `warming` state during the initial attempt.
 The background worker cannot consume these jobs. An interrupted attempt returns
@@ -218,6 +218,12 @@ asset slot. Optional source errors remain separate from media readiness.
 Asset manifests retain a modification timestamp for each content-addressed file.
 Changed content advances that timestamp even within the same second; unchanged
 content retains it. Older manifests without a timestamp use the file timestamp.
+
+Caption fetching requires `fetch_captions: true`; an omitted field is false.
+Initial and background asset work check the current settings before caption
+retrieval. Disabled fetching retains stored captions and continues thumbnail
+work. The setting does not cancel a request already in progress or queue a
+download for each stored video when enabled.
 
 Caption lookup uses the selected original audio language. Explicit subtitle
 tracks take priority. Automatic caption lookup checks exact and base-language

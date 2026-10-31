@@ -73,6 +73,7 @@ func (s *Server) saveSettings(r *http.Request) error {
 		*field.destination = value
 	}
 
+	c.FetchCaptions = r.FormValue("fetch_captions") == "on"
 	c.Plex.URL = r.FormValue("plex_url")
 	c.Plex.Section = r.FormValue("plex_section")
 

@@ -24,6 +24,7 @@ when the legacy FUSE transport is selected.
 | `refresh_minutes` | `30` | Scheduled channel refresh interval. |
 | `workers` | `2` | Channel discovery workers, from 1 to 4. Media preparation has a separate limit of 2; metadata operations have a limit of 4. |
 | `max_height` | `2160` | Maximum verified video height. Unsupported candidates fall back visibly. |
+| `fetch_captions` | `false` | Fetch available captions for the original audio language during optional asset work. Off by default to reduce source rate limits. Stored captions remain available when disabled. |
 | `plex.url` | empty | Plex origin, such as `http://plex:32400`. No embedded credentials, query, or path. |
 | `plex.section` | empty | The dedicated NFO TV library's numeric section ID. |
 | `plex.token_file` | empty | Protected token file accessible to duplex. The token itself does not belong in YAML. |
@@ -32,6 +33,11 @@ Storage directories must be absolute, dedicated paths. They cannot overlap.
 Listener, storage, mountpoint, and worker-count changes require a restart. Other
 valid settings reload. A cache reduction can fail while chunks are pinned; the
 last applicable limit remains active and Diagnostics reports the failure.
+
+Enable **Fetch captions** in Settings or set `fetch_captions: true` in YAML to
+fetch captions. An omitted field keeps caption fetching off, including in existing
+installations. Changes apply to subsequent optional asset work without a restart.
+Enabling this setting does not start a caption download for every stored video.
 
 ## Channel and playlist policies
 

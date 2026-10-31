@@ -6,7 +6,7 @@ cached for playback and seeking.
 
 - Select uploads, Shorts, and completed streams, up to 4K.
 - Set recording limits, keep individual videos, and preview changes before saving.
-- Use original audio, available subtitles, and local artwork.
+- Use original audio and local artwork, with optional caption fetching.
 
 ## Docker Compose
 

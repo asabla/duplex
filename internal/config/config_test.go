@@ -4,8 +4,58 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestCaptionFetchingConfigurationDefaultsAndRoundTrip(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "config.yaml")
+	if err := Create(file, filepath.Join(t.TempDir(), "state")); err != nil {
+		t.Fatal(err)
+	}
+
+	manager, err := Open(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	snapshot := manager.Snapshot()
+	if snapshot.Config.FetchCaptions {
+		t.Fatal("new installations must not fetch captions by default")
+	}
+
+	encoded, err := yaml.Marshal(snapshot.Config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	legacy := strings.ReplaceAll(string(encoded), "fetch_captions: false\n", "")
+
+	decoded, err := Decode([]byte(legacy))
+	if err != nil || decoded.FetchCaptions {
+		t.Fatal("omitted caption setting must remain disabled", err)
+	}
+
+	for _, enabled := range []bool{true, false} {
+		snapshot = manager.Snapshot()
+		snapshot.Config.FetchCaptions = enabled
+
+		if err = manager.Save(snapshot.Config, snapshot.Revision); err != nil {
+			t.Fatal(err)
+		}
+
+		reopened, err := Open(file)
+		if err != nil || reopened.Snapshot().Config.FetchCaptions != enabled {
+			t.Fatal("caption setting did not survive save and reopen", enabled, err)
+		}
+	}
+
+	if _, err = Decode([]byte(legacy + "fetch_captions: invalid\n")); err == nil {
+		t.Fatal("invalid caption setting accepted")
+	}
+}
 
 func TestExternalEditsAndStaleSave(t *testing.T) {
 	dir := t.TempDir()

@@ -27,6 +27,8 @@ func initialAssetFixture(t *testing.T) (*App, source.Metadata, *scanAssetTranspo
 	adapter.metadata[m.ID] = m
 
 	a := pipelineApp(t, pipelineChannel(config.DefaultSelection()), adapter)
+	setCaptionFetching(t, a, true)
+
 	if err := a.Sync(t.Context(), testOwner); err != nil {
 		t.Fatal(err)
 	}

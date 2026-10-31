@@ -49,6 +49,7 @@ type Config struct {
 	RefreshMinutes int       `yaml:"refresh_minutes" json:"refresh_minutes"`
 	Workers        int       `yaml:"workers" json:"workers"`
 	MaxHeight      int       `yaml:"max_height" json:"max_height"`
+	FetchCaptions  bool      `yaml:"fetch_captions" json:"fetch_captions"`
 	Plex           Plex      `yaml:"plex" json:"plex"`
 	Channels       []Channel `yaml:"channels" json:"channels"`
 }
