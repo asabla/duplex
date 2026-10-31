@@ -84,7 +84,7 @@ func TestContextLinksRejectRedirectsAndRetainResults(t *testing.T) {
 
 func TestChannelAndVideoTasksRetainContextAndSavedFormAuthority(t *testing.T) {
 	f := newWorkflowFixture(t)
-	f.signIn(t)
+	f.loadCSRF(t)
 	f.hx = true
 	f.form(t, "/actions/follow", url.Values{"url": {"https://www.youtube.com/@controlled"}, "mode": {"latest"}, "limit": {"50"}, "include_playlists": {"on"}, "_form": {"follow-form"}, "revision": {f.app.Config.Snapshot().Revision}}, http.StatusOK)
 	f.waitDiscovery(t)
@@ -176,7 +176,7 @@ func TestFormFieldTargetsAreLocalAndBounded(t *testing.T) {
 
 func TestPlaylistSaveUpdatesOnlyItsSummaryAndSkippedCount(t *testing.T) {
 	f := newWorkflowFixture(t)
-	f.signIn(t)
+	f.loadCSRF(t)
 	f.hx = true
 	f.form(t, "/actions/follow", url.Values{"url": {"https://www.youtube.com/@controlled"}, "mode": {"latest"}, "limit": {"50"}, "include_playlists": {"on"}, "revision": {f.app.Config.Snapshot().Revision}}, http.StatusOK)
 	f.waitDiscovery(t)

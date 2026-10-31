@@ -3,9 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 
-	"duplex/internal/admin"
 	"duplex/internal/config"
 )
 
@@ -54,12 +54,11 @@ func initialize(args []string) error {
 		return e
 	}
 
-	password, e := admin.InitCredentials(filepath.Join(root, "data", "secrets"))
-	if e != nil {
+	if e = os.MkdirAll(filepath.Join(snap.Config.DataDir, "secrets"), 0o700); e != nil {
 		return e
 	}
 
-	fmt.Printf("Created configuration. Administrator: admin\nRead the initial password from %s\n", password)
+	fmt.Printf("Created configuration. Open the administration listener at %s.\n", *listen)
 
 	return nil
 }

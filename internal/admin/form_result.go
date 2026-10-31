@@ -43,18 +43,13 @@ func errorField(r *http.Request, err error) string {
 }
 
 func (s *Server) savedForm(w http.ResponseWriter, r *http.Request) {
-	if s.App == nil || s.Auth == nil {
-		return
-	}
-
-	session, ok := s.Auth.Session(r)
-	if !ok {
+	if s.App == nil {
 		return
 	}
 
 	snap := s.App.Config.Snapshot()
 
-	v := page{CSRF: session.CSRF, Status: app.Status{Config: snap}, Revision: snap.Revision, ChannelSettings: map[string]config.Channel{}, OOB: true}
+	v := page{CSRF: csrfToken(r), Status: app.Status{Config: snap}, Revision: snap.Revision, ChannelSettings: map[string]config.Channel{}, OOB: true}
 	for _, ch := range snap.Config.Channels {
 		v.ChannelSettings[ch.ID] = ch
 	}

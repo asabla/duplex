@@ -1,4 +1,4 @@
-// Package admin serves the authenticated administration panel and JSON API.
+// Package admin serves the administration panel and JSON API.
 package admin
 
 import (

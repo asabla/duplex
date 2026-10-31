@@ -22,18 +22,23 @@ docker compose pull
 docker compose run --rm --no-deps duplex init \
   --config /state/config.yaml --state-dir /state --listen 0.0.0.0:8765
 docker compose up -d --wait
-docker compose exec duplex cat /state/data/secrets/initial-admin-password
 ```
 
-Open [duplex](http://localhost:8765) and sign in as `admin`. Initialization refuses
-to replace an existing configuration. The `duplex-state` named volume contains
-settings, catalogue data, credentials, indexes, artwork, and the media cache.
+Open [duplex](http://localhost:8765). No sign-in is required. Any client that can
+reach the web listener can manage Duplex. Keep the host port on loopback and use
+the SSH forwarding steps below for remote access.
+
+Initialization refuses to replace an existing configuration. It creates no
+administrator credentials. Existing administrator credential files are ignored;
+they do not restrict access after an upgrade. The `duplex-state` named volume
+contains settings, catalogue data, protected Plex tokens, indexes, artwork, and
+the media cache.
 Never remove it with `docker compose down --volumes` on an existing installation.
 
 | Purpose | Container path |
 | --- | --- |
 | Settings | `/state/config.yaml` |
-| Catalogue, credentials, artwork, and NFS identities | `/state/data` |
+| Catalogue, protected tokens, artwork, and NFS identities | `/state/data` |
 | Packaging indexes | `/state/indexes` |
 | Evictable media chunks | `/state/media` |
 | Plex library in the bundled example | `/data/media` |
@@ -45,8 +50,8 @@ library provider. It does not export `/state` or accept filesystem writes.
 
 NFS AUTH_SYS is not user authentication. Keep this endpoint on the trusted Docker
 host; do not publish it to the LAN or internet. Local users on that host can read
-the exported library. This is a file-access boundary, separate from the protected
-administrator interface and Plex API token.
+the exported library. This is a file-access boundary, separate from the web
+listener and Plex API token.
 Keep Docker's normal NAT bridge isolation and direct routing disabled. Older
 Docker releases have a [localhost port publishing limitation](https://docs.docker.com/engine/network/port-publishing/#publishing-ports).
 

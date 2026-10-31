@@ -70,8 +70,8 @@ without a timeout that could interrupt `dpkg`.
 After the quality gate passes, CI builds the Docker image on native Linux amd64
 and arm64 runners. Each image must pass `scripts/test-image.sh`: pinned tool
 versions, bundled JavaScript solver, license files, initialization, NFS export
-health, and the sign-in page. The NFS gate uses a fixed loopback host port and
-Docker's local NFS volume driver. It checks non-root server and consumer
+health, and direct administration access. The NFS gate uses a fixed loopback host
+port and Docker's local NFS volume driver. It checks non-root server and consumer
 containers with zero capabilities, default AppArmor/seccomp, private-export
 refusal, read-only access, and recovery after graceful and forced restarts.
 Separate legacy tests retain the enforced FUSE helper restrictions and crash
@@ -136,12 +136,12 @@ exception described in Code standards. For CSS, JavaScript, and development
 `.mjs` files, use the same Prettier command with the appropriate file path and
 omit `--parser go-template`.
 
-`./scripts/check-readability.sh` runs the non-Go checks separately. It creates 28
+`./scripts/check-readability.sh` runs the non-Go checks separately. It creates 27
 controlled pages and fragments in `.cache/markup` through
 `DUPLEX_MARKUP_TEST=1 go test -race -count=1 -run '^TestRenderedMarkupFixtures$' ./internal/admin`.
 The fixture adapter uses no external source or Plex service. The HTML validator
 checks labels and native elements, and writes `.cache/markup/markup-validation.json`.
-CI retains this summary. Do not upload the raw HTML, session values, or local
+CI retains this summary. Do not upload the raw HTML, CSRF tokens, or local
 fixture configuration. These checks complement the Browser and keyboard review.
 The artifact step includes hidden directories so its explicit `.cache` paths
 are uploaded. Keep that path list limited to the reviewed check outputs above.

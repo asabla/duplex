@@ -3,7 +3,6 @@
 
 import argparse
 import concurrent.futures
-import http.cookiejar
 import http.server
 import json
 import os
@@ -51,17 +50,13 @@ class Probe:
         self.output = args.output
         self.output.mkdir(mode=0o700)
         self.plex_opener = urllib.request.build_opener(SameOriginRedirect())
-        self.duplex_opener = urllib.request.build_opener(
-            SameOriginRedirect(),
-            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()),
-        )
+        self.duplex_opener = urllib.request.build_opener(SameOriginRedirect())
         self.token = args.token_file.read_text().strip()
         if not self.token or "\n" in self.token or "\r" in self.token:
             raise ValueError("Invalid token file")
         self.requests = []
         self.lock = threading.Lock()
         self.part_url = None
-        self.session_csrf = None
 
     def plex(self, path):
         request = urllib.request.Request(
@@ -79,32 +74,6 @@ class Probe:
         )
         with self.duplex_opener.open(request, timeout=self.args.timeout) as response:
             return json.load(response)
-
-    def login(self):
-        if not self.args.duplex_url:
-            return
-        session = self.duplex_json("/api/v1/session")
-        self.duplex_json(
-            "/api/v1/login",
-            {
-                "username": "admin",
-                "password": self.args.duplex_password_file.read_text().strip(),
-                "csrf": session["csrf"],
-            },
-        )
-        self.session_csrf = self.duplex_json("/api/v1/session")["csrf"]
-
-    def close(self):
-        if self.session_csrf:
-            request = urllib.request.Request(
-                self.args.duplex_url + "/logout",
-                data=b"",
-                headers={"X-CSRF-Token": self.session_csrf},
-            )
-            with self.duplex_opener.open(
-                request, timeout=self.args.timeout
-            ) as response:
-                response.read()
 
     def metrics(self):
         if not self.args.duplex_url:
@@ -214,7 +183,6 @@ class Probe:
         return row
 
     def run(self):
-        self.login()
         video = self.plex("/library/metadata/" + str(self.args.item)).find("Video")
         part = video.find("Media/Part") if video is not None else None
         if part is None or not part.get("key", "").startswith("/library/parts/"):
@@ -369,7 +337,6 @@ def arguments():
     parser.add_argument("--item", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--duplex-url", type=origin)
-    parser.add_argument("--duplex-password-file", type=Path)
     parser.add_argument("--clients", type=int, default=1)
     parser.add_argument("--av-seconds", type=int, default=2)
     parser.add_argument("--timeout", type=int, default=90)
@@ -383,10 +350,9 @@ def arguments():
         or not args.ffmpeg
         or args.output.exists()
         or not args.output.is_absolute()
-        or bool(args.duplex_url) != bool(args.duplex_password_file)
     ):
         parser.error(
-            "Use a valid item, 1-4 clients, 0-10 A/V seconds, 1-180 second timeout, installed FFmpeg, new absolute output path, and both Duplex options together"
+            "Use a valid item, 1-4 clients, 0-10 A/V seconds, 1-180 second timeout, installed FFmpeg, new absolute output path"
         )
     return args
 
@@ -395,10 +361,7 @@ if __name__ == "__main__":
     os.umask(0o077)
     try:
         probe = Probe(arguments())
-        try:
-            success = probe.run()
-        finally:
-            probe.close()
+        success = probe.run()
     except Exception as error:
         print("Playback profile failed: " + type(error).__name__, flush=True)
         raise SystemExit(1) from None

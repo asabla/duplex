@@ -291,7 +291,7 @@ for those checks. This source snapshot publishes no latency or capacity guarante
 
 ## Current measurement fields
 
-Authenticated status and diagnostics include cumulative `media.http_requests`
+Status and diagnostics include cumulative `media.http_requests`
 and `media.upstream_bytes` counters. They count media-client request attempts
 and received response payload bytes. They exclude resolver subprocess and artwork
 traffic and reset with the process.

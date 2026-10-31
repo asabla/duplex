@@ -43,15 +43,14 @@ separate from the application that publishes them. Preserve these boundaries.
 
 Administration server assembly and routing remain in `server.go`. Template
 formatting and rendering live in `templates.go`, with the page model in `view.go`.
-Request protection, session endpoints, and response handling have separate code
-locations. The HTML templates and transport contracts are unchanged by this
-responsibility extraction.
+Request protection and token handling live in `middleware.go` and `csrf.go`.
+The read API supplies CSRF tokens; response handling remains in `responses.go`.
 
 ## Current state and resource ownership
 
 | Owner | State and synchronization | Lifetime and persistence |
 | --- | --- | --- |
-| Service command | Configuration manager, authentication, application, listener, and profiling session. | Startup constructs them; HTTP serving returns before the deferred application close. |
+| Service command | Configuration manager, application, listener, and profiling session. | Startup constructs them; HTTP serving returns before the deferred application close. |
 | `app.App` | Shared runtime maps and status fields use `mu`. It also owns queues, wake channels, preparation slots, library-update serialization, cancellation, and worker waiting. | `Open` acquires cache ownership, opens the catalogue, starts the selected filesystem transport, and starts workers. `Close` cancels and waits, then closes the mount, cache, and catalogue. |
 | `config.Manager` | `fileMu` serializes file operations; `mu` protects the active snapshot. | YAML saves use expected revisions and atomic replacement. Invalid reloads keep the last valid snapshot. |
 | `catalog.Store` | Owns one write connection and at most two read-only projection connections. Catalogue operations manage rows and transactions. | SQLite retains identities, selections, preparation work, and projection state through restart. Readers open after migration and recovery and see committed WAL state. Callers must close rows and finish transactions; shutdown closes both pools. |
@@ -59,7 +58,7 @@ responsibility extraction.
 | `nfs.Server` | Owns its listener, connection/request bounds, and a separate `data/nfs.sqlite` database of wire identities. | Shutdown cancels requests, closes connections, waits, then closes the handle database. The application closes the cache and catalogue afterward. |
 | `library.Mount` and open handles | The mount owns the FUSE server and provider. Each handle retains one representation; static qualification snapshots use atomic replacement. | The application unmounts after its workers stop. Cache eviction or source renewal must not change an open handle's representation. |
 | Source adapter and diagnostics | The resolver bounds listing and metadata work with slots. The recorder protects its aggregates with a mutex. | Process calls have contexts and deadlines. Locators remain transient; measurements retain bounded operation data. |
-| `admin.Auth` | A mutex protects session and login-attempt state. | Protected files hold credentials; sessions and rate limits are process state. |
+| Administration request protection | Each client retains a random CSRF cookie. Writes compare the submitted token and origin. | No administrator account, credential file, or server-side session state is required. |
 
 `App.mu` is shared by several responsibilities; this table is not a complete lock
 ordering proof. Some state belongs to a single worker or the scheduler. Before
@@ -484,9 +483,14 @@ limits are applied in SQLite. Polling does not need the compatibility endpoint's
 complete video array and does not replace editable forms.
 
 UI writes validate and atomically replace YAML using the expected file revision.
-External invalid edits retain the last valid settings. One administrator account
-uses expiring sessions, login rate limits, and CSRF protection. Secrets and raw
-profiles remain outside editable YAML and public diagnostics.
+External invalid edits retain the last valid settings. The panel and JSON API
+require no sign-in; access depends on the administration listener's network
+boundary. Safe reads issue a random HttpOnly, SameSite=Strict CSRF cookie when
+needed. Writes require its matching token and a same-origin request. TLS requests
+also set Secure. The cookie survives service restarts and has no server-side
+session allocation. Initialization and startup do not create or load administrator
+credentials; existing credential files are ignored. Secrets and raw profiles
+remain outside editable YAML and public diagnostics.
 
 Recording selection uses one native editor form for preview and save. HTML saves
 compare the submitted normalized rules with the reviewed rules before writing.

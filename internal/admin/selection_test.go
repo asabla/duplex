@@ -14,7 +14,7 @@ import (
 
 func TestSelectionPreviewAndSaveSharePolicyAuthority(t *testing.T) {
 	f := newWorkflowFixture(t)
-	f.signIn(t)
+	f.loadCSRF(t)
 	f.json(t, http.MethodPost, "/api/v1/channels", map[string]any{"url": "https://www.youtube.com/@controlled", "limit": 50, "revision": f.app.Config.Snapshot().Revision}, http.StatusOK)
 	f.waitDiscovery(t)
 	revision := f.app.Config.Snapshot().Revision
@@ -47,7 +47,7 @@ func TestSelectionPreviewAndSaveSharePolicyAuthority(t *testing.T) {
 
 func TestRecordingSelectionFormsRetainDraftsAndRequirePreview(t *testing.T) {
 	f := newWorkflowFixture(t)
-	f.signIn(t)
+	f.loadCSRF(t)
 	f.json(t, http.MethodPost, "/api/v1/channels", map[string]any{"url": "https://www.youtube.com/@controlled", "limit": 50, "revision": f.app.Config.Snapshot().Revision}, http.StatusOK)
 	f.waitDiscovery(t)
 	f.request(t, http.MethodGet, "/selection?channel="+workflowChannel, "", nil, http.StatusOK)

@@ -13,24 +13,23 @@ import (
 //go:embed templates/*.html static/*
 var content embed.FS
 
-// Server serves the authenticated HTML and versioned JSON administration interfaces.
+// Server serves the HTML and versioned JSON administration interfaces.
 type Server struct {
 	App       *app.App
-	Auth      *Auth
 	templates *template.Template
 }
 
 // New parses the embedded templates and binds the shared application services.
-func New(a *app.App, auth *Auth) (*Server, error) {
+func New(a *app.App) (*Server, error) {
 	t, e := template.New("duplex").Funcs(templateFunctions()).ParseFS(content, "templates/*.html")
 	if e != nil {
 		return nil, e
 	}
 
-	return &Server{App: a, Auth: auth, templates: t}, nil
+	return &Server{App: a, templates: t}, nil
 }
 
-// Handler adds routing, authentication, request limits, and browser security headers.
+// Handler adds routing, CSRF protection, request limits, and browser security headers.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
@@ -62,10 +61,6 @@ func (s *Server) Handler() http.Handler {
 
 		writeText(w, "ready\n")
 	})
-	mux.HandleFunc("GET /login", s.loginPage)
-	mux.HandleFunc("POST /login", s.login)
-	mux.HandleFunc("GET /api/v1/session", s.session)
-	mux.HandleFunc("POST /api/v1/login", s.login)
 	mux.Handle("/", s.protected(http.HandlerFunc(s.route)))
 
 	return secureHandler(mux)
@@ -73,13 +68,6 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) route(w http.ResponseWriter, r *http.Request) {
 	p := r.URL.Path
-	if p == "/logout" && r.Method == "POST" {
-		s.Auth.Logout(w, r)
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
-
-		return
-	}
-
 	if strings.HasPrefix(p, "/api/v1/") {
 		s.api(w, r)
 		return

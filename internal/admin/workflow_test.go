@@ -11,7 +11,6 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -57,12 +56,11 @@ func (workflowSource) Playlists(ctx context.Context, _ string) ([]source.Playlis
 }
 
 type workflowFixture struct {
-	app      *app.App
-	server   *httptest.Server
-	client   *http.Client
-	password string
-	csrf     string
-	hx       bool
+	app    *app.App
+	server *httptest.Server
+	client *http.Client
+	csrf   string
+	hx     bool
 }
 
 func newWorkflowFixture(t *testing.T) *workflowFixture {
@@ -79,23 +77,6 @@ func newWorkflowFixture(t *testing.T) *workflowFixture {
 		t.Fatal(err)
 	}
 
-	settings := manager.Snapshot().Config
-
-	passwordFile, err := InitCredentials(filepath.Join(settings.DataDir, "secrets"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	password, err := os.ReadFile(passwordFile) //nolint:gosec // G304: This reads only credentials generated inside this test's temporary state.
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	auth, err := OpenAuth(filepath.Join(settings.DataDir, "secrets", "admin.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	application, err := app.Open(t.Context(), manager, workflowSource{}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +84,7 @@ func newWorkflowFixture(t *testing.T) *workflowFixture {
 
 	t.Cleanup(func() { closeTest(t, application) })
 
-	admin, err := New(application, auth)
+	admin, err := New(application)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +99,7 @@ func newWorkflowFixture(t *testing.T) *workflowFixture {
 
 	client := &http.Client{Jar: jar, Timeout: 5 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 
-	return &workflowFixture{app: application, server: server, client: client, password: strings.TrimSpace(string(password))}
+	return &workflowFixture{app: application, server: server, client: client}
 }
 
 func (f *workflowFixture) request(t *testing.T, method, path, contentType string, body io.Reader, status int) ([]byte, http.Header) {
@@ -178,25 +159,15 @@ func (f *workflowFixture) json(t *testing.T, method, path string, value any, sta
 	return result
 }
 
-func (f *workflowFixture) signIn(t *testing.T) {
+func (f *workflowFixture) loadCSRF(t *testing.T) {
 	t.Helper()
 	data, _ := f.request(t, http.MethodGet, "/api/v1/session", "", nil, http.StatusOK)
 
 	var session struct {
-		Authenticated bool   `json:"authenticated"`
-		CSRF          string `json:"csrf"`
+		CSRF string `json:"csrf"`
 	}
-	if err := json.Unmarshal(data, &session); err != nil || session.Authenticated || session.CSRF == "" {
-		t.Fatal("login session is invalid")
-	}
-
-	f.csrf = session.CSRF
-	f.json(t, http.MethodPost, "/api/v1/login", map[string]string{"username": "admin", "password": "wrong"}, http.StatusUnauthorized)
-	f.json(t, http.MethodPost, "/api/v1/login", map[string]string{"username": "admin", "password": f.password}, http.StatusOK)
-
-	data, _ = f.request(t, http.MethodGet, "/api/v1/session", "", nil, http.StatusOK)
-	if err := json.Unmarshal(data, &session); err != nil || !session.Authenticated || session.CSRF == "" {
-		t.Fatal("authenticated session is invalid")
+	if err := json.Unmarshal(data, &session); err != nil || session.CSRF == "" {
+		t.Fatal("CSRF response is invalid")
 	}
 
 	f.csrf = session.CSRF
@@ -229,15 +200,15 @@ func (f *workflowFixture) waitDiscovery(t *testing.T) {
 	}
 }
 
-func TestAuthenticatedAdministrationWorkflow(t *testing.T) {
+func TestAdministrationWorkflowWithoutLogin(t *testing.T) {
 	f := newWorkflowFixture(t)
 	f.request(t, http.MethodGet, "/healthz", "", nil, http.StatusOK)
 	f.request(t, http.MethodGet, "/mountz", "", nil, http.StatusServiceUnavailable)
 	f.request(t, http.MethodGet, "/readyz", "", nil, http.StatusServiceUnavailable)
-	f.request(t, http.MethodGet, "/channels", "", nil, http.StatusSeeOther)
-	f.request(t, http.MethodGet, "/api/v1/config", "", nil, http.StatusUnauthorized)
-	f.request(t, http.MethodGet, "/login", "", nil, http.StatusOK)
-	f.signIn(t)
+	f.request(t, http.MethodGet, "/channels", "", nil, http.StatusOK)
+	f.request(t, http.MethodGet, "/api/v1/config", "", nil, http.StatusOK)
+	f.request(t, http.MethodGet, "/login", "", nil, http.StatusNotFound)
+	f.loadCSRF(t)
 	f.json(t, http.MethodPost, "/api/v1/channels", map[string]any{"url": "https://www.youtube.com/@controlled", "limit": 50, "revision": f.app.Config.Snapshot().Revision}, http.StatusOK)
 	f.waitDiscovery(t)
 
@@ -266,8 +237,7 @@ func TestAuthenticatedAdministrationWorkflow(t *testing.T) {
 	f.request(t, http.MethodPut, "/api/v1/config", "application/json", strings.NewReader(`{"unknown":true}`), http.StatusBadRequest)
 	f.request(t, http.MethodPut, "/api/v1/config", "application/json", strings.NewReader(`{} {}`), http.StatusBadRequest)
 	f.exercisePolicyAndArtwork(t)
-	f.request(t, http.MethodPost, "/logout", "", nil, http.StatusSeeOther)
-	f.request(t, http.MethodGet, "/api/v1/status", "", nil, http.StatusUnauthorized)
+	f.request(t, http.MethodGet, "/api/v1/status", "", nil, http.StatusOK)
 }
 
 func (f *workflowFixture) exercisePolicyAndArtwork(t *testing.T) {

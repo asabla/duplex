@@ -65,9 +65,7 @@ func (s *Server) readPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	session, _ := s.Auth.Session(r)
-
-	v := page{Page: path, CSRF: session.CSRF, Status: status, Revision: status.Config.Revision, Counts: counts, Filters: r.URL.Query(), ChannelSettings: map[string]config.Channel{}}
+	v := page{Page: path, CSRF: csrfToken(r), Status: status, Revision: status.Config.Revision, Counts: counts, Filters: r.URL.Query(), ChannelSettings: map[string]config.Channel{}}
 	for _, ch := range status.Config.Config.Channels {
 		v.ChannelSettings[ch.ID] = ch
 	}

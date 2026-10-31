@@ -56,16 +56,10 @@ docker compose run --rm --no-deps duplex init \
 docker compose up -d --wait
 ```
 
-Read the initial password:
-
-```sh
-docker compose exec duplex cat /state/data/secrets/initial-admin-password
-```
-
-Open [duplex](http://localhost:8765) and sign in as `admin`. Settings and data stay
+Open [duplex](http://localhost:8765). No sign-in is required. Settings and data stay
 in the `duplex-state` volume. Both ports bind to localhost; use the
 [remote connection steps](docs/installation.md#connect-from-another-machine)
-for another machine.
+for another machine. Any client that can reach the web listener can manage Duplex.
 
 Duplex runs without added capabilities, a FUSE device, or a custom AppArmor
 profile. Docker mounts its read-only NFS library for Plex. GitHub Actions builds
