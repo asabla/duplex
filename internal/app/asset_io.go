@@ -53,7 +53,7 @@ func (a *App) saveAsset(id, suffix string, b []byte) (library.Entry, error) {
 	h := sha256.Sum256(b)
 
 	file := filepath.Join(dir, id+"-"+hex.EncodeToString(h[:])+suffix)
-	if e := config.AtomicWrite(file, b, 0o600); e != nil {
+	if e := config.AtomicWriteIfChanged(file, b, 0o600); e != nil {
 		return library.Entry{}, e
 	}
 

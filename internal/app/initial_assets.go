@@ -139,6 +139,10 @@ func (a *App) ensureInitialThumbnail(m source.Metadata) error {
 }
 
 func (a *App) acquireMetadataAssets(ctx context.Context, m source.Metadata) ([]library.Entry, error) {
+	if !a.Config.Snapshot().Config.FetchCaptions {
+		return a.acquireAssets(ctx, m, source.Candidate{})
+	}
+
 	candidates := source.Candidates(m, a.Config.Snapshot().Config.MaxHeight)
 	if len(candidates) == 0 {
 		return nil, errors.New("no supported asset language")

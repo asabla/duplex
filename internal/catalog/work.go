@@ -220,7 +220,7 @@ func (s *Store) RetryInitialAsset(ctx context.Context, id string) error {
 func (s *Store) NextAsset(ctx context.Context) (string, error) {
 	var id string
 
-	err := s.DB.QueryRowContext(ctx, `SELECT video_id FROM asset_jobs WHERE state='queued' ORDER BY updated,video_id LIMIT 1`).Scan(&id)
+	err := s.DB.QueryRowContext(ctx, `SELECT video_id FROM asset_jobs WHERE state='queued' OR (state IN ('ready','failed') AND updated>0 AND updated<?) ORDER BY updated,video_id LIMIT 1`, time.Now().Add(-6*time.Hour).Unix()).Scan(&id)
 
 	return id, err
 }

@@ -20,8 +20,6 @@ import (
 	"strings"
 	"time"
 
-	"duplex/internal/artwork"
-
 	"duplex/internal/config"
 	"duplex/internal/library"
 	"duplex/internal/source"
@@ -70,24 +68,6 @@ func (a *App) acquireAssets(ctx context.Context, m source.Metadata, c source.Can
 	}
 
 	return out, errors.Join(thumbnailErr, captionErr)
-}
-
-func (a *App) thumbnailAsset(ctx context.Context, m source.Metadata) (library.Entry, error) {
-	if m.Thumbnail == "" {
-		return library.Entry{}, errors.New("source thumbnail is missing")
-	}
-
-	data, err := fetchAsset(ctx, m.Thumbnail)
-	if err != nil {
-		return library.Entry{}, err
-	}
-
-	picture, err := artwork.DecodeSource(data)
-	if err != nil {
-		return library.Entry{}, err
-	}
-
-	return a.encodeThumbnail(m.ID, picture)
 }
 
 func (a *App) fallbackThumbnail(m source.Metadata) (library.Entry, error) {
@@ -148,7 +128,7 @@ func (a *App) saveAssetManifest(id string, entries []library.Entry) error {
 		return err
 	}
 
-	return config.AtomicWrite(filepath.Join(a.original.DataDir, "assets", id+".json"), data, 0o600)
+	return config.AtomicWriteIfChanged(filepath.Join(a.original.DataDir, "assets", id+".json"), data, 0o600)
 }
 
 func subtitleLanguage(m source.Metadata, c source.Candidate) string {
@@ -389,6 +369,15 @@ func (a *App) assetWorker(ctx context.Context) {
 }
 
 func (a *App) runAssetWork(ctx context.Context, id string) error {
+	selected, err := a.Catalog.IsSelected(ctx, id, visibility(a.Config.Snapshot().Config))
+	if err != nil {
+		return err
+	}
+
+	if !selected {
+		return a.Catalog.FinishAsset(ctx, id, nil)
+	}
+
 	if err := a.waitBackground(ctx); err != nil {
 		return err
 	}
@@ -414,7 +403,7 @@ func (a *App) runAssetWork(ctx context.Context, id string) error {
 }
 
 func (a *App) refreshAssets(ctx context.Context, id string) error {
-	m, err := a.playbackMetadata(ctx, id, false)
+	m, err := a.assetMetadata(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -422,13 +411,40 @@ func (a *App) refreshAssets(ctx context.Context, id string) error {
 	assets, err := a.acquireMetadataAssets(ctx, m)
 	if len(assets) > 0 {
 		err = errors.Join(err, a.Publish())
-		changed, queueErr := a.recordEpisodeAssets(ctx, id, assets)
+		_, queueErr := a.recordEpisodeAssets(ctx, id, assets)
 		err = errors.Join(err, queueErr)
-
-		if changed {
-			a.requestScan()
-		}
 	}
 
 	return err
+}
+
+func (a *App) assetMetadata(ctx context.Context, id string) (source.Metadata, error) {
+	if a.Config.Snapshot().Config.FetchCaptions {
+		return a.playbackMetadata(ctx, id, false)
+	}
+
+	m, err := a.Catalog.CachedMetadata(ctx, id)
+	if err != nil || m.Thumbnail != "" {
+		return m, err
+	}
+
+	reader, ok := source.ArtworkReader(a.Source)
+	if !ok {
+		return m, nil
+	}
+
+	release, err := a.acquireBackground(ctx, "metadata")
+	if err != nil {
+		return m, err
+	}
+	defer release()
+
+	m.Thumbnail, err = reader.ArtworkURL(ctx, id)
+	if err != nil {
+		return m, err
+	}
+
+	m.Thumbnail = source.PersistentThumbnail(m.Thumbnail)
+
+	return m, a.Catalog.SaveMetadata(ctx, m)
 }

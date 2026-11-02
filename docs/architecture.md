@@ -254,6 +254,22 @@ retrieval. Disabled fetching retains stored captions and continues thumbnail
 work. The setting does not cancel a request already in progress or queue a
 download for each stored video when enabled.
 
+With captions disabled, episode artwork uses catalogue metadata and does not
+resolve playable formats or require an audio candidate. Canonical metadata can
+retain a public `ytimg.com` image origin and path, with credentials, query strings,
+and fragments removed. Older records can use the optional lightweight artwork
+adapter; it does not fall back to full playback resolution. Missing artwork
+retains the deterministic fallback and never changes media readiness.
+
+Thumbnail state stores input and raw-body hashes, the output reference, public
+HTTP validators, and the last successful check. An unchanged input reuses its
+image for six hours. A later check uses conditional requests where available;
+unchanged response bytes skip JPEG encoding. Manifests and image files retain
+their inode when bytes and permissions match. Asset jobs for selected recordings
+become eligible again after six hours. Unselected jobs finish without network
+work. Artwork-only changes queue targeted metadata refreshes, without requesting
+a broad library scan.
+
 Caption lookup uses the selected original audio language. Explicit subtitle
 tracks take priority. Automatic caption lookup checks exact and base-language
 original tracks before other matching tracks: for example, `en-US` can use
