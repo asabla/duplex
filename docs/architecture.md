@@ -71,6 +71,13 @@ The application now groups mutable state by responsibility: `schedulerState`
 owns discovery queue bookkeeping and applied configuration, `preparationState`
 owns preparation capacity and active runs, `representationState` owns runtime
 bindings and leases, and `libraryState` owns scan and hint publication bookkeeping.
+Binding and resolution work groups own their mutexes and wait groups. They share
+in-flight requests by immutable revision or canonical video ID. Each waiter has
+its own cancellation; the shared context stops when its last waiter leaves, the
+application stops, or the hard deadline expires. At most 128 jobs per group are
+retained. Canceled jobs remain registered until work exits, so a retry cannot
+overlap an abandoned process. Shutdown waits for these groups before closing
+the mount, cache, and catalogue.
 `assetState` owns the optional asset wake channel and the single active asset
 operation. Its mutex only protects channel creation; it does not span I/O.
 `playbackState` owns the current Plex observation, policy generation, idle grace
@@ -289,6 +296,20 @@ Queue counts and errors share the existing metadata diagnostics fields.
 Preparation state is independent of source lifecycle. An upcoming broadcast is
 not a failed MP4 preparation. Completed discovery also does not mean all selected
 media is ready. Long work and item results remain durable through restarts.
+
+Full playback metadata has a separate cache of at most 64 results and an
+estimated 8 MiB. It evicts by last use and expires at the earliest format lease,
+with a five-minute maximum. Results without formats have a one-minute lifetime.
+Failures retain only a bounded error class for one second. Explicit renewal
+bypasses cached results, and a manual preparation retry clears cached failures.
+An expired-source binding invalidates its metadata. No locator is persisted.
+
+Two shared resolution slots bound full source work. Background work also retains
+its single metadata admission slot. Admission happens before request sharing,
+so a foreground waiter does not inherit a background pause. Discovery can reuse
+fresh playback metadata; otherwise it uses the catalogue profile. Resolver
+process counters retain only a fixed cause class. On Unix, cancellation stops
+the resolver process group, including its JavaScript helper.
 
 ## Virtual MP4
 

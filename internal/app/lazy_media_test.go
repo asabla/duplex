@@ -123,3 +123,85 @@ func TestDurableOpenHeadersAndCachedPayloadNeedNoSource(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLazyBindingDoesNotBelongToItsFirstReader(t *testing.T) {
+	a, adapter, _ := mediaPipeline(t)
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.prepareRecording(t.Context(), "video000000", false); err != nil {
+		t.Fatal(err)
+	}
+
+	v, err := a.Catalog.Video(t.Context(), "video000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	index, ok := a.reps[v.Revision].(*media.VirtualMP4)
+	if !ok {
+		t.Fatal("not a virtual MP4 fixture")
+	}
+
+	offset := int64(len(index.Header))
+	held := &heldMetadataSource{collectionSource: adapter, started: make(chan struct{}, 4), release: make(chan struct{})}
+	a.Source = held
+	a.reps = map[string]media.Representation{}
+
+	a.metadata = map[string]metadataLease{}
+	if err = a.Cache.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	chunks, err := cache.New(t.TempDir(), 16<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	a.Cache = chunks
+
+	t.Cleanup(func() {
+		a.bindingWork.close()
+		a.resolutionWork.close()
+
+		if err := chunks.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+
+	name := fmt.Sprintf("Channel-%s/Season %04d/Channel-%s - S%04dE%04d.mp4", testOwner, v.Year, testOwner, v.Year, v.Number)
+	provider := catalogueFS{app: a}
+	short, cancel := context.WithCancel(t.Context())
+	first := make(chan error, 1)
+
+	read := func(ctx context.Context) error {
+		handle, _, failure := provider.Open(ctx, name)
+		if failure != nil {
+			return failure
+		}
+
+		_, failure = handle.ReadAt(ctx, make([]byte, 64), offset)
+
+		return failure
+	}
+	go func() { first <- read(short) }()
+
+	<-held.started
+
+	long := make(chan error, 1)
+	go func() { long <- read(t.Context()) }()
+
+	waitSharedWaiters(t, &a.bindingWork, v.Revision, 2)
+	cancel()
+
+	if err = <-first; !errors.Is(err, context.Canceled) {
+		t.Fatal(err)
+	}
+
+	close(held.release)
+
+	if err = <-long; err != nil || held.calls.Load() != 1 {
+		t.Fatal("first reader canceled another reader's binding", err, held.calls.Load())
+	}
+}

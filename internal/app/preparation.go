@@ -60,6 +60,13 @@ func (a *App) PrepareNow(ctx context.Context, id string) error {
 		return err
 	}
 
+	a.mu.Lock()
+	if lease := a.metadata[id]; lease.failure != nil {
+		delete(a.metadata, id)
+	}
+
+	a.mu.Unlock()
+
 	requested, err := a.Catalog.RequestedPreparations(ctx)
 	if err != nil {
 		return err
@@ -164,6 +171,12 @@ func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) 
 }
 
 func (a *App) prepareTask(ctx context.Context, task catalog.PreparationTask) error {
+	cause := source.CausePreparation
+	if task.Priority == renewalPriority || task.Priority == streamRenewalPriority {
+		cause = source.CauseRenewal
+	}
+
+	ctx = source.WithCause(ctx, cause)
 	if task.Priority != streamRenewalPriority {
 		release, err := a.acquireBackground(ctx, "heavy")
 		if err != nil {

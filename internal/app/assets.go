@@ -419,6 +419,7 @@ func (a *App) refreshAssets(ctx context.Context, id string) error {
 }
 
 func (a *App) assetMetadata(ctx context.Context, id string) (source.Metadata, error) {
+	ctx = source.WithCause(ctx, source.CauseAsset)
 	if a.Config.Snapshot().Config.FetchCaptions {
 		return a.playbackMetadata(ctx, id, false)
 	}

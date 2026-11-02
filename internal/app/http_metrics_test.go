@@ -152,7 +152,13 @@ func TestMediaCountersMatchTheControlledOrigin(t *testing.T) {
 	}
 
 	counters := a.Measurements.Counters()
-	if len(counters) != 2 || counters[0].Value != origin.requests.Load() || counters[1].Value != origin.bytes.Load() || counters[1].Value <= 0 {
+
+	values := map[string]int64{}
+	for _, counter := range counters {
+		values[counter.Name] = counter.Value
+	}
+
+	if values["media.http_requests"] != origin.requests.Load() || values["media.upstream_bytes"] != origin.bytes.Load() || values["media.upstream_bytes"] <= 0 {
 		t.Fatal(counters, origin.requests.Load(), origin.bytes.Load())
 	}
 }
