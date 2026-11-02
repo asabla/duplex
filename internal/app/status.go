@@ -11,6 +11,7 @@ import (
 
 // Status is the compatibility diagnostic snapshot; Summary is intended for polling.
 type Status struct {
+	PlexScan        ScanStatus                `json:"plex_scan"`
 	Playback        PlaybackStatus            `json:"playback"`
 	Ready           bool                      `json:"ready"`
 	MountReady      bool                      `json:"mount_ready"`
@@ -54,8 +55,14 @@ func (a *App) Status(ctx context.Context) (Status, error) {
 	}
 
 	a.mu.RLock()
+	s.PlexScan = a.scanStatusLocked()
 	s.SourceError, s.MountError, s.PlexError, s.RestartRequired, s.PendingJobs = a.toolError, a.mountError, a.plexError, a.restart, len(a.queued)
+
 	cacheError := a.cacheError
+	if s.PlexError == "" {
+		s.PlexError = a.plexBindingError
+	}
+
 	s.MountReady = a.mount != nil && a.mount.Ready()
 	a.statusVideos(&s)
 	a.mu.RUnlock()

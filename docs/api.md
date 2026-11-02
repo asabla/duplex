@@ -146,11 +146,22 @@ reference; it does not delete a shared content-addressed asset.
 ## Playback protection
 
 Status and diagnostics include `playback`: `state`, `reason`,
-`background_paused`, aggregate `sessions`, `scanner_busy`, `last_check`,
+`background_paused`, aggregate `sessions`, `scanner_busy`, `background_tasks`,
+`last_check`,
 `last_success`, and `resume_after`. The states are `unconfigured`, `disabled`,
-`checking`, `active`, `scanning`, `unavailable`, and `idle`. During the idle grace
-period, `state` is `idle` and `background_paused` remains true. No user or media
+`checking`, `active`, `scanning`, `processing`, `unavailable`, and `idle`.
+`processing` means Plex reports activities while no session or dedicated scanner
+is active. Activity counts contain no task titles or identifiers. During the idle
+grace period, `state` is `idle` and `background_paused` remains true. No user or media
 session details are exposed. A playback pause does not change filesystem readiness.
+
+The separate `plex_scan` object reports automatic scan `state` and `pending`
+publication. States are `idle`, `queued`, `requesting`, `in_progress`,
+`reconciling`, and `retrying`. An accepted scan is not a readiness failure.
+Publication can remain pending while a prior scan is in progress. Current
+prerequisite errors clear after a successful health check. Actual binding errors
+remain in `plex_error` until reconciliation succeeds; they do not block every
+metadata job.
 
 Configuration accepts optional booleans `plex.playback_protection` and
 `plex.automatic_updates`. Both default to true when omitted. Protection requires

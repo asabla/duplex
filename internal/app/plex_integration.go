@@ -19,6 +19,11 @@ type libraryState struct {
 	hints          map[string]cachedHints
 	scanWake       chan struct{}
 	scanPending    bool
+	scanState      string
+	scanFirst      time.Time
+	scanLast       time.Time
+	scanChannels   map[string]bool
+	scanFull       bool
 }
 
 func (a *App) plexClientFor(p config.Plex) (*plex.Client, error) {
@@ -37,7 +42,12 @@ func (a *App) plexClientFor(p config.Plex) (*plex.Client, error) {
 		token = string(b)
 	}
 
-	return plex.New(p.URL, token)
+	client, err := plex.New(p.URL, token)
+	if err == nil {
+		client.Count = a.Measurements.Count
+	}
+
+	return client, err
 }
 
 // Scan checks the mount and Plex prerequisites before requesting library discovery.
@@ -52,9 +62,14 @@ const (
 	integrationHealth integrationMode = iota
 	integrationScan
 	integrationBindings
+	integrationDispatch
 )
 
-func (a *App) integration(ctx context.Context, mode integrationMode) (err error) {
+func (a *App) integration(ctx context.Context, mode integrationMode) error {
+	return a.integrationTargets(ctx, mode, nil)
+}
+
+func (a *App) integrationTargets(ctx context.Context, mode integrationMode, targets []string) (err error) {
 	if a.mount == nil {
 		return nil
 	}
@@ -79,12 +94,18 @@ func (a *App) integration(ctx context.Context, mode integrationMode) (err error)
 		defer release()
 	}
 
-	defer func() { a.integrationResult(mode, err) }()
+	defer func() {
+		if mode == integrationScan && errors.Is(err, errBackgroundDeferred) {
+			a.requestScan()
+		}
 
-	return a.runIntegration(ctx, mode)
+		a.integrationResult(mode, err)
+	}()
+
+	return a.runIntegration(ctx, mode, targets)
 }
 
-func (a *App) runIntegration(ctx context.Context, mode integrationMode) error {
+func (a *App) runIntegration(ctx context.Context, mode integrationMode, targets []string) error {
 	if !a.mount.Ready() {
 		a.mu.Lock()
 		a.mountError = "Library mount is unavailable; scans are disabled"
@@ -118,20 +139,47 @@ func (a *App) runIntegration(ctx context.Context, mode integrationMode) error {
 	}
 	defer release()
 
-	if mode == integrationScan {
-		if err = a.scanPlex(ctx, client, connection); err != nil {
+	return a.updatePlexLibrary(ctx, client, connection, mode, targets)
+}
+
+func (a *App) updatePlexLibrary(ctx context.Context, client *plex.Client, connection config.Plex, mode integrationMode, targets []string) error {
+	if mode == integrationScan || mode == integrationDispatch {
+		if err := a.scanPlex(ctx, client, connection, targets); err != nil {
 			return err
+		}
+
+		if mode == integrationDispatch {
+			return errScanPending
 		}
 	}
 
-	if err = client.WaitScan(ctx, connection.Section); err != nil {
+	if mode == integrationBindings {
+		busy, err := client.Scanning(ctx, connection.Section)
+		if err != nil {
+			return err
+		}
+
+		if busy {
+			return errScanPending
+		}
+	} else if err := client.WaitScan(ctx, connection.Section); err != nil {
 		return err
 	}
 
 	return a.bindPlex(ctx, client, connection)
 }
 
-func (a *App) bindPlex(ctx context.Context, client *plex.Client, connection config.Plex) error {
+func (a *App) bindPlex(ctx context.Context, client *plex.Client, connection config.Plex) (failure error) {
+	defer func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+
+		a.plexBindingError = ""
+		if failure != nil && !errors.Is(failure, errBackgroundDeferred) {
+			a.plexBindingError = failure.Error()
+		}
+	}()
+
 	run := time.Now().UnixNano()
 
 	if err := client.WalkBindings(ctx, connection.Section, func(bindings []plex.Binding) error {
@@ -188,33 +236,27 @@ func (a *App) setPlexError(e error) {
 	}
 }
 
-func (a *App) integrationResult(mode integrationMode, err error) {
+func (a *App) integrationResult(_ integrationMode, err error) {
 	if errors.Is(err, errBackgroundDeferred) {
 		return
 	}
 
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if mode != integrationHealth {
-		a.plexBindingError = ""
-		if err != nil {
-			a.plexBindingError = err.Error()
-		}
+	if errors.Is(err, errScanPending) {
+		err = nil
 	}
 
-	a.plexError = a.plexBindingError
-	if err != nil {
-		a.plexError = err.Error()
-	}
+	a.setPlexError(err)
 }
 
-func (a *App) scanPlex(ctx context.Context, client *plex.Client, connection config.Plex) (err error) {
-	defer func() {
-		if errors.Is(err, errBackgroundDeferred) {
-			a.requestScan()
-		}
-	}()
+func (a *App) scanPlex(ctx context.Context, client *plex.Client, connection config.Plex, targets []string) (err error) {
+	busy, err := client.Scanning(ctx, connection.Section)
+	if err != nil {
+		return err
+	}
+
+	if busy {
+		return errBackgroundDeferred
+	}
 
 	if err := a.prepareLibraryHints(ctx); err != nil {
 		return err
@@ -228,7 +270,14 @@ func (a *App) scanPlex(ctx context.Context, client *plex.Client, connection conf
 		return errBackgroundDeferred
 	}
 
-	return client.Scan(ctx, connection.Section)
+	err = client.ScanChannels(ctx, connection.Section, targets)
+	if errors.Is(err, plex.ErrRequestUncertain) {
+		// Reconcile first, then retain one paced retry for an unacknowledged request.
+		a.requestScan()
+		return errScanPending
+	}
+
+	return err
 }
 
 func (a *App) applyEpisodeOrder(ctx context.Context, client *plex.Client, connection config.Plex, run int64, promote bool, order catalog.EpisodeOrder) error {

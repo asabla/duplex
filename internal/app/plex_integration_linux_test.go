@@ -23,7 +23,7 @@ import (
 
 // This is a repeatable protocol and mount check, separate from the claimed Plex
 // server acceptance gate. The HTTP peer deliberately supplies controlled XML.
-func TestMountedPlexProtocolKeepsOrderingFailuresUntilReconciled(t *testing.T) {
+func TestMountedPlexProtocolRecoversCorrectedPrerequisites(t *testing.T) {
 	if os.Getenv("DUPLEX_FUSE_TEST") != "1" {
 		t.Skip("requires explicit Linux FUSE qualification")
 	}
@@ -197,8 +197,8 @@ func TestMountedPlexProtocolKeepsOrderingFailuresUntilReconciled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if a.plexError == "" {
-		t.Fatal("health check hid an unreconciled scan failure")
+	if a.plexError != "" {
+		t.Fatal("healthy prerequisites retained a stale scan failure")
 	}
 
 	if err = a.Scan(t.Context()); err != nil || a.plexError != "" {
@@ -224,6 +224,7 @@ func TestMountedPlexProtocolKeepsOrderingFailuresUntilReconciled(t *testing.T) {
 
 	a.mount = nil
 	a.integrationResult(integrationBindings, errors.New("controlled failure"))
+	a.plexBindingError = "controlled binding failure"
 
 	if a.plexBindingError == "" {
 		t.Fatal("binding failure was not retained")

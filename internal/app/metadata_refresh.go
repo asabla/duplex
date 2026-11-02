@@ -26,14 +26,6 @@ func (a *App) metadataWorker(ctx context.Context) {
 			continue
 		}
 
-		a.mu.RLock()
-		ordering := a.plexBindingError != ""
-		a.mu.RUnlock()
-
-		if ordering {
-			continue
-		}
-
 		a.refreshMetadataQueues(ctx)
 	}
 }

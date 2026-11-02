@@ -120,7 +120,7 @@ func (c *Client) Scan(ctx context.Context, section string) error {
 		return errors.New("invalid Plex library section")
 	}
 
-	return c.get(ctx, "/library/sections/"+section+"/refresh", nil)
+	return c.requestScan(ctx, section, "")
 }
 
 // Bindings reads the episode identifiers exposed by one library section.

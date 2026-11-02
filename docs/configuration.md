@@ -28,7 +28,7 @@ when the legacy FUSE transport is selected.
 | `plex.url` | empty | Plex origin, such as `http://plex:32400`. No embedded credentials, query, or path. |
 | `plex.section` | empty | The dedicated TV library's numeric section ID. Required for automatic updates; optional for playback monitoring. When set, monitoring also checks this library's scanner. |
 | `plex.token_file` | empty | Protected token file accessible to duplex. The token itself does not belong in YAML. |
-| `plex.playback_protection` | `true` | With a Plex connection, pause background work during server-wide sessions or a dedicated-library scan. Unavailable status keeps work paused. |
+| `plex.playback_protection` | `true` | With a Plex connection, pause background work during server-wide sessions, reported Plex tasks, or a dedicated-library scan. Unavailable status keeps work paused. |
 | `plex.automatic_updates` | `true` | Allow library scans, episode ordering, and metadata refresh requests. Set to `false` for playback monitoring with manual Plex scans. An omitted field preserves automatic updates in existing installations. |
 
 Storage directories must be absolute, dedicated paths. They cannot overlap.
@@ -56,16 +56,18 @@ requests and does not require an NFO agent. Add `section` to check the dedicated
 library's scanner as well. Automatic updates retain their existing library and
 NFO prerequisites when enabled.
 
-The monitor checks all Plex sessions every two seconds, with a two-second request
-deadline and one request in progress. Paused, buffering, and unknown sessions
+The monitor checks all Plex sessions and reported server activities every two
+seconds, with a two-second deadline and one status check in progress. Activities
+can include analysis after the dedicated scanner flag clears. Paused, buffering, and unknown sessions
 also pause background work. Startup checks, failed checks, and status older than
 five seconds keep work paused. Work resumes after 30 seconds of continuous,
 confirmed idle status. Diagnostics shows the reason and the last successful check.
 
 Discovery pauses between source calls and result batches. Optional assets pause
 between jobs. Ordinary preparation is canceled and returned to its queue without
-a failure. **Prepare now** also waits. Media reads, requested media bindings, and
-renewal of recently read streams can continue. A source call or asset operation
+a failure. **Prepare now** and scheduled source renewal also wait. Media reads
+and requested payload bindings can continue. Opens, headers, and cached reads do
+not identify an active viewer. A source call or asset operation
 already in progress can finish at its next admission boundary.
 
 Without a Plex connection, work uses the same bounded background limits, but

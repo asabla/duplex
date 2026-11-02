@@ -129,7 +129,7 @@ func TestMonitoringOnlyMakesReadOnlyRequestsWithoutNFOChecks(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
 
-		if r.Method != http.MethodGet || r.URL.Path != "/status/sessions" {
+		if r.Method != http.MethodGet || (r.URL.Path != "/status/sessions" && r.URL.Path != "/activities") {
 			t.Error("monitoring-only connection made a library request", r.Method, r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 
@@ -159,7 +159,7 @@ func TestMonitoringOnlyMakesReadOnlyRequestsWithoutNFOChecks(t *testing.T) {
 	a.runShowRefresh(t.Context(), catalog.ShowRefresh{})
 	a.runEpisodeRefresh(t.Context(), catalog.EpisodeRefresh{})
 
-	if err := a.refreshArtwork(t.Context(), testOwner); err != nil || requests.Load() != 1 {
+	if err := a.refreshArtwork(t.Context(), testOwner); err != nil || requests.Load() != 2 {
 		t.Fatal("monitor-only mode issued updates", requests.Load(), err)
 	}
 

@@ -21,15 +21,10 @@ type observedMedia struct {
 	media.Representation
 	recorder  *diagnostics.Recorder
 	operation string
-	app       *App
 }
 
 func (m observedMedia) ReadAt(ctx context.Context, data []byte, offset int64) (int, error) {
 	defer m.recorder.Begin(m.operation)()
-
-	if m.operation == "filesystem.read.media" {
-		m.app.recordStreamRead(m.ID())
-	}
 
 	n, err := m.Representation.ReadAt(ctx, data, offset)
 	if err != nil {
@@ -48,5 +43,5 @@ func (p catalogueFS) observedFile(rep media.Representation, name string) media.R
 		return rep
 	}
 
-	return observedMedia{Representation: rep, recorder: p.app.Measurements, operation: filesystemOperation("read", name), app: p.app}
+	return observedMedia{Representation: rep, recorder: p.app.Measurements, operation: filesystemOperation("read", name)}
 }

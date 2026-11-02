@@ -72,7 +72,7 @@ func TestMonitorCancellationStopsRequestAndKeepsWorkPaused(t *testing.T) {
 	}
 }
 
-func TestActiveReadsPromoteOnlyTheirRenewalDuringPlayback(t *testing.T) {
+func TestCachedReadsDoNotPromoteRenewalsDuringPlayback(t *testing.T) {
 	a := pipelineApp(t, pipelineChannel(config.Selection{Mode: "all"}), fixtureCollection(0))
 	prepared := projectionVideo(t, a, "video000001", 1)
 	projectionVideo(t, a, "video000002", 2)
@@ -87,21 +87,14 @@ func TestActiveReadsPromoteOnlyTheirRenewalDuringPlayback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !a.streamRecentlyRead(prepared.Metadata.ID, time.Now()) || a.streamRecentlyRead(prepared.Metadata.ID, time.Now().Add(2*time.Minute)) {
-		t.Fatal("read activity did not expire as expected")
-	}
-
 	p := config.Plex{URL: "http://plex.test:32400"}
 	setPlaybackConfig(t, a, p)
 	a.observePlayback(p, plex.Activity{Sessions: 1}, nil, time.Now())
 	a.renewCachedSources(t.Context())
 
-	task, release, err := a.nextPreparation(t.Context())
-	if err != nil || task.Priority != streamRenewalPriority || task.VideoID != prepared.Metadata.ID {
-		t.Fatal("active renewal could not run during playback", task, err)
+	if task, _, failure := a.nextPreparation(t.Context()); !errors.Is(failure, sql.ErrNoRows) {
+		t.Fatal("a cache read bypassed playback protection", task, failure)
 	}
-
-	release()
 
 	if err = a.Catalog.QueuePreparation(t.Context(), "video000002", 1000); err != nil {
 		t.Fatal(err)
@@ -149,5 +142,23 @@ func TestDeferredScanRetainsPendingWorkWithoutServiceFailure(t *testing.T) {
 
 	if !pending || serviceError != "" || bindingError != "" {
 		t.Fatal("deferred scan was lost or reported as a fault", pending, serviceError, bindingError)
+	}
+
+	// The automatic worker owns retries after consuming its publication batch.
+	a.mu.Lock()
+	a.scanPending = false
+	a.mu.Unlock()
+
+	err := a.integration(t.Context(), integrationDispatch)
+	if !errors.Is(err, errBackgroundDeferred) || a.scanPending {
+		t.Fatal("deferred worker duplicated its owned batch", err, a.scanPending)
+	}
+
+	state := scanSchedule{}
+	now := time.Now()
+	state.finished(integrationDispatch, err, now)
+
+	if mode, run := a.nextScan(now.Add(time.Minute), &state); !run || mode != integrationDispatch {
+		t.Fatal("worker lost its deferred batch")
 	}
 }

@@ -21,6 +21,8 @@ func TestActivityReadsAllSessionsWithoutLibraryMutations(t *testing.T) {
 		switch r.URL.Path {
 		case "/status/sessions":
 			writeTestResponse(t, w, []byte(`<MediaContainer size="3"><Video librarySectionID="other"><Player state="playing"/></Video><Track><Player state="paused"/></Track><Video><Player state="buffering"/></Video></MediaContainer>`))
+		case "/activities":
+			writeTestResponse(t, w, []byte(`<MediaContainer size="1"><Activity type="library.update"/></MediaContainer>`))
 		case "/library/sections":
 			writeTestResponse(t, w, []byte(`<MediaContainer><Directory key="7" refreshing="1"/></MediaContainer>`))
 		default:
@@ -36,12 +38,12 @@ func TestActivityReadsAllSessionsWithoutLibraryMutations(t *testing.T) {
 	}
 
 	activity, err := client.Activity(t.Context(), "7")
-	if err != nil || activity.Sessions != 3 || !activity.Scanning || requests != 2 {
+	if err != nil || activity.Sessions != 3 || !activity.Scanning || activity.Tasks != 1 || requests != 3 {
 		t.Fatal(activity, requests, err)
 	}
 
 	activity, err = client.Activity(t.Context(), "")
-	if err != nil || activity.Sessions != 3 || activity.Scanning || requests != 3 {
+	if err != nil || activity.Sessions != 3 || activity.Scanning || activity.Tasks != 1 || requests != 5 {
 		t.Fatal("monitoring without a dedicated library failed", activity, requests, err)
 	}
 
@@ -86,5 +88,24 @@ func TestActivityRejectsIncompleteAndUnavailableResponses(t *testing.T) {
 
 	if _, err = client.Activity(ctx, ""); err == nil {
 		t.Fatal("activity request ignored cancellation")
+	}
+}
+
+func TestBackgroundTasksRejectsMalformedAndIncompleteResponses(t *testing.T) {
+	for _, body := range []string{`<Other/>`, `invalid XML`, `<MediaContainer size="2"><Activity/></MediaContainer>`, `<MediaContainer size="-1"/>`} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { writeTestResponse(t, w, []byte(body)) }))
+
+		client, err := New(server.URL, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = client.BackgroundTasks(t.Context())
+
+		server.Close()
+
+		if err == nil {
+			t.Fatal("incomplete activity response admitted work", body)
+		}
 	}
 }

@@ -209,8 +209,8 @@ The pipeline has separate boundaries:
    successful enumeration boundary.
 4. Queue canonical media work in SQLite. Two preparation workers share videos
    used by several collections. Ordinary work, including explicit UI requests,
-   has one admission slot. Active-stream renewal has higher priority and can run
-   during a playback pause. Background preparation and Plex updates share one
+   has one admission slot. Scheduled source renewal waits during a playback
+   pause. Background preparation and Plex updates share one
    heavy-work slot. Requested filesystem bindings use separate admission within
    the existing two-slot preparation limit.
 5. Verify a representation and save its index and exact size. Its cached runtime
@@ -218,14 +218,16 @@ The pipeline has separate boundaries:
 6. For a recording's first preparation, retain a local thumbnail or write a
    deterministic fallback. Allow up to 250 ms for optional source artwork and
    original-language captions when enabled, including any wait for the single
-   asset slot. Then request the prepared-recording scan. Discovery can request
-   an earlier scan before any media is ready; subsequent requests are coalesced.
+   asset slot. Request a scan when durable recording metadata or its revision
+   changes. Discovery requests a scan only when the visible projection time changes.
 
 ### Plex playback admission
 
 A configured connection protects sessions across the entire Plex server by
-default. All reported sessions count, including paused sessions. An optional
-section adds scanner checks without library-agent checks. The monitor polls
+default. All reported sessions count, including paused sessions. The read-only
+`/activities` endpoint also protects reported server tasks after the scanner flag
+clears. This endpoint does not prove that every operating-system process is idle.
+An optional section adds scanner checks without library-agent checks. The monitor polls
 every two seconds with a two-second deadline. Startup, errors, or observations
 older than five seconds block background admission. Thirty seconds of continuous
 idle observations allow it to resume. A gap restarts this grace period.
@@ -234,8 +236,9 @@ Discovery waits before source calls and result batches. Optional assets and
 artwork wait between jobs or channels. Admitted source calls can finish at their
 next boundary. Preparation cancellation returns interrupted work to the durable
 queue without a failure. A UI priority request does not override protection.
-Media reads and requested bindings remain available. Reads mark bounded runtime
-representations as active for one minute; renewal of these streams is exempt.
+Media reads and requested payload bindings remain available. Opens, header reads,
+and cache reads do not identify a viewer or promote scheduled renewal work.
+NFS does not distinguish a scanner from a viewer that requests uncached payload.
 
 Automatic Plex updates have a separate policy. Monitoring-only connections issue
 no mutations and require no NFO agent or section. Automatic scans coalesce in
@@ -453,12 +456,10 @@ Eviction removes only its cache reference; an open handle keeps its immutable
 representation. A source change creates a new revision. Old handles can return
 their retained headers and exact cached bytes; unavailable old payload fails
 instead of returning replacement content. Unfinished preparations resume after
-restart. The restart
-queue also warms at most four recent selected ready recordings at priority 100,
-below explicit preparation requests and source renewal. Shared playlist
-occurrences use one canonical warm-up task. Paused channels, skipped playlists,
-and failed preparations are excluded. The existing two workers verify sources
-and reuse matching indexes; other retained recordings bind when opened.
+restart. The restart queue resumes selected interrupted work and preserves
+explicit preparation requests. Ready recordings are not warmed speculatively.
+Legacy priority-2000 renewal jobs are demoted to ordinary renewal priority when
+recovered; a prior scanner read cannot retain privileged admission after upgrade.
 
 The library projection is read-only. Channels are shows, year and playlist
 collections are seasons, and verified recordings are episodes. NFO files contain
@@ -468,13 +469,36 @@ uses show, season, and episode asset naming conventions.
 Before a managed scan, duplex records every bounded Plex observation page in
 SQLite. It moves changed occurrences to temporary indexes, assigns the desired
 indexes, and then scans with matching `.plexmatch` hints. Index fields remain
-unlocked. It waits for the scanner and reconciles bindings again. Failed work is
-visible and can resume from a fresh observation. A shared library-update lock
-serializes duplex scans, reconciliation, and targeted metadata refreshes.
+unlocked. A shared library-update lock serializes duplex requests, reconciliation,
+and targeted metadata refreshes.
+
+Automatic scan requests wait for 30 seconds without publication, with a maximum
+delay of two minutes while admission is allowed. A single-channel batch uses a
+scoped refresh when Plex reports one absolute POSIX library root. Multiple
+channels or roots use one section refresh. Shared playlist projections also use
+one section refresh so all occurrence owners can discover the change. The pending channel set is bounded
+at 64 entries, with a full-section fallback. Policy and visibility changes can
+also require a full-section scan. Unchanged renewal and asset refresh do not
+request section scans.
+
+An acknowledged scan remains in progress after its request context ends. The
+worker checks completion and reconciles bindings in separate bounded requests;
+it does not resend an accepted refresh while waiting. New publication stays
+pending. Failed requests and binding reconciliation retry at 30-second intervals
+without a fixed attempt limit. An uncertain transport result is reconciled first
+and retains a paced scan retry, since Plex may or may not have accepted it.
+Explicit qualification calls to `Scan` keep their caller-owned completion wait.
+
+Current prerequisite failures and actual binding failures have separate state.
+A successful health check clears a corrected prerequisite error. Only successful
+binding reconciliation clears a binding failure. Historical binding failure
+does not block all metadata jobs; each targeted operation validates its current
+section and item identity.
 
 Targeted metadata refreshes check scanner state immediately and wait only when
-it is busy. Newly requested scans retain their initial two-second grace before
-binding reconciliation, because a queued scan can briefly report idle.
+it is busy. Explicit scan waits retain an initial two-second grace. Automatic
+reconciliation starts after 30 seconds, because a queued scan can briefly report
+idle. Playback protection also waits for reported activities and its idle grace.
 
 Show NFO changes have durable content identities and a paced metadata-refresh
 queue. A completed refresh acknowledges only that version. Newer metadata remains

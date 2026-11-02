@@ -12,6 +12,41 @@ import (
 	"duplex/internal/media"
 )
 
+func TestUnchangedSourceRenewalDoesNotRequestScan(t *testing.T) {
+	a, adapter, _ := mediaPipeline(t)
+	if err := a.Sync(t.Context(), testOwner); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.prepareRecording(t.Context(), "video000000", false); err != nil {
+		t.Fatal(err)
+	}
+
+	a.mu.Lock()
+	a.scanPending, a.scanFull, a.scanChannels = false, false, nil
+	a.mu.Unlock()
+
+	if err := a.prepareRecording(t.Context(), "video000000", true); err != nil {
+		t.Fatal(err)
+	}
+
+	if a.scanPending {
+		t.Fatal("renewing an unchanged representation requested a scan")
+	}
+
+	metadata := adapter.metadata["video000000"]
+	metadata.Title = "Changed recording title"
+
+	adapter.metadata[metadata.ID] = metadata
+	if err := a.prepareRecording(t.Context(), metadata.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if !a.scanPending {
+		t.Fatal("changed text metadata did not request publication")
+	}
+}
+
 func TestDurableOpenHeadersAndCachedPayloadNeedNoSource(t *testing.T) {
 	a, adapter, origin := mediaPipeline(t)
 	if err := a.Sync(t.Context(), testOwner); err != nil {

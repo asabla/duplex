@@ -22,6 +22,7 @@ type PlaybackStatus struct {
 	BackgroundPaused bool      `json:"background_paused"`
 	Sessions         int       `json:"sessions"`
 	ScannerBusy      bool      `json:"scanner_busy"`
+	BackgroundTasks  int       `json:"background_tasks"`
 	LastCheck        time.Time `json:"last_check"`
 	LastSuccess      time.Time `json:"last_success"`
 	ResumeAfter      time.Time `json:"resume_after"`
@@ -129,12 +130,17 @@ func (a *App) updatePlaybackLocked(activity plex.Activity, failure error, now ti
 
 	if failure == nil {
 		s.LastSuccess, s.Sessions, s.ScannerBusy = now, activity.Sessions, activity.Scanning
+		s.BackgroundTasks = activity.Tasks
 
 		s.State, s.Reason = "active", "Plex has active sessions; background work is paused."
 		if activity.Sessions == 0 {
 			s.State, s.Reason = "scanning", "Plex is scanning the dedicated library; background work is paused."
 
-			if !activity.Scanning {
+			if activity.Tasks > 0 && !activity.Scanning {
+				s.State, s.Reason = "processing", "Plex reports background activity; duplex background work is paused."
+			}
+
+			if !activity.Scanning && activity.Tasks == 0 {
 				if a.idleSince.IsZero() {
 					a.idleSince = now
 				}
