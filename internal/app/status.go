@@ -11,6 +11,7 @@ import (
 
 // Status is the compatibility diagnostic snapshot; Summary is intended for polling.
 type Status struct {
+	Playback        PlaybackStatus            `json:"playback"`
 	Ready           bool                      `json:"ready"`
 	MountReady      bool                      `json:"mount_ready"`
 	RestartRequired bool                      `json:"restart_required"`
@@ -33,6 +34,7 @@ type Status struct {
 // Status is the compatibility diagnostic snapshot; Summary is intended for polling.
 func (a *App) Status(ctx context.Context) (Status, error) {
 	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot(), Counters: a.Measurements.Counters()}
+	s.Playback = a.PlaybackStatus()
 
 	var e error
 	if s.Channels, e = a.Catalog.Channels(ctx); e != nil {

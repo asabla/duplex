@@ -10,6 +10,7 @@ import (
 // the legacy JSON catalogue view; polling never needs its unbounded video array.
 func (a *App) Summary(ctx context.Context) (Status, catalog.Counts, error) {
 	s := Status{Config: a.Config.Snapshot(), Cache: a.Cache.Stats(), Measurements: a.Measurements.Snapshot(), Counters: a.Measurements.Counters()}
+	s.Playback = a.PlaybackStatus()
 
 	counts, err := a.Catalog.Summary(ctx, visibility(s.Config.Config))
 	if err != nil {

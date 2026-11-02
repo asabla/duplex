@@ -107,6 +107,8 @@ func pipelineApp(t testing.TB, ch config.Channel, adapter source.SourceAdapter) 
 	}
 
 	snap := manager.Snapshot()
+	disabled := false
+	snap.Config.Plex.PlaybackProtection = &disabled
 
 	snap.Config.Channels = []config.Channel{ch}
 	if err = manager.Save(snap.Config, snap.Revision); err != nil {

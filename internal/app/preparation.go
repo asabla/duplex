@@ -66,7 +66,7 @@ func (a *App) PrepareNow(ctx context.Context, id string) error {
 	}
 
 	a.mu.Lock()
-	a.interruptBackgroundLocked(max(0, 2-a.foreground-requested))
+	a.interruptBackgroundLocked(max(0, 1-requested))
 	a.mu.Unlock()
 	a.wakePreparation()
 
@@ -84,15 +84,7 @@ func (a *App) preparationWorker(ctx context.Context) {
 			return
 		}
 
-		if a.backgroundPaused() {
-			if !a.waitPreparation(ctx, ticker.C) {
-				return
-			}
-
-			continue
-		}
-
-		task, err := a.Catalog.ClaimPreparationTask(ctx)
+		task, release, err := a.nextPreparation(ctx)
 		if errors.Is(err, sql.ErrNoRows) {
 			if !a.waitPreparation(ctx, ticker.C) {
 				return
@@ -112,6 +104,7 @@ func (a *App) preparationWorker(ctx context.Context) {
 		}
 
 		a.runPreparation(ctx, task)
+		release()
 	}
 }
 
@@ -131,7 +124,7 @@ func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) 
 		a.Measurements.Add("preparation.queue", max(time.Duration(0), time.Since(time.Unix(task.QueuedAt, 0))))
 	}
 
-	if task.Priority >= 1000 {
+	if task.Priority == streamRenewalPriority {
 		finished := a.beginForeground()
 		defer finished()
 	}
@@ -146,7 +139,7 @@ func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) 
 
 	var err error
 	if started {
-		err = a.prepareRecording(workContext, task.VideoID, task.Priority == renewalPriority)
+		err = a.prepareTask(workContext, task)
 		a.endPreparation(task.VideoID)
 	}
 
@@ -168,6 +161,20 @@ func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) 
 		a.operationFailure("recording preparation", err)
 		a.operationFailure("preparation result", a.Catalog.SetPreparation(cleanup, task.VideoID, "failed", preparationReason(err)))
 	}
+}
+
+func (a *App) prepareTask(ctx context.Context, task catalog.PreparationTask) error {
+	if task.Priority != streamRenewalPriority {
+		release, err := a.acquireBackground(ctx, "heavy")
+		if err != nil {
+			return err
+		}
+		defer release()
+
+		ctx = backgroundContext(ctx)
+	}
+
+	return a.prepareRecording(ctx, task.VideoID, task.Priority == renewalPriority || task.Priority == streamRenewalPriority)
 }
 
 func (a *App) resolveRecording(ctx context.Context, id string, force bool) (source.Metadata, bool, error) {

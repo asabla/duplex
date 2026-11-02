@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -143,6 +144,10 @@ func (a *App) scanWorker(ctx context.Context) {
 		case <-timer.C:
 		}
 
+		if !a.automaticUpdatesAllowed() {
+			continue
+		}
+
 		mode, run := a.nextScan(time.Now(), &state)
 		if !run {
 			continue
@@ -158,7 +163,11 @@ func (a *App) scanWorker(ctx context.Context) {
 		err := diagnostics.Run(a.Measurements, operation, func() error { return a.integration(work, mode) })
 
 		stop()
-		a.operationFailure("Plex scan", err)
+
+		if !errors.Is(err, errBackgroundDeferred) {
+			a.operationFailure("Plex scan", err)
+		}
+
 		state.finished(mode, err)
 	}
 }

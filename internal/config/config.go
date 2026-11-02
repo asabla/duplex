@@ -32,10 +32,25 @@ type Channel struct {
 
 // Plex identifies the dedicated library and an external protected token file.
 type Plex struct {
-	URL       string `yaml:"url" json:"url"`
-	Section   string `yaml:"section" json:"section"`
-	TokenFile string `yaml:"token_file" json:"token_file"`
+	URL                string `yaml:"url" json:"url"`
+	Section            string `yaml:"section" json:"section"`
+	TokenFile          string `yaml:"token_file" json:"token_file"`
+	PlaybackProtection *bool  `yaml:"playback_protection,omitempty" json:"playback_protection,omitempty"`
+	AutomaticUpdates   *bool  `yaml:"automatic_updates,omitempty" json:"automatic_updates,omitempty"`
 }
+
+// ProtectPlayback enables server-wide monitoring when a connection is configured.
+func (p Plex) ProtectPlayback() bool {
+	return p.URL != "" && p.PlaybackProtectionEnabled()
+}
+
+// PlaybackProtectionEnabled retains the enabled policy before a connection is set.
+func (p Plex) PlaybackProtectionEnabled() bool {
+	return p.PlaybackProtection == nil || *p.PlaybackProtection
+}
+
+// UpdatesEnabled preserves automatic updates for configurations without this field.
+func (p Plex) UpdatesEnabled() bool { return p.AutomaticUpdates == nil || *p.AutomaticUpdates }
 
 // Config is the authoritative YAML schema for one installation.
 type Config struct {

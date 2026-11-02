@@ -62,6 +62,16 @@ func (m *Manager) Snapshot() Snapshot {
 func clone(c Config) Config {
 	s := c
 
+	if c.Plex.PlaybackProtection != nil {
+		value := *c.Plex.PlaybackProtection
+		s.Plex.PlaybackProtection = &value
+	}
+
+	if c.Plex.AutomaticUpdates != nil {
+		value := *c.Plex.AutomaticUpdates
+		s.Plex.AutomaticUpdates = &value
+	}
+
 	s.Channels = append([]Channel{}, c.Channels...)
 	for i := range s.Channels {
 		ch := &s.Channels[i]

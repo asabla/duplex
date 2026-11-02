@@ -18,6 +18,8 @@ var errFetchInterrupted = errors.New("shared cache fetch interrupted")
 // Get reserves unfinished writes, deduplicates fetches, and pins published data.
 // A failed cleanup remains accounted for until eviction or a later retry removes it.
 func (s *Store) Get(ctx context.Context, identity string, offset int64, length int, fetch func(context.Context) ([]byte, error)) ([]byte, func(), error) {
+	defer s.measure("cache.get")()
+
 	if length <= 0 || offset < 0 || int64(length) > math.MaxInt64-4095 || offset > math.MaxInt64-int64(length) {
 		return nil, nil, errors.New("invalid chunk bounds")
 	}
@@ -113,6 +115,8 @@ func (s *Store) acquireChunk(key string, reservation int64) (*entry, bool, <-cha
 // Only cancellation of the fetch owner's context qualifies; source failures
 // remain real errors. Three replacements bound retries for four viewers.
 func (s *Store) waitChunk(ctx context.Context, item *entry, done <-chan struct{}, interruptions int) (bool, error) {
+	defer s.measure("cache.wait")()
+
 	select {
 	case <-ctx.Done():
 		return false, ctx.Err()
@@ -136,6 +140,8 @@ func (s *Store) releaseChunk(item *entry) func() {
 }
 
 func (s *Store) readChunk(key string, item *entry, length int) ([]byte, func(), error) {
+	defer s.measure("cache.read")()
+
 	data, err := readChunkFile(item.path, length)
 
 	digest := sha256.Sum256(data)

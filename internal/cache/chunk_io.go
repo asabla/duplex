@@ -7,6 +7,8 @@ import (
 )
 
 func (s *Store) writeChunk(data []byte, reservation int64) (name string, allocation int64, err error) {
+	defer s.measure("cache.write")()
+
 	file, err := os.CreateTemp(s.dir, ".part-")
 	if err != nil {
 		return "", 0, err

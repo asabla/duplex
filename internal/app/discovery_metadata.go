@@ -9,6 +9,10 @@ import (
 )
 
 func (r *discoveryRun) metadataBatch(ctx context.Context, entries []source.Entry, owned bool) ([]source.Metadata, error) {
+	if err := r.app.waitBackground(ctx); err != nil {
+		return nil, err
+	}
+
 	if err := r.app.Catalog.Discover(ctx, r.channel.ID, entries); err != nil {
 		return nil, err
 	}
@@ -41,7 +45,7 @@ func (r *discoveryRun) metadata(ctx context.Context, entry source.Entry, owned b
 
 	cached := err == nil && videoErr == nil && recording(m) && v.MetadataAt > 0 && r.app.metadataFresh(v, entry)
 	if !cached {
-		m, err = r.app.Source.Metadata(ctx, entry.ID)
+		m, err = r.app.discoveryMetadata(ctx, entry.ID)
 		if errors.Is(err, source.ErrUnavailable) {
 			m = source.Metadata{ID: entry.ID, ChannelID: v.ChannelID, Title: entry.Title, LiveStatus: "unavailable"}
 			return m, r.app.Catalog.MarkUnavailable(ctx, entry.ID)

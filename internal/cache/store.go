@@ -34,6 +34,9 @@ type entry struct {
 
 // Store accounts for published chunks, active pins, and unfinished write reservations.
 type Store struct {
+	// Observe is optional and must be assigned before concurrent cache use.
+	// Operation names contain no paths, identities, or source locators.
+	Observe     func(string, time.Duration)
 	mu          sync.Mutex
 	dir         string
 	limit, used int64
@@ -42,6 +45,16 @@ type Store struct {
 	closed      bool
 	space       func() (free, total int64, err error)
 	allocation  func(os.FileInfo) int64
+}
+
+func (s *Store) measure(operation string) func() {
+	if s.Observe == nil {
+		return func() {}
+	}
+
+	started := time.Now()
+
+	return func() { s.Observe(operation, time.Since(started)) }
 }
 
 // Stats reports physical allocation and the configured cache limit.

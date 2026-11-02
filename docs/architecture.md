@@ -73,6 +73,9 @@ owns preparation capacity and active runs, `representationState` owns runtime
 bindings and leases, and `libraryState` owns scan and hint publication bookkeeping.
 `assetState` owns the optional asset wake channel and the single active asset
 operation. Its mutex only protects channel creation; it does not span I/O.
+`playbackState` owns the current Plex observation, policy generation, idle grace
+period, and background admission channels. `App.mu` protects these values. The
+single monitor has a bounded request context and is part of application shutdown.
 They remain inside `App` and use the existing shared mutex; transitions across
 these groups retain their original atomicity. The scheduler alone uses its
 `lastIntegration` timestamp. Lifecycle code owns acquisition, worker startup, and
@@ -193,11 +196,16 @@ Those locators are not persisted in catalogue metadata.
 The pipeline has separate boundaries:
 
 1. Discover lightweight IDs and commit safe additions.
-2. Resolve lifecycle and publication metadata under a global limit of four operations.
+2. Resolve background lifecycle and publication metadata through one application
+   admission slot. Requested playback resolution does not use this slot.
 3. Apply upload and playlist policies. Keep destructive reconciliation behind a
    successful enumeration boundary.
 4. Queue canonical media work in SQLite. Two preparation workers share videos
-   used by several collections; explicit requests receive higher priority.
+   used by several collections. Ordinary work, including explicit UI requests,
+   has one admission slot. Active-stream renewal has higher priority and can run
+   during a playback pause. Background preparation and Plex updates share one
+   heavy-work slot. Requested filesystem bindings use separate admission within
+   the existing two-slot preparation limit.
 5. Verify a representation and save its index and exact size. Its cached runtime
    binding is available for playback before optional asset work starts.
 6. For a recording's first preparation, retain a local thumbnail or write a
@@ -205,6 +213,28 @@ The pipeline has separate boundaries:
    original-language captions when enabled, including any wait for the single
    asset slot. Then request the prepared-recording scan. Discovery can request
    an earlier scan before any media is ready; subsequent requests are coalesced.
+
+### Plex playback admission
+
+A configured connection protects sessions across the entire Plex server by
+default. All reported sessions count, including paused sessions. An optional
+section adds scanner checks without library-agent checks. The monitor polls
+every two seconds with a two-second deadline. Startup, errors, or observations
+older than five seconds block background admission. Thirty seconds of continuous
+idle observations allow it to resume. A gap restarts this grace period.
+
+Discovery waits before source calls and result batches. Optional assets and
+artwork wait between jobs or channels. Admitted source calls can finish at their
+next boundary. Preparation cancellation returns interrupted work to the durable
+queue without a failure. A UI priority request does not override protection.
+Media reads and requested bindings remain available. Reads mark bounded runtime
+representations as active for one minute; renewal of these streams is exempt.
+
+Automatic Plex updates have a separate policy. Monitoring-only connections issue
+no mutations and require no NFO agent or section. Automatic scans coalesce in
+`scanPending` while paused. Updates check admission before each mutation and
+retain pending work on deferral. An in-progress request can finish. Playback
+status is independent of filesystem readiness; a pause is not a service fault.
 
 Optional asset jobs have a durable `warming` state during the initial attempt.
 The background worker cannot consume these jobs. An interrupted attempt returns

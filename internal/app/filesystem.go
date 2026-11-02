@@ -28,11 +28,16 @@ type (
 )
 
 func (p catalogueFS) Stat(ctx context.Context, name string) (library.Node, error) {
+	defer p.app.Measurements.Begin(filesystemOperation("stat", name))()
+
 	file, err := p.lookup(ctx, name)
+
 	return file.info, err
 }
 
 func (p catalogueFS) Open(ctx context.Context, name string) (media.Representation, int64, error) {
+	defer p.app.Measurements.Begin(filesystemOperation("open", name))()
+
 	file, err := p.lookup(ctx, name)
 	if err != nil {
 		return nil, 0, err
@@ -44,16 +49,18 @@ func (p catalogueFS) Open(ctx context.Context, name string) (media.Representatio
 
 	if file.episode != nil {
 		rep, err := p.app.bindEpisode(ctx, *file.episode)
-		return rep, file.info.Modified, err
+		return p.observedFile(rep, name), file.info.Modified, err
 	}
 
-	return file.data, file.info.Modified, nil
+	return p.observedFile(file.data, name), file.info.Modified, nil
 }
 
 func (p catalogueFS) OpenVersion(ctx context.Context, name, revision string) (media.Representation, error) {
+	defer p.app.Measurements.Begin(filesystemOperation("bind", name))()
+
 	if strings.HasSuffix(name, ".mp4") {
 		if rep := p.app.cachedRepresentation(revision); rep != nil {
-			return rep, nil
+			return p.observedFile(rep, name), nil
 		}
 	}
 
@@ -361,6 +368,8 @@ func (p catalogueFS) checkDirectory(ctx context.Context, name string) error {
 }
 
 func (p catalogueFS) ReadDir(ctx context.Context, name, after string, limit int) ([]library.Child, error) {
+	defer p.app.Measurements.Begin("filesystem.readdir")()
+
 	if limit < 1 || limit > 256 {
 		return nil, fs.ErrInvalid
 	}

@@ -48,6 +48,10 @@ func TestRenewalsAreBoundedAndDoNotInvalidateUsableHandles(t *testing.T) {
 		t.Fatal("renewal invalidated a usable representation")
 	}
 
+	if due := a.dueRenewals(time.Now()); len(due) != 1 {
+		t.Fatal("newly active stream did not reconsider its ordinary renewal", due)
+	}
+
 	if due := a.dueRenewals(time.Now()); len(due) != 0 {
 		t.Fatal("renewal retried continuously", due)
 	}

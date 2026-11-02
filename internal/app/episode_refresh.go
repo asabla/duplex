@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"duplex/internal/catalog"
+	"duplex/internal/config"
 	"duplex/internal/library"
+	"duplex/internal/plex"
 )
 
 func (a *App) recordEpisodeAssets(ctx context.Context, id string, entries []library.Entry) (bool, error) {
@@ -26,24 +28,34 @@ func (a *App) recordEpisodeAssets(ctx context.Context, id string, entries []libr
 }
 
 func (a *App) runEpisodeRefresh(ctx context.Context, job catalog.EpisodeRefresh) {
-	work, cancel := context.WithTimeout(ctx, 20*time.Second)
-	err := a.refreshEpisodeMetadata(work, job)
+	release, err := a.admitPlexUpdate(ctx)
+	if err == nil {
+		defer release()
 
-	cancel()
+		work, cancel := context.WithTimeout(ctx, 20*time.Second)
+		err = a.refreshEpisodeMetadata(work, job)
 
-	if ctx.Err() != nil {
+		cancel()
+	}
+
+	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+	defer stop()
+
+	if ctx.Err() != nil || errors.Is(err, errBackgroundDeferred) {
+		a.operationFailure("defer episode metadata", a.Catalog.DeferEpisodeRefresh(cleanup, job))
 		return
 	}
 
 	a.operationFailure("episode metadata refresh", err)
 
-	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
-	defer stop()
-
 	a.operationFailure("episode metadata result", a.Catalog.FinishEpisodeRefresh(cleanup, job, err))
 }
 
 func (a *App) refreshEpisodeMetadata(ctx context.Context, job catalog.EpisodeRefresh) error {
+	if !a.automaticUpdatesAllowed() {
+		return errBackgroundDeferred
+	}
+
 	release, err := a.acquireLibraryUpdate(ctx)
 	if err != nil {
 		return err
@@ -77,11 +89,7 @@ func (a *App) refreshEpisodeMetadata(ctx context.Context, job catalog.EpisodeRef
 		}
 
 		for _, item := range items {
-			if err = client.RefreshEpisode(ctx, connection.Section, item.Key, item.Occurrence); err != nil {
-				return err
-			}
-
-			if err = a.Catalog.AppliedEpisodeAssets(ctx, job, connection.URL, item); err != nil {
+			if err = a.refreshEpisodeOccurrence(ctx, client, connection, job, item); err != nil {
 				return err
 			}
 
@@ -104,4 +112,16 @@ func (a *App) metadataRefreshStatus(ctx context.Context) (int, string, error) {
 	}
 
 	return shows + episodes, failure, errors.Join(err, episodeErr)
+}
+
+func (a *App) refreshEpisodeOccurrence(ctx context.Context, client *plex.Client, connection config.Plex, job catalog.EpisodeRefresh, item catalog.ObservedEpisode) error {
+	if !a.automaticUpdatesAllowed() {
+		return errBackgroundDeferred
+	}
+
+	if err := client.RefreshEpisode(ctx, connection.Section, item.Key, item.Occurrence); err != nil {
+		return err
+	}
+
+	return a.Catalog.AppliedEpisodeAssets(ctx, job, connection.URL, item)
 }

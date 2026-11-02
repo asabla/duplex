@@ -43,7 +43,29 @@
         <dt>Pending work</dt>
         <dd>{{.Status.PendingJobs}}</dd>
       </div>
+      {{if .Status.Playback.State}}
+        <div>
+          <dt>Background work</dt>
+          <dd
+            >{{if .Status.Playback.BackgroundPaused}}
+              Paused
+            {{else}}
+              Available
+            {{end}}</dd
+          >
+        </div>
+      {{end}}
     </dl>
+    {{if .Status.Playback.State}}
+      <p>{{.Status.Playback.Reason}}</p>
+      {{if not .Status.Playback.LastSuccess.IsZero}}
+        <p class="hint"
+          >Last successful playback check:
+          {{.Status.Playback.LastSuccess.Format "2006-01-02 15:04:05Z07:00"}}.
+          Sessions: {{.Status.Playback.Sessions}}.</p
+        >
+      {{end}}
+    {{end}}
     {{if .Status.ConfigError}}
       <p class="error">{{.Status.ConfigError}}</p>
     {{end}}
@@ -251,6 +273,8 @@
       <dd
         >{{if not .Status.Config.Config.Plex.URL}}
           Optional; automatic scans not configured
+        {{else if not .Status.Config.Config.Plex.UpdatesEnabled}}
+          Playback monitoring; manual library scans
         {{else if .Status.PlexError}}
           {{.Status.PlexError}}
         {{else if .Status.Ready}}

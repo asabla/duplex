@@ -19,6 +19,7 @@ type representationState struct {
 	runtimeVideos map[string]string
 	renewAfter    map[string]time.Time
 	runtimeUsed   map[string]time.Time
+	streamUsed    map[string]time.Time
 	bindings      map[string]*representationBinding
 	metadata      map[string]metadataLease
 	leases        map[string]time.Time
@@ -96,6 +97,7 @@ func (a *App) cacheRepresentation(rep media.Representation, expires time.Time, v
 		delete(a.reps, oldest)
 		delete(a.leases, oldest)
 		delete(a.runtimeUsed, oldest)
+		delete(a.streamUsed, oldest)
 		delete(a.runtimeVideos, oldest)
 		delete(a.renewAfter, oldest)
 	}
@@ -116,9 +118,36 @@ func (a *App) cachedRepresentation(revision string) media.Representation {
 		}
 
 		a.runtimeUsed[revision] = time.Now()
+		a.recordStreamReadLocked(revision)
 	}
 
 	return rep
+}
+
+func (a *App) recordStreamRead(revision string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.reps[revision] == nil {
+		return
+	}
+
+	a.recordStreamReadLocked(revision)
+}
+
+func (a *App) recordStreamReadLocked(revision string) {
+	now := time.Now()
+	if now.Sub(a.streamUsed[revision]) >= time.Minute {
+		// An inactive stream can have a deferred ordinary renewal. Reconsider
+		// it once when reads start, without removing active-stream retry bounds.
+		delete(a.renewAfter, revision)
+	}
+
+	if a.streamUsed == nil {
+		a.streamUsed = map[string]time.Time{}
+	}
+
+	a.streamUsed[revision] = now
 }
 
 func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.Representation, error) {
@@ -133,6 +162,7 @@ func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.R
 
 	if call := a.bindings[episode.Revision]; call != nil {
 		a.mu.Unlock()
+		defer a.Measurements.Begin("playback.binding.wait")()
 
 		select {
 		case <-ctx.Done():
@@ -160,6 +190,8 @@ func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.R
 }
 
 func (a *App) bindUncachedEpisode(ctx context.Context, episode catalog.Episode) (media.Representation, error) {
+	defer a.Measurements.Begin("playback.binding")()
+
 	if rep := a.cachedRepresentation(episode.Revision); rep != nil {
 		return rep, nil
 	}
@@ -326,6 +358,8 @@ func leaseExpiry(m source.Metadata) time.Time {
 }
 
 func (a *App) playbackMetadata(ctx context.Context, id string, force bool) (source.Metadata, error) {
+	defer a.Measurements.Begin("playback.metadata")()
+
 	a.mu.RLock()
 	lease, ok := a.metadata[id]
 	a.mu.RUnlock()
@@ -334,7 +368,7 @@ func (a *App) playbackMetadata(ctx context.Context, id string, force bool) (sour
 		return lease.value, nil
 	}
 
-	m, err := a.Source.Resolve(ctx, id)
+	m, err := a.resolveSource(ctx, id)
 	if err == nil {
 		a.remember(m)
 	}

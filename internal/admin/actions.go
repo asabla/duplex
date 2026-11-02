@@ -76,6 +76,8 @@ func (s *Server) saveSettings(r *http.Request) error {
 	c.FetchCaptions = r.FormValue("fetch_captions") == "on"
 	c.Plex.URL = r.FormValue("plex_url")
 	c.Plex.Section = r.FormValue("plex_section")
+	protection, updates := r.FormValue("plex_playback_protection") == "on", r.FormValue("plex_automatic_updates") == "on"
+	c.Plex.PlaybackProtection, c.Plex.AutomaticUpdates = &protection, &updates
 
 	return s.App.Config.Save(c, r.FormValue("revision"))
 }

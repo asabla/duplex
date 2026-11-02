@@ -22,12 +22,14 @@ when the legacy FUSE transport is selected.
 | `mountpoint` | `<state>/library/media` | Legacy FUSE mount path; unused by the NFS export. |
 | `cache_gib` | `50` | Media cache maximum in GiB, including unfinished reservations. |
 | `refresh_minutes` | `30` | Scheduled channel refresh interval. |
-| `workers` | `2` | Channel discovery workers, from 1 to 4. Media preparation has a separate limit of 2; metadata operations have a limit of 4. |
+| `workers` | `2` | Channel discovery workers, from 1 to 4. Ordinary preparation has one admission slot. Background metadata resolution has one slot. Foreground media binding has independent admission within two shared preparation slots. |
 | `max_height` | `2160` | Maximum verified video height. Unsupported candidates fall back visibly. |
 | `fetch_captions` | `false` | Fetch available captions for the original audio language during optional asset work. Off by default to reduce source rate limits. Stored captions remain available when disabled. |
 | `plex.url` | empty | Plex origin, such as `http://plex:32400`. No embedded credentials, query, or path. |
-| `plex.section` | empty | The dedicated NFO TV library's numeric section ID. |
+| `plex.section` | empty | The dedicated TV library's numeric section ID. Required for automatic updates; optional for playback monitoring. When set, monitoring also checks this library's scanner. |
 | `plex.token_file` | empty | Protected token file accessible to duplex. The token itself does not belong in YAML. |
+| `plex.playback_protection` | `true` | With a Plex connection, pause background work during server-wide sessions or a dedicated-library scan. Unavailable status keeps work paused. |
+| `plex.automatic_updates` | `true` | Allow library scans, episode ordering, and metadata refresh requests. Set to `false` for playback monitoring with manual Plex scans. An omitted field preserves automatic updates in existing installations. |
 
 Storage directories must be absolute, dedicated paths. They cannot overlap.
 Listener, storage, mountpoint, and worker-count changes require a restart. Other
@@ -38,6 +40,37 @@ Enable **Fetch captions** in Settings or set `fetch_captions: true` in YAML to
 fetch captions. An omitted field keeps caption fetching off, including in existing
 installations. Changes apply to subsequent optional asset work without a restart.
 Enabling this setting does not start a caption download for every stored video.
+
+### Protect playback with manual Plex scans
+
+```yaml
+plex:
+  url: http://plex:32400
+  token_file: /state/data/secrets/plex-token
+  playback_protection: true
+  automatic_updates: false
+```
+
+Use an existing protected Plex token file. This mode makes no Plex mutation
+requests and does not require an NFO agent. Add `section` to check the dedicated
+library's scanner as well. Automatic updates retain their existing library and
+NFO prerequisites when enabled.
+
+The monitor checks all Plex sessions every two seconds, with a two-second request
+deadline and one request in progress. Paused, buffering, and unknown sessions
+also pause background work. Startup checks, failed checks, and status older than
+five seconds keep work paused. Work resumes after 30 seconds of continuous,
+confirmed idle status. Diagnostics shows the reason and the last successful check.
+
+Discovery pauses between source calls and result batches. Optional assets pause
+between jobs. Ordinary preparation is canceled and returned to its queue without
+a failure. **Prepare now** also waits. Media reads, requested media bindings, and
+renewal of recently read streams can continue. A source call or asset operation
+already in progress can finish at its next admission boundary.
+
+Without a Plex connection, work uses the same bounded background limits, but
+duplex cannot protect playback in other Plex libraries. Changes to these Plex
+policies apply without a restart.
 
 ## Channel and playlist policies
 

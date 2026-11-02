@@ -106,6 +106,13 @@ func (s *Store) AppliedEpisodeAssets(ctx context.Context, job EpisodeRefresh, se
 	return err
 }
 
+// DeferEpisodeRefresh releases admission without losing occurrence checkpoints.
+func (s *Store) DeferEpisodeRefresh(ctx context.Context, job EpisodeRefresh) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE episode_metadata SET attempted=0 WHERE video_id=? AND digest=? AND pending=1`, job.Video, job.Digest)
+
+	return err
+}
+
 // FinishEpisodeRefresh cannot acknowledge a newer asset version.
 func (s *Store) FinishEpisodeRefresh(ctx context.Context, job EpisodeRefresh, failure error) error {
 	message := ""

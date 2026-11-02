@@ -53,6 +53,16 @@ func (a *App) acquireAsset(ctx context.Context) (func(), error) {
 }
 
 func (a *App) queueRecordingAssets(ctx context.Context, m source.Metadata, initial bool) error {
+	if a.PlaybackStatus().BackgroundPaused {
+		if initial {
+			if err := a.ensureInitialThumbnail(m); err != nil {
+				return err
+			}
+		}
+
+		return a.Catalog.QueueAsset(ctx, m.ID)
+	}
+
 	if initial {
 		owned, err := a.Catalog.BeginInitialAsset(ctx, m.ID)
 		if err != nil {

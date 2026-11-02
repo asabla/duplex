@@ -51,6 +51,39 @@ func TestCaptionSettingCanBeEnabledAndDisabledThroughHTML(t *testing.T) {
 	}
 }
 
+func TestPlexMonitoringAndAutomaticUpdatesAreIndependentSettings(t *testing.T) {
+	f := newWorkflowFixture(t)
+	f.loadCSRF(t)
+	f.hx = true
+
+	body, _ := f.request(t, http.MethodGet, "/settings", "", nil, http.StatusOK)
+	for _, name := range []string{"plex_playback_protection", "plex_automatic_updates"} {
+		checkbox := requireElement(t, body, "input", map[string]string{"name": name, "type": "checkbox"}, "")
+		if !hasAttributes(checkbox, map[string]string{"checked": ""}) {
+			t.Fatal("omitted Plex policy did not preserve its default", name)
+		}
+	}
+
+	settings := url.Values{"_form": {"settings-form"}, "cache_gib": {"1"}, "refresh_minutes": {"30"}, "max_height": {"2160"}, "plex_playback_protection": {"on"}}
+	settings.Set("revision", f.app.Config.Snapshot().Revision)
+	f.form(t, "/actions/settings", settings, http.StatusOK)
+	p := f.app.Config.Snapshot().Config.Plex
+
+	if !p.PlaybackProtectionEnabled() || p.UpdatesEnabled() {
+		t.Fatal("monitoring-only policy was not saved", p)
+	}
+
+	settings.Del("plex_playback_protection")
+	settings.Set("plex_automatic_updates", "on")
+	settings.Set("revision", f.app.Config.Snapshot().Revision)
+	f.form(t, "/actions/settings", settings, http.StatusOK)
+	p = f.app.Config.Snapshot().Config.Plex
+
+	if p.PlaybackProtectionEnabled() || !p.UpdatesEnabled() {
+		t.Fatal("independent policy choices were not retained", p)
+	}
+}
+
 func TestHTMLFormsUseTheSameAuthorityAndValidationAsJSON(t *testing.T) {
 	f := newWorkflowFixture(t)
 	f.loadCSRF(t)

@@ -103,6 +103,20 @@ Unfollow is under Channel Settings. It describes the library effect and requires
 a deliberate confirmation in the enhanced interface. Durable identity records
 are retained. Keep Plex automatic trash emptying disabled to preserve history.
 
+## Protect playback
+
+In Settings, connect Plex and enable **Protect Plex playback**. Keep
+**Automatic library updates** off if you scan libraries manually. Add the token file
+in Advanced configuration. A section ID is optional for monitoring; when set,
+the dedicated library's scanner also pauses background work. See the
+[configuration example](configuration.md#protect-playback-with-manual-plex-scans).
+
+Diagnostics shows **Background work: Paused**, the reason, session count, and last
+successful check. Sessions in any Plex library, including paused sessions, block
+new background work. Unavailable status also keeps it paused. Work resumes after
+30 seconds of confirmed idle status. A queued preparation or retry waits for
+this protection; it does not override it. Filesystem reads remain available.
+
 ## Lists and keyboard controls
 
 Search, filters, sorting, and pagination use URLs that can be bookmarked. The

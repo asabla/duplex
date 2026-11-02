@@ -111,9 +111,9 @@
     <fieldset id="plex-connection">
       <legend>Plex connection</legend>
       <p class="hint"
-        >Optional. Enable automatic library scans and metadata updates after the
-        library is mounted in Plex. Media file access works without this
-        connection.</p
+        >Connect Plex to pause heavy background work while any library has
+        active sessions. Automatic library updates are a separate option. Media
+        file access works without this connection.</p
       >
       <label for="settings-form-plex_url"
         >Plex server URL<input
@@ -137,10 +137,45 @@
           aria-describedby="plex-library-hint"
         />
         <span id="plex-library-hint" class="hint"
-          >Use the dedicated duplex TV library. The Plex token remains in its
+          >Optional for playback monitoring. Required for automatic updates. Use
+          the dedicated duplex TV library. The Plex token remains in its
           protected file.</span
         >
       </label>
+      <label class="checkbox" for="settings-form-plex_playback_protection">
+        <input
+          id="settings-form-plex_playback_protection"
+          type="checkbox"
+          name="plex_playback_protection"
+          {{if .Status.Config.Config.Plex.PlaybackProtectionEnabled}}
+            checked
+          {{end}}
+          aria-describedby="playback-protection-hint"
+        />
+        Protect Plex playback
+      </label>
+      <p id="playback-protection-hint" class="hint"
+        >Pause background preparation, discovery, and optional assets while Plex
+        has sessions in any library. Paused sessions also protect playback.
+        Background work stays paused if playback status is unavailable and
+        resumes after 30 seconds of confirmed idle status. A protected Plex
+        token file must be configured in Advanced configuration.</p
+      >
+      <label class="checkbox" for="settings-form-plex_automatic_updates">
+        <input
+          id="settings-form-plex_automatic_updates"
+          type="checkbox"
+          name="plex_automatic_updates"
+          {{if .Status.Config.Config.Plex.UpdatesEnabled}}checked{{end}}
+          aria-describedby="automatic-updates-hint"
+        />
+        Automatic library updates
+      </label>
+      <p id="automatic-updates-hint" class="hint"
+        >Enable scans, metadata refreshes, and episode ordering after the
+        library is mounted in Plex. Leave this off to keep manual scans.
+        Playback monitoring does not require a library section ID.</p
+      >
     </fieldset>
     <div class="form-actions">
       <button>Save settings</button>
