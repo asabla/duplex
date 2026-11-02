@@ -159,10 +159,18 @@ func (a *App) playbackMetadata(ctx context.Context, id string, force bool) (sour
 		defer release()
 	}
 
+	// Admission can wait behind other work. Recheck before joining a fresh job.
+	if !force {
+		if m, ok, err := a.cachedMetadata(id); ok {
+			return m, err
+		}
+	}
+
 	// Admission occurs before sharing. A foreground waiter can join admitted
-	// background work without inheriting a wait for Plex to become idle.
+	// background work without inheriting a wait for Plex to become idle. Every
+	// shared callback resolves afresh, including when a forced caller joins it.
 	m, shared, err := a.resolutionWork.do(ctx, a.ctx, id, func(work context.Context) (source.Metadata, error) {
-		return a.resolveMetadata(work, id, force)
+		return a.resolveMetadata(work, id)
 	})
 	if shared {
 		a.Measurements.Count("resolution.coalesced_waiters", 1)
@@ -190,13 +198,7 @@ func (a *App) acquireResolution(ctx context.Context) (func(), error) {
 	}
 }
 
-func (a *App) resolveMetadata(work context.Context, id string, force bool) (source.Metadata, error) {
-	if !force {
-		if m, ok, err := a.cachedMetadata(id); ok {
-			return m, err
-		}
-	}
-
+func (a *App) resolveMetadata(work context.Context, id string) (source.Metadata, error) {
 	release, err := a.acquireResolution(work)
 	if err != nil {
 		return source.Metadata{}, err
