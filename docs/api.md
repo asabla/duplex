@@ -143,6 +143,21 @@ followed and a requested season must exist. Uploads are limited to 10 MiB and
 Assets are durable and independent of the media cache. Reset removes the YAML
 reference; it does not delete a shared content-addressed asset.
 
+## Playback protection
+
+Status and diagnostics include `playback`: `state`, `reason`,
+`background_paused`, aggregate `sessions`, `scanner_busy`, `last_check`,
+`last_success`, and `resume_after`. The states are `unconfigured`, `disabled`,
+`checking`, `active`, `scanning`, `unavailable`, and `idle`. During the idle grace
+period, `state` is `idle` and `background_paused` remains true. No user or media
+session details are exposed. A playback pause does not change filesystem readiness.
+
+Configuration accepts optional booleans `plex.playback_protection` and
+`plex.automatic_updates`. Both default to true when omitted. Protection requires
+a Plex URL. Set `automatic_updates: false` for monitoring with manual scans;
+the section is optional in this mode. See [Configuration](configuration.md#protect-playback-with-manual-plex-scans).
+Preparing a video raises its queue priority and does not override a playback pause.
+
 ## Errors and settings revisions
 
 JSON bodies must contain one document and known fields. Configuration and artwork

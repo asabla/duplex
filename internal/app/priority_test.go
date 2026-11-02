@@ -61,9 +61,17 @@ func TestRequestedPreparationInterruptsBackfillAndResumesAfterRestart(t *testing
 		go a.preparationWorker(a.ctx)
 	}
 
-	first, second := nextPreparationEvent(t, adapter.started), nextPreparationEvent(t, adapter.started)
-	if first == second || first == "video000002" || second == "video000002" {
-		t.Fatal(first, second)
+	first := nextPreparationEvent(t, adapter.started)
+	if first == "video000002" {
+		t.Fatal("explicit request fixture was already running", first)
+	}
+
+	a.mu.RLock()
+	active := len(a.preparations)
+	a.mu.RUnlock()
+
+	if active != 1 {
+		t.Fatal("background preparation exceeded its shared limit", active)
 	}
 
 	if err := a.PrepareNow(t.Context(), "video000002"); err != nil {
@@ -71,8 +79,8 @@ func TestRequestedPreparationInterruptsBackfillAndResumesAfterRestart(t *testing
 	}
 
 	cancelled := nextPreparationEvent(t, adapter.cancelled)
-	if cancelled != "video000001" {
-		t.Fatal("highest-priority background item was interrupted", cancelled)
+	if cancelled != first {
+		t.Fatal("requested preparation did not interrupt backfill", cancelled, first)
 	}
 
 	if requested := nextPreparationEvent(t, adapter.started); requested != "video000002" {
@@ -115,8 +123,8 @@ func TestForegroundBindingsReserveBothPreparationSlots(t *testing.T) {
 
 	first := a.beginForeground()
 
-	if !errors.Is(context.Cause(contexts[0]), errPlaybackPriority) || contexts[1].Err() != nil {
-		t.Fatal("one requested bind did not retain one background slot")
+	if !errors.Is(context.Cause(contexts[0]), errPlaybackPriority) || !errors.Is(context.Cause(contexts[1]), errPlaybackPriority) {
+		t.Fatal("requested playback did not yield all ordinary preparation")
 	}
 
 	second := a.beginForeground()

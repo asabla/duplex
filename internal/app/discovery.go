@@ -20,6 +20,10 @@ type discoveryRun struct {
 func (a *App) Sync(ctx context.Context, id string) error {
 	defer a.Measurements.Begin("sync")()
 
+	if err := a.waitBackground(ctx); err != nil {
+		return err
+	}
+
 	ch, err := a.followed(id)
 	if err != nil {
 		return err
@@ -31,7 +35,11 @@ func (a *App) Sync(ctx context.Context, id string) error {
 	}
 
 	run := discoveryRun{app: a, id: runID, channel: ch}
+
 	run.reader, _ = source.CollectionReader(a.Source)
+	if run.reader != nil {
+		run.reader = admittedCollections{Collections: run.reader, app: a}
+	}
 
 	err = run.execute(ctx)
 	if err == nil {

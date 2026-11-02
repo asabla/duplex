@@ -9,6 +9,8 @@ import (
 
 const renewalPriority = 200
 
+const streamRenewalPriority = 2000
+
 func selectedLeaseExpiry(candidate source.Candidate) time.Time {
 	formats := []source.Format{candidate.Video}
 	if candidate.Audio != nil {
@@ -35,7 +37,12 @@ func (a *App) renewCachedSources(ctx context.Context) {
 			continue
 		}
 
-		if err = a.Catalog.QueuePreparation(ctx, id, renewalPriority); err != nil {
+		priority := renewalPriority
+		if a.streamRecentlyRead(id, time.Now()) {
+			priority = streamRenewalPriority
+		}
+
+		if err = a.Catalog.QueuePreparation(ctx, id, priority); err != nil {
 			a.operationFailure("source renewal queue", err)
 			continue
 		}
@@ -71,4 +78,17 @@ func (a *App) dueRenewals(now time.Time) []string {
 	}
 
 	return due
+}
+
+func (a *App) streamRecentlyRead(id string, now time.Time) bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	for revision, used := range a.streamUsed {
+		if a.runtimeVideos[revision] == id && now.Sub(used) < time.Minute {
+			return true
+		}
+	}
+
+	return false
 }

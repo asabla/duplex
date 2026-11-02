@@ -85,6 +85,7 @@ func openApplication(ctx context.Context, m *config.Manager, adapter source.Sour
 		}
 	}
 
+	store.Observe = a.Measurements.Add
 	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add}
 
 	if !noMount {
@@ -157,6 +158,9 @@ func (a *App) Close() error {
 
 // startWorkers registers each worker before starting it; Close waits for this group.
 func (a *App) startWorkers(ctx context.Context, workers int) {
+	a.wg.Add(1)
+	go a.playbackWorker(ctx)
+
 	for range 2 {
 		a.wg.Add(1)
 		go a.preparationWorker(ctx)

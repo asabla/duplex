@@ -33,6 +33,14 @@ func TestEpisodeAssetsKeepVersionsRetriesAndAllOccurrences(t *testing.T) {
 		t.Fatal("reserved work was duplicated", err)
 	}
 
+	if err = s.DeferEpisodeRefresh(t.Context(), job); err != nil {
+		t.Fatal(err)
+	}
+
+	if retry, err := s.NextEpisodeRefresh(t.Context(), "server"); err != nil || retry != job {
+		t.Fatal("playback deferral applied a failure delay", retry, err)
+	}
+
 	after, count := "", 0
 	for {
 		page, err := s.EpisodeRefreshPage(t.Context(), "server", "fixture", after, 1)

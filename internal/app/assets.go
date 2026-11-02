@@ -364,6 +364,10 @@ func (a *App) assetWorker(ctx context.Context) {
 			return
 		}
 
+		if err := a.waitBackground(ctx); err != nil {
+			return
+		}
+
 		id, err := a.Catalog.NextAsset(ctx)
 		if err == nil {
 			if err = a.runAssetWork(ctx, id); err == nil {
@@ -385,6 +389,12 @@ func (a *App) assetWorker(ctx context.Context) {
 }
 
 func (a *App) runAssetWork(ctx context.Context, id string) error {
+	if err := a.waitBackground(ctx); err != nil {
+		return err
+	}
+
+	ctx = backgroundContext(ctx)
+
 	workCtx, stop := context.WithTimeout(ctx, time.Minute)
 	defer stop()
 

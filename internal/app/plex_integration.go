@@ -59,8 +59,32 @@ func (a *App) integration(ctx context.Context, mode integrationMode) (err error)
 		return nil
 	}
 
+	if !a.playbackConfig().UpdatesEnabled() {
+		a.mu.Lock()
+		a.plexError, a.plexBindingError = "", ""
+		a.mu.Unlock()
+
+		return nil
+	}
+
+	if mode != integrationHealth {
+		release, failure := a.admitPlexUpdate(ctx)
+		if failure != nil {
+			if mode == integrationScan {
+				a.requestScan()
+			}
+
+			return failure
+		}
+		defer release()
+	}
+
 	defer func() { a.integrationResult(mode, err) }()
 
+	return a.runIntegration(ctx, mode)
+}
+
+func (a *App) runIntegration(ctx context.Context, mode integrationMode) error {
 	if !a.mount.Ready() {
 		a.mu.Lock()
 		a.mountError = "Library mount is unavailable; scans are disabled"
@@ -95,15 +119,7 @@ func (a *App) integration(ctx context.Context, mode integrationMode) (err error)
 	defer release()
 
 	if mode == integrationScan {
-		if err = a.prepareLibraryHints(ctx); err != nil {
-			return err
-		}
-
-		if err = a.bindPlex(ctx, client, connection); err != nil {
-			return err
-		}
-
-		if err = client.Scan(ctx, connection.Section); err != nil {
+		if err = a.scanPlex(ctx, client, connection); err != nil {
 			return err
 		}
 	}
@@ -149,23 +165,11 @@ func (a *App) applyPlexOrder(ctx context.Context, client *plex.Client, connectio
 		}
 
 		for _, order := range orders {
+			if err = a.applyEpisodeOrder(ctx, client, connection, run, promote, order); err != nil {
+				return err
+			}
+
 			after = order.Occurrence
-			if order.Temporary <= 1<<30 || order.Temporary >= 1<<31 || order.Desired < 0 || order.Desired >= 1<<30 {
-				return errors.New("playlist exceeds the Plex episode index range")
-			}
-
-			index := order.Temporary
-			if promote {
-				index = order.Desired
-			}
-
-			if err = client.SetEpisodeOrder(ctx, connection.Section, order.Key, index); err != nil {
-				return err
-			}
-
-			if err = a.Catalog.AppliedEpisodeOrder(ctx, connection.URL, run, order.Occurrence, index); err != nil {
-				return err
-			}
 		}
 
 		if len(orders) < 128 {
@@ -185,6 +189,10 @@ func (a *App) setPlexError(e error) {
 }
 
 func (a *App) integrationResult(mode integrationMode, err error) {
+	if errors.Is(err, errBackgroundDeferred) {
+		return
+	}
+
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -199,4 +207,47 @@ func (a *App) integrationResult(mode integrationMode, err error) {
 	if err != nil {
 		a.plexError = err.Error()
 	}
+}
+
+func (a *App) scanPlex(ctx context.Context, client *plex.Client, connection config.Plex) (err error) {
+	defer func() {
+		if errors.Is(err, errBackgroundDeferred) {
+			a.requestScan()
+		}
+	}()
+
+	if err := a.prepareLibraryHints(ctx); err != nil {
+		return err
+	}
+
+	if err := a.bindPlex(ctx, client, connection); err != nil {
+		return err
+	}
+
+	if !a.automaticUpdatesAllowed() {
+		return errBackgroundDeferred
+	}
+
+	return client.Scan(ctx, connection.Section)
+}
+
+func (a *App) applyEpisodeOrder(ctx context.Context, client *plex.Client, connection config.Plex, run int64, promote bool, order catalog.EpisodeOrder) error {
+	if !a.automaticUpdatesAllowed() {
+		return errBackgroundDeferred
+	}
+
+	if order.Temporary <= 1<<30 || order.Temporary >= 1<<31 || order.Desired < 0 || order.Desired >= 1<<30 {
+		return errors.New("playlist exceeds the Plex episode index range")
+	}
+
+	index := order.Temporary
+	if promote {
+		index = order.Desired
+	}
+
+	if err := client.SetEpisodeOrder(ctx, connection.Section, order.Key, index); err != nil {
+		return err
+	}
+
+	return a.Catalog.AppliedEpisodeOrder(ctx, connection.URL, run, order.Occurrence, index)
 }

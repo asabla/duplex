@@ -160,7 +160,9 @@ func TestPlexReorderSnapshotsAllPagesAndResumesAfterPartialMutation(t *testing.T
 		t.Fatal(err)
 	}
 
-	connection := config.Plex{URL: server.URL, Section: "7"}
+	connection := config.Plex{URL: server.URL, Section: "7", PlaybackProtection: new(bool)}
+	setPlaybackConfig(t, a, connection)
+
 	if err = a.bindPlex(t.Context(), client, connection); err == nil {
 		t.Fatal("controlled partial mutation failure became success")
 	}

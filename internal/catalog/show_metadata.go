@@ -52,6 +52,13 @@ func (s *Store) NextShowRefresh(ctx context.Context) (ShowRefresh, error) {
 	return result, err
 }
 
+// DeferShowRefresh releases admission without applying a failure retry delay.
+func (s *Store) DeferShowRefresh(ctx context.Context, job ShowRefresh) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE show_metadata SET attempted=0 WHERE channel_id=? AND digest=? AND pending=1`, job.Channel, job.Digest)
+
+	return err
+}
+
 // FinishShowRefresh cannot acknowledge a newer version published during work.
 func (s *Store) FinishShowRefresh(ctx context.Context, job ShowRefresh, failure error) error {
 	message := ""

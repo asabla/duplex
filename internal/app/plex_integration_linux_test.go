@@ -123,7 +123,7 @@ func TestMountedPlexProtocolKeepsOrderingFailuresUntilReconciled(t *testing.T) {
 
 	settings := a.Config.Snapshot()
 
-	settings.Config.Plex = config.Plex{URL: server.URL, Section: "7", TokenFile: tokenFile}
+	settings.Config.Plex = config.Plex{URL: server.URL, Section: "7", TokenFile: tokenFile, PlaybackProtection: new(bool)}
 	if err = a.Config.Save(settings.Config, settings.Revision); err != nil {
 		t.Fatal(err)
 	}

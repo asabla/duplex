@@ -28,6 +28,14 @@ func TestShowMetadataChangesAreDurableAndAcknowledgedByVersion(t *testing.T) {
 		t.Fatal("in-flight refresh was not reserved", err)
 	}
 
+	if err = s.DeferShowRefresh(t.Context(), job); err != nil {
+		t.Fatal(err)
+	}
+
+	if retry, err := s.NextShowRefresh(t.Context()); err != nil || retry != job {
+		t.Fatal("playback deferral applied a failure delay", retry, err)
+	}
+
 	newStamp, err := s.RecordShowMetadata(t.Context(), "owner", "new-digest", stamp-1000)
 	if err != nil || newStamp <= stamp {
 		t.Fatal("show content change did not advance time", newStamp, err)

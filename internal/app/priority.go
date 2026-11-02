@@ -27,6 +27,10 @@ type preparationRun struct {
 }
 
 func (a *App) backgroundPaused() bool {
+	if a.PlaybackStatus().BackgroundPaused {
+		return true
+	}
+
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
@@ -36,7 +40,7 @@ func (a *App) backgroundPaused() bool {
 func (a *App) beginForeground() func() {
 	a.mu.Lock()
 	a.foreground++
-	a.interruptBackgroundLocked(max(0, 2-a.foreground))
+	a.interruptBackgroundBelowLocked(streamRenewalPriority, 0)
 	a.mu.Unlock()
 
 	return func() {
@@ -48,10 +52,11 @@ func (a *App) beginForeground() func() {
 }
 
 func (a *App) startPreparation(task catalog.PreparationTask, cancel context.CancelCauseFunc) bool {
+	p := a.playbackConfig()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	if task.Priority < 1000 && a.foreground > 0 {
+	if task.Priority < streamRenewalPriority && (a.foreground > 0 || a.playbackStatusLocked(p, time.Now()).BackgroundPaused) {
 		return false
 	}
 

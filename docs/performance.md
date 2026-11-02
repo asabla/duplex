@@ -301,6 +301,24 @@ timestamp has one-second resolution. `preparation.wait` measures the wait for
 shared preparation slots. Operation measurements use nanoseconds. Concurrent
 operation totals can overlap and must not be added as sequential wall time.
 
+Filesystem measurements separate `stat`, `open`, `bind`, and `read`, using fixed
+`.media` and `.metadata` suffixes. Directory reads use `filesystem.readdir`.
+`playback.metadata`, `playback.binding`, and `playback.binding.wait` separate
+source resolution, a cold binding, and shared-binding waits. `cache.get`,
+`cache.wait`, `cache.read`, and `cache.write` separate cache phases. The fields
+contain no filenames, media IDs, source URLs, or Plex user details.
+
+`plex.activity` measures the playback-status check. `background.wait` measures
+admission waits. Status includes a separate `playback` object with the pause
+reason, aggregate session count, scanner state, last check, last successful
+check, and idle resume deadline. These values restart with the process.
+
+Controlled tests read episode and show metadata, stat prepared media, and probe
+missing optional sidecars while source resolution is unavailable. These paths
+do not fetch source metadata or media. A cold MP4 open still resolves and verifies
+its source. This distinction helps diagnose a slow first episode visit; it does
+not establish the cause of a delay in Plex on a primary host.
+
 ## Reporting
 
 Identify the exact commit, source fingerprint, workload, platform, tool versions,

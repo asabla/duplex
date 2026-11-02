@@ -99,6 +99,15 @@ type PreparationTask struct {
 
 // ClaimPreparationTask reserves the highest-priority queued item transactionally.
 func (s *Store) ClaimPreparationTask(ctx context.Context) (PreparationTask, error) {
+	return s.claimPreparation(ctx, 0)
+}
+
+// ClaimStreamRenewal reserves only demand-driven renewal work during playback.
+func (s *Store) ClaimStreamRenewal(ctx context.Context) (PreparationTask, error) {
+	return s.claimPreparation(ctx, 2000)
+}
+
+func (s *Store) claimPreparation(ctx context.Context, minimum int) (PreparationTask, error) {
 	var task PreparationTask
 
 	tx, err := s.DB.BeginTx(ctx, nil)
@@ -107,7 +116,7 @@ func (s *Store) ClaimPreparationTask(ctx context.Context) (PreparationTask, erro
 	}
 	defer rollback(tx)
 
-	if err = tx.QueryRowContext(ctx, `SELECT video_id,priority,updated FROM preparation_jobs WHERE state='queued' ORDER BY priority DESC,updated,video_id LIMIT 1`).Scan(&task.VideoID, &task.Priority, &task.QueuedAt); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT video_id,priority,updated FROM preparation_jobs WHERE state='queued' AND priority>=? ORDER BY priority DESC,updated,video_id LIMIT 1`, minimum).Scan(&task.VideoID, &task.Priority, &task.QueuedAt); err != nil {
 		return task, err
 	}
 

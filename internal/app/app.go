@@ -23,6 +23,7 @@ type App struct {
 	libraryState
 	publicationState
 	assetState
+	playbackState
 
 	httpClient       *http.Client
 	Measurements     *diagnostics.Recorder

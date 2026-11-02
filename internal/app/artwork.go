@@ -350,9 +350,15 @@ func (a *App) renderPoster(channel, scope string, input artwork.Input, sourceErr
 }
 
 func (a *App) refreshArtwork(ctx context.Context, channel string) error {
-	if a.mount == nil || a.Config.Snapshot().Config.Plex.URL == "" {
+	if a.mount == nil || !a.automaticUpdatesAllowed() {
 		return nil
 	}
+
+	admitted, failure := a.admitPlexUpdate(ctx)
+	if failure != nil {
+		return failure
+	}
+	defer admitted()
 
 	release, err := a.acquireLibraryUpdate(ctx)
 	if err != nil {
@@ -366,6 +372,10 @@ func (a *App) refreshArtwork(ctx context.Context, channel string) error {
 	if err != nil {
 		a.setPlexError(err)
 		return err
+	}
+
+	if !a.automaticUpdatesAllowed() {
+		return nil
 	}
 
 	if err = client.RefreshShow(ctx, connection.Section, channel); err != nil {
@@ -400,6 +410,10 @@ func (a *App) artworkWorker(ctx context.Context) {
 
 		for _, ch := range a.Config.Snapshot().Config.Channels {
 			if ch.Enabled {
+				if err := a.waitBackground(ctx); err != nil {
+					return
+				}
+
 				a.updateChannelArtwork(ctx, ch, &state)
 			}
 		}
@@ -418,7 +432,7 @@ func (a *App) updateChannelArtwork(ctx context.Context, ch config.Channel, state
 	if time.Since(state.brandingAt[ch.ID]) >= 6*time.Hour {
 		state.brandingAt[ch.ID] = time.Now()
 
-		channel, err := a.Source.ResolveChannel(ctx, ch.URL)
+		channel, err := a.backgroundChannel(ctx, ch.URL)
 		if err == nil {
 			if channel.ID != ch.ID {
 				err = errors.New("channel artwork identity changed")
