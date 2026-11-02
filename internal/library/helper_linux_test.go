@@ -9,6 +9,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -226,6 +227,12 @@ func TestFuseHelperReadOnlyRestartAndLoss(t *testing.T) {
 	if os.Getenv("DUPLEX_FUSE_TEST") != "1" {
 		t.Skip("requires Linux FUSE")
 	}
+
+	// Without descriptor-mount polling setup, one os.File open can block every
+	// scheduler slot, including the Go test timeout goroutine.
+	previous := runtime.GOMAXPROCS(1)
+
+	t.Cleanup(func() { runtime.GOMAXPROCS(previous) })
 
 	root := t.TempDir()
 	mountpoint := filepath.Join(root, "media")

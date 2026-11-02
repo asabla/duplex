@@ -136,6 +136,10 @@ func MountProviderWithHelper(mountpoint string, provider Provider, socket string
 		return nil, errors.Join(err, lease.Close())
 	}
 
+	if err = primeMountPolling(mountpoint); err != nil {
+		return nil, errors.Join(err, m.Close())
+	}
+
 	if !m.Ready() {
 		return nil, errors.Join(errors.New("mount helper projection is not visible"), m.Close())
 	}

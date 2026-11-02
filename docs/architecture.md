@@ -514,6 +514,13 @@ options: it creates only the fixed read-only FUSE mount and transfers its open
 descriptor. Duplex serves that descriptor as a non-root process without
 capabilities. No per-read helper round trip is required.
 
+After receiving a FUSE descriptor, the service primes the pinned go-fuse polling
+probe through raw system calls at the real mount path. Descriptor mounts skip
+this step inside go-fuse because the library does not know that path. Priming
+must finish before Go file APIs read the mount: otherwise poll registration can
+occupy every scheduler slot while waiting for the same process to serve FUSE.
+The one-processor helper restart test covers this initialization boundary.
+
 The socket connection is the mount lease. Service disconnect triggers helper
 cleanup; helper loss stops the HTTP service so the container can restart. The
 helper rejects live or unrelated mounts and can detach only a disconnected
