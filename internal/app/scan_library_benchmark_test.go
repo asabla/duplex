@@ -166,6 +166,8 @@ func BenchmarkLibraryScan500(b *testing.B) {
 	provider := catalogueFS{app: a}
 	requests, received := origin.requests.Load(), origin.bytes.Load()
 
+	runtime.GC()
+
 	var before, after runtime.MemStats
 	runtime.ReadMemStats(&before)
 
@@ -198,6 +200,26 @@ func BenchmarkLibraryScan500(b *testing.B) {
 		calls += count
 	}
 
+	for _, counter := range a.Measurements.Counters() {
+		if counter.Name == "layout.disk_bytes" {
+			b.ReportMetric(float64(counter.Value)/float64(b.N), "index-bytes/op")
+		}
+
+		if counter.Name == "layout.miss" {
+			b.ReportMetric(float64(counter.Value)/float64(b.N), "index-loads/op")
+		}
+
+		if counter.Name == "layout.eviction" {
+			b.ReportMetric(float64(counter.Value)/float64(b.N), "index-evictions/op")
+		}
+	}
+
+	a.mu.RLock()
+	b.ReportMetric(float64(a.layoutBytes+a.runtimeIndexCost()), "retained-index-bytes")
+	b.ReportMetric(float64(len(a.layouts)+len(a.reps)), "retained-indexes")
+	a.mu.RUnlock()
+	b.ReportMetric(float64(after.HeapAlloc), "heap-bytes-after")
+	b.ReportMetric(float64(before.HeapAlloc), "heap-bytes-before")
 	b.ReportMetric(float64(calls)/float64(b.N), "resolutions/op")
 	b.ReportMetric(float64(len(counter.byVideo)), "unique-resolved")
 	b.ReportMetric(float64(calls-len(counter.byVideo))/float64(b.N), "duplicate-resolutions/op")

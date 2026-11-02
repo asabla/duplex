@@ -310,7 +310,7 @@ contain no filenames, media IDs, source URLs, or Plex user details.
 
 `plex.activity` measures the playback-status check. `background.wait` measures
 admission waits. Status includes a separate `playback` object with the pause
-reason, aggregate session count, scanner state, last check, last successful
+reason, aggregate session and reported activity counts, scanner state, last check, last successful
 check, and idle resume deadline. These values restart with the process.
 
 `resolution.request` counts actual full adapter resolutions. Its fixed cause
@@ -326,6 +326,18 @@ differ from adapter request counts. `resolver.process_cpu_ns.<cause>` retains
 the CPU time reported by the operating system for those processes. It is not a
 complete container CPU profile or a separate measurement of JavaScript helpers.
 No arguments, tokens, source URLs, or video IDs are included in these counters.
+
+`plex.scan.requests` counts refresh attempts. Fixed `.section` and `.scoped`
+counters distinguish the requested scope; `.accepted`, `.failed`, and
+`.uncertain` report outcomes. A transport failure can leave acceptance unknown.
+These counters exclude read-only status polls. `plex_scan` reports automatic scan
+progress separately from service errors and pending publication.
+
+`layout.disk_bytes` counts serialized index bytes loaded successfully. This is
+logical file I/O, not physical device traffic; the operating system can satisfy
+it from its page cache. `layout.miss`, `layout.hit`, and `layout.eviction` describe
+the bounded detached-layout cache. Retained layouts and bound indexes share the
+existing count and estimated byte budgets.
 
 Controlled tests read episode and show metadata, stat prepared media, and probe
 missing optional sidecars while source resolution is unavailable. These paths
@@ -366,6 +378,44 @@ entered through `VerifyRanges`; small spans amplify these reads. The detached
 path removes this verification from header-only scans. Payload reads can still
 require upstream work. These results do not establish primary-host scan time,
 Plex analysis behavior, or playback capacity.
+
+Two instrumented baseline repeats
+reported 171.400–180.279 seconds of wall time and 194.0–196.2 process CPU seconds
+for the same two passes. Those repeats overlapped other controlled work, so their
+wall times are not an isolated paired comparison. Each still reported 1,000
+resolutions, including 500 duplicates, and the same upstream totals.
+
+Three final detached-layout samples reported:
+
+| Measurement for two passes | Range or common value |
+| --- | ---: |
+| Wall time | 2.354–2.403 s |
+| Process CPU time | 2.766–2.822 s |
+| Source resolutions and resolver subprocesses | 0 |
+| Upstream requests and bytes | 0 |
+| Logical index bytes loaded | 437,180,000 |
+| Index loads / evictions | 1,000 / 891 |
+| Retained indexes | 109 |
+| Estimated retained index bytes | 67,102,144 |
+| Allocated bytes | 2,536,458,632–2,536,506,360 |
+| Heap before passes, after collection | 2,167,072–2,325,368 |
+| Heap after passes, before collection | 59,845,944–73,860,176 |
+
+The final timed passes did not overlap a quality gate or another profile workload.
+Index memory is a conservative estimate, not process RSS. Heap samples are point
+observations, not a peak-memory bound. Index allocation and I/O still occur under
+cache pressure: this change removes repeated upstream binding from header reads,
+not local parsing. The cache remains below 64 MiB and 128 entries; raising its
+limit is not the reason source work disappears. The adapter starts no external
+resolver processes in either version, so production process savings require a
+separate host measurement.
+
+Run the controlled workload with FFmpeg and FFprobe installed:
+
+```sh
+DUPLEX_MEDIA_TEST=1 go test ./internal/app -run '^$' \
+  -bench '^BenchmarkLibraryScan500$' -benchtime=1x -count=3 -benchmem
+```
 
 ## Reporting
 

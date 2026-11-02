@@ -124,6 +124,10 @@ func (a *App) loadLocalLayout(episode catalog.Episode) (media.Representation, er
 		return nil, media.ErrChanged
 	}
 
+	if info, failure := os.Stat(path); failure == nil {
+		a.Measurements.Count("layout.disk_bytes", info.Size())
+	}
+
 	layout.BindLayout(func(id string, size int64) media.Representation {
 		return &lazyTrack{app: a, episode: episode, id: id, size: size}
 	})
