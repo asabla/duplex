@@ -37,12 +37,7 @@ func (a *App) renewCachedSources(ctx context.Context) {
 			continue
 		}
 
-		priority := renewalPriority
-		if a.streamRecentlyRead(id, time.Now()) {
-			priority = streamRenewalPriority
-		}
-
-		if err = a.Catalog.QueuePreparation(ctx, id, priority); err != nil {
+		if err = a.Catalog.QueuePreparation(ctx, id, renewalPriority); err != nil {
 			a.operationFailure("source renewal queue", err)
 			continue
 		}
@@ -78,17 +73,4 @@ func (a *App) dueRenewals(now time.Time) []string {
 	}
 
 	return due
-}
-
-func (a *App) streamRecentlyRead(id string, now time.Time) bool {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	for revision, used := range a.streamUsed {
-		if a.runtimeVideos[revision] == id && now.Sub(used) < time.Minute {
-			return true
-		}
-	}
-
-	return false
 }

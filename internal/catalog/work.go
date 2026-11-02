@@ -157,8 +157,8 @@ func (s *Store) PendingPreparations(ctx context.Context) (int, error) {
 	return n, err
 }
 
-// ResetPreparations resumes interrupted work and warms at most four recent,
-// selected verified recordings. Other retained indexes still bind on demand.
+// ResetPreparations resumes selected interrupted work. Verified recordings load
+// their durable layouts on demand, without speculative source resolution.
 func (s *Store) ResetPreparations(ctx context.Context, v Visibility) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -167,13 +167,10 @@ func (s *Store) ResetPreparations(ctx context.Context, v Visibility) error {
 	defer rollback(tx)
 
 	cte, args := selectedCTE(v)
-	for _, query := range []string{
-		`INSERT INTO preparation_jobs(video_id,state,priority,updated) SELECT v.id,'queued',10,? FROM selected s JOIN videos v ON v.id=s.id WHERE v.revision='' OR v.id IN (SELECT video_id FROM preparation_jobs WHERE state IN ('queued','resolving','preparing')) ON CONFLICT(video_id) DO UPDATE SET state='queued',priority=MAX(preparation_jobs.priority,excluded.priority),updated=excluded.updated`,
-		`INSERT INTO preparation_jobs(video_id,state,priority,updated) SELECT v.id,'queued',100,? FROM selected s JOIN videos v ON v.id=s.id WHERE v.revision<>'' AND v.number>0 AND v.state IN ('recorded','replay-ready') AND v.preparation='ready' ORDER BY v.published DESC,v.id LIMIT 4 ON CONFLICT(video_id) DO UPDATE SET state='queued',priority=MAX(preparation_jobs.priority,excluded.priority),updated=excluded.updated`,
-	} {
-		if _, err = tx.ExecContext(ctx, cte+query, append(args, time.Now().Unix())...); err != nil {
-			return err
-		}
+
+	query := `INSERT INTO preparation_jobs(video_id,state,priority,updated) SELECT v.id,'queued',10,? FROM selected s JOIN videos v ON v.id=s.id WHERE v.revision='' OR v.id IN (SELECT video_id FROM preparation_jobs WHERE state IN ('queued','resolving','preparing')) ON CONFLICT(video_id) DO UPDATE SET state='queued',priority=CASE WHEN preparation_jobs.priority>=2000 THEN 200 ELSE MAX(preparation_jobs.priority,excluded.priority) END,updated=excluded.updated`
+	if _, err = tx.ExecContext(ctx, cte+query, append(args, time.Now().Unix())...); err != nil {
+		return err
 	}
 
 	return tx.Commit()

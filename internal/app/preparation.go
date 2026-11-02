@@ -245,7 +245,19 @@ func (a *App) resolveRecording(ctx context.Context, id string, force bool) (sour
 	return m, false, nil
 }
 
-func (a *App) prepareRecording(ctx context.Context, id string, force bool) error {
+func (a *App) prepareRecording(ctx context.Context, id string, force bool) (err error) {
+	before, err := a.Catalog.Video(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+		defer stop()
+
+		err = errors.Join(err, a.recordVideoPublication(cleanup, before))
+	}()
+
 	m, done, err := a.resolveRecording(ctx, id, force)
 	if done || err != nil {
 		return err
@@ -260,24 +272,17 @@ func (a *App) prepareRecording(ctx context.Context, id string, force bool) error
 		return err
 	}
 
-	previous, _, err := a.Catalog.RepresentationState(ctx, id)
-	if err != nil {
-		return err
-	}
-
 	if err = a.Catalog.SavePrepared(ctx, p); err != nil {
 		return err
 	}
 
-	if err = a.queueRecordingAssets(ctx, m, previous == ""); err != nil {
+	if err = a.queueRecordingAssets(ctx, m, before.Revision == ""); err != nil {
 		return err
 	}
 
 	if err = errors.Join(err, a.Publish()); err != nil {
 		return err
 	}
-
-	a.requestScan()
 
 	return nil
 }

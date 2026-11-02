@@ -17,8 +17,12 @@ import (
 // ErrMissingNFO means the actual server does not advertise an NFO series agent.
 var ErrMissingNFO = errors.New("plex server does not expose an NFO series provider; metadata acceptance gate failed")
 
+// ErrRequestUncertain means a request failed after dispatch; Plex may have accepted it.
+var ErrRequestUncertain = errors.New("plex request completion is unknown")
+
 // Client sends authenticated requests to one configured Plex origin without redirects.
 type Client struct {
+	Count func(string, int64)
 	base  *url.URL
 	token string
 	http  *http.Client
@@ -58,9 +62,13 @@ func (c *Client) request(ctx context.Context, method, path string, result any) (
 	req.Header.Set("X-Plex-Product", "duplex")
 	req.Header.Set("X-Plex-Client-Identifier", "duplex-qualification")
 
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+
 	r, err := c.http.Do(req)
 	if err != nil {
-		return errors.New("plex request failed")
+		return ErrRequestUncertain
 	}
 
 	defer func() { failure = errors.Join(failure, r.Body.Close()) }()
@@ -71,7 +79,7 @@ func (c *Client) request(ctx context.Context, method, path string, result any) (
 
 	b, err := io.ReadAll(io.LimitReader(r.Body, 16*1024*1024+1))
 	if err != nil || len(b) > 16*1024*1024 {
-		return errors.New("invalid Plex response size")
+		return errors.Join(ErrRequestUncertain, errors.New("invalid Plex response size"))
 	}
 
 	if result == nil {

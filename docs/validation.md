@@ -72,6 +72,16 @@ Use a dedicated test library and preserve existing user state. Verify:
   activity while multiple channels are queued. Local media playback must remain
   usable during the same workload. Controlled admission tests alone do not
   establish this host-level result.
+- A 500-recording controlled scan with large range maps: cold and repeated
+  header reads, bounded cache eviction, exact bytes, index I/O, allocation and
+  CPU totals, upstream requests, and total/unique/duplicate resolutions. Include
+  offline headers and cache hits, concurrent uncached payload, independent
+  waiter cancellation, source expiry, and unchanged thumbnail artifacts.
+- Batched and scoped scans, accepted scans longer than the request deadline,
+  new publication during a scan, prerequisite correction without restart, and
+  metadata queue recovery after a binding failure. Verify reported Plex
+  activities as well as the dedicated scanner flag. An idle activity endpoint
+  does not prove that all Plex operating-system processes are idle.
 - Restart with retained catalogue and indexes and a new empty media cache;
   unchanged refresh; exact media identity and saved Plex progress.
 - Channel and playlist identities, reorder, removal and return, separate occurrence

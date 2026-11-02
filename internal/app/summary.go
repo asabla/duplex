@@ -34,8 +34,14 @@ func (a *App) Summary(ctx context.Context) (Status, catalog.Counts, error) {
 	}
 
 	a.mu.RLock()
+	s.PlexScan = a.scanStatusLocked()
 	s.SourceError, s.MountError, s.PlexError, s.RestartRequired = a.toolError, a.mountError, a.plexError, a.restart
+
 	s.PendingJobs += len(a.queued)
+	if s.PlexError == "" {
+		s.PlexError = a.plexBindingError
+	}
+
 	s.MountReady = a.mount != nil && a.mount.Ready()
 
 	s.ConfigError = s.Config.Error

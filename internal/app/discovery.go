@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"reflect"
 
@@ -29,6 +30,11 @@ func (a *App) Sync(ctx context.Context, id string) error {
 		return err
 	}
 
+	before, err := a.projectionTime(ctx, id)
+	if err != nil {
+		return err
+	}
+
 	runID, err := a.Catalog.StartJob(ctx, id)
 	if err != nil {
 		return err
@@ -43,7 +49,12 @@ func (a *App) Sync(ctx context.Context, id string) error {
 
 	err = run.execute(ctx)
 	if err == nil {
-		a.requestScan()
+		after, failure := a.projectionTime(ctx, id)
+
+		err = failure
+		if failure == nil && after != before {
+			a.requestRecordingScan(id)
+		}
 	}
 
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
@@ -143,4 +154,14 @@ func (r *discoveryRun) current() error {
 	}
 
 	return nil
+}
+
+// An empty projection has no visible media and therefore has timestamp zero.
+func (a *App) projectionTime(ctx context.Context, channel string) (int64, error) {
+	changed, err := a.Catalog.ProjectionChanged(ctx, visibility(a.Config.Snapshot().Config), channel)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+
+	return changed, err
 }

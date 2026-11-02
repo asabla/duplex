@@ -4,11 +4,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"reflect"
 	"testing"
 )
 
-func TestRestartWarmupIsBoundedDeduplicatedAndRespectsVisibility(t *testing.T) {
+func TestRestartResumesRequestedWorkWithoutWarmingReadyRecordings(t *testing.T) {
 	s := collectionStore(t)
 
 	for n := range 10 {
@@ -36,6 +35,10 @@ func TestRestartWarmupIsBoundedDeduplicatedAndRespectsVisibility(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := s.QueuePreparation(t.Context(), "video01", 2000); err != nil {
+		t.Fatal(err)
+	}
+
 	visible := Visibility{Channels: []string{"uploader"}, PlaylistChannels: []string{"owner"}}
 	if err := s.ResetPreparations(t.Context(), visible); err != nil {
 		t.Fatal(err)
@@ -56,20 +59,8 @@ func TestRestartWarmupIsBoundedDeduplicatedAndRespectsVisibility(t *testing.T) {
 		tasks = append(tasks, task)
 	}
 
-	if len(tasks) != 5 || tasks[0].VideoID != "video00" || tasks[0].Priority != 1000 {
-		t.Fatal("warmup displaced requested work or exceeded its bound", tasks)
-	}
-
-	var warmed []string
-	for _, task := range tasks[1:] {
-		warmed = append(warmed, task.VideoID)
-		if task.Priority != 100 {
-			t.Fatal("warmup priority changed", task)
-		}
-	}
-
-	if !reflect.DeepEqual(warmed, []string{"video05", "video06", "video07", "video08"}) {
-		t.Fatal("warmup did not select unique recent ready recordings", warmed)
+	if len(tasks) != 2 || tasks[0].VideoID != "video00" || tasks[0].Priority != 1000 || tasks[1].VideoID != "video01" || tasks[1].Priority != 200 {
+		t.Fatal("restart resolved ready recordings without a request", tasks)
 	}
 
 	if err := s.ResetPreparations(t.Context(), Visibility{}); err != nil {

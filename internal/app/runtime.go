@@ -22,7 +22,6 @@ type representationState struct {
 	runtimeVideos   map[string]string
 	renewAfter      map[string]time.Time
 	runtimeUsed     map[string]time.Time
-	streamUsed      map[string]time.Time
 	bindingWork     sharedWork[media.Representation]
 	resolutionWork  sharedWork[source.Metadata]
 	resolutionSlots chan struct{}
@@ -96,7 +95,6 @@ func (a *App) cacheRepresentation(rep media.Representation, expires time.Time, v
 		delete(a.reps, oldest)
 		delete(a.leases, oldest)
 		delete(a.runtimeUsed, oldest)
-		delete(a.streamUsed, oldest)
 		delete(a.runtimeVideos, oldest)
 		delete(a.renewAfter, oldest)
 	}
@@ -122,32 +120,6 @@ func (a *App) cachedRepresentation(revision string) media.Representation {
 	}
 
 	return rep
-}
-
-func (a *App) recordStreamRead(revision string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.reps[revision] == nil {
-		return
-	}
-
-	a.recordStreamReadLocked(revision)
-}
-
-func (a *App) recordStreamReadLocked(revision string) {
-	now := time.Now()
-	if now.Sub(a.streamUsed[revision]) >= time.Minute {
-		// An inactive stream can have a deferred ordinary renewal. Reconsider
-		// it once when reads start, without removing active-stream retry bounds.
-		delete(a.renewAfter, revision)
-	}
-
-	if a.streamUsed == nil {
-		a.streamUsed = map[string]time.Time{}
-	}
-
-	a.streamUsed[revision] = now
 }
 
 func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.Representation, error) {
@@ -225,7 +197,7 @@ func (a *App) bindUncachedEpisode(ctx context.Context, episode catalog.Episode) 
 	}
 
 	if prepared.Revision != episode.Revision || prepared.Size != episode.Size {
-		a.requestScan()
+		a.requestRecordingScan(m.ChannelID)
 		return nil, media.ErrChanged
 	}
 
