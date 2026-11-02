@@ -34,13 +34,14 @@ type Span struct {
 
 // VirtualMP4 maps deterministic progressive MP4 offsets to immutable source ranges.
 type VirtualMP4 struct {
-	Revision string   `json:"revision"`
-	Header   []byte   `json:"header"`
-	Spans    []Span   `json:"spans"`
-	Sources  []string `json:"sources"`
-	Info     Details  `json:"media"`
-	Length   int64    `json:"length"`
-	identity string
+	Revision      string           `json:"revision"`
+	Header        []byte           `json:"header"`
+	Spans         []Span           `json:"spans"`
+	Sources       []string         `json:"sources"`
+	SourceLengths map[string]int64 `json:"source_lengths,omitempty"`
+	Info          Details          `json:"media"`
+	Length        int64            `json:"length"`
+	identity      string
 }
 
 // ID returns the packaging revision and source-derived representation identity.
@@ -85,6 +86,10 @@ func (v *VirtualMP4) ReadAt(ctx context.Context, p []byte, offset int64) (int, e
 		}
 
 		length := min(int64(len(p)-n), span.Length-delta)
+		if span.source == nil {
+			return n, errors.New("index payload is not bound")
+		}
+
 		count, err := span.source.ReadAt(ctx, p[n:n+int(length)], span.Offset+delta)
 		n += count
 		offset += int64(count)

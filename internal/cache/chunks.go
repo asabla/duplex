@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -24,8 +23,7 @@ func (s *Store) Get(ctx context.Context, identity string, offset int64, length i
 		return nil, nil, errors.New("invalid chunk bounds")
 	}
 
-	hash := sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d", identity, offset, length)))
-	key := hex.EncodeToString(hash[:])
+	key := chunkKey(identity, offset, length)
 
 	reservation, err := chunkReservation(int64(length))
 	if err != nil {

@@ -16,6 +16,9 @@ import (
 // representationState keeps immutable bindings and expiring locators together.
 // App.mu protects its maps; an open handle retains its representation after eviction.
 type representationState struct {
+	layouts       map[string]layoutLease
+	layoutBytes   int64
+	layoutSlots   chan struct{}
 	runtimeVideos map[string]string
 	renewAfter    map[string]time.Time
 	runtimeUsed   map[string]time.Time
@@ -101,6 +104,8 @@ func (a *App) cacheRepresentation(rep media.Representation, expires time.Time, v
 		delete(a.runtimeVideos, oldest)
 		delete(a.renewAfter, oldest)
 	}
+
+	a.trimLayoutsLocked()
 }
 
 func (a *App) cachedRepresentation(revision string) media.Representation {
@@ -118,7 +123,6 @@ func (a *App) cachedRepresentation(revision string) media.Representation {
 		}
 
 		a.runtimeUsed[revision] = time.Now()
-		a.recordStreamReadLocked(revision)
 	}
 
 	return rep

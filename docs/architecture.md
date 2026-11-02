@@ -295,7 +295,11 @@ original-language preference and codec class. All candidates still pass range,
 size, and container checks; preparation attempts remain bounded. This uses the
 resolver's documented [`formats=duplicate` option](https://github.com/yt-dlp/yt-dlp/blob/2026.10.21/README.md#extractor-arguments).
 
-A saved index can be rebound only when fresh sources establish the same identities.
+A saved index can bind live upstream readers only when fresh sources establish
+the same identities. Loading its checksummed layout and generated header requires
+no locator. Local chunk lookups verify hashes and retain pins without reserving
+space or fetching data. Missing payload triggers live binding and the existing
+source identity checks. An open alone does not start resolution.
 A strong ETag is one source of evidence. The YouTube version path also checks the
 signed object-version fields, exact size, and fresh beginning, middle, and end
 range fingerprints. Sampled fingerprints are not a complete-file hash. Missing
@@ -311,6 +315,12 @@ a runtime rebind; it does not skip source identity or range verification.
 Each open handle keeps one representation. Renewing a URL cannot change its byte
 mapping. Expiry and real read errors reach Plex; absent bytes are not replaced by
 zeroes.
+
+Saved indexes have an optional `source_lengths` map. Newly saved indexes retain
+verified track sizes so complete cached chunks, including a partial final chunk,
+can be read without upstream access. This field does not change representation
+identity. Older indexes retain local header access and bind their payload before
+use. The existing index format and packaging revision remain readable.
 
 ## Cache
 
@@ -328,8 +338,11 @@ separate storage classes.
 
 The library projection is read-only. Attribute queries use durable verified
 sizes. Directory reads use lexical keyset pages. Publication does not retain a
-complete path or episode map. New media handles bind a cached representation or
-verify a fresh source against the saved revision before reads begin.
+complete path or episode map. A new handle retains an available binding or the
+durable revision and size. Its first read loads local layout. Only unavailable
+payload requires fresh upstream binding against the saved revision. Plex scanner
+reads and playback reads follow this same byte contract; NFS cannot identify
+their intent.
 
 Episode directory pages seek through partial indexes on the formatted file
 number. Upload years and playlist seasons use separate queries; playlist season
@@ -395,10 +408,15 @@ Changed digests retain the existing atomic update and targeted Plex refresh.
 The statement retention limits apply across the read pool; driver plans and
 SQLite page caches can consume more memory with two reader connections.
 
-The runtime index cache has a fixed entry limit and memory budget estimate.
+Bound indexes and detached layouts share the 128-entry and estimated 64 MiB
+runtime budget. A single parser slot bounds concurrent local index loads.
+An index larger than the budget can belong to an open handle but is not retained
+in the detached-layout cache. The on-disk parser limit still applies.
 Eviction removes only its cache reference; an open handle keeps its immutable
-representation. A source change creates a new revision and fails an attempt to
-open the old revision. Unfinished preparations resume after restart. The restart
+representation. A source change creates a new revision. Old handles can return
+their retained headers and exact cached bytes; unavailable old payload fails
+instead of returning replacement content. Unfinished preparations resume after
+restart. The restart
 queue also warms at most four recent selected ready recordings at priority 100,
 below explicit preparation requests and source renewal. Shared playlist
 occurrences use one canonical warm-up task. Paused channels, skipped playlists,

@@ -65,10 +65,14 @@ func TestFirstVisitMetadataAndMissingAssetsNeverResolveMedia(t *testing.T) {
 		t.Fatal("episode metadata or optional assets resolved the source")
 	}
 
-	// A cold MP4 open has a separate measured source-binding boundary. Its
-	// error remains explicit rather than turning absent data into success.
-	if _, _, err := provider.Open(t.Context(), base+".mp4"); err == nil || adapter.requests.Load() != 1 {
-		t.Fatal("uncached media did not expose the source-binding failure", err)
+	// Opening durable media does no source work. Missing payload still fails.
+	cold, _, err := provider.Open(t.Context(), base+".mp4")
+	if err != nil || adapter.requests.Load() != 0 {
+		t.Fatal("opening durable media resolved its source", err)
+	}
+
+	if _, err = cold.ReadAt(t.Context(), make([]byte, 1), 0); err == nil {
+		t.Fatal("uncached payload did not expose source failure")
 	}
 
 	a.cacheRepresentation(mountedBytes{id: prepared.Revision, data: []byte("immutable bytes!")}, time.Now().Add(time.Hour), prepared.Metadata.ID)

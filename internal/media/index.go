@@ -15,7 +15,10 @@ import (
 // signed URL is written here. A new locator must independently establish the
 // same source identity before this map can be rebound.
 func (v *VirtualMP4) SaveIndex(path string) error {
-	b, e := json.Marshal(v)
+	saved := *v
+	saved.SourceLengths = v.sourceLengths()
+
+	b, e := json.Marshal(&saved)
 	if e != nil {
 		return e
 	}
@@ -35,6 +38,21 @@ func (v *VirtualMP4) SaveIndex(path string) error {
 
 // LoadIndex verifies a saved index against freshly opened immutable source identities.
 func LoadIndex(path string, sources map[string]Representation) (loaded *VirtualMP4, result error) {
+	loaded, result = LoadLayout(path)
+	if result != nil {
+		return nil, result
+	}
+
+	if result = loaded.bindSources(sources); result != nil {
+		return nil, result
+	}
+
+	return loaded, nil
+}
+
+// LoadLayout checks durable structure and identity without contacting sources.
+// Payload spans are unbound until BindLayout supplies exact local or live readers.
+func LoadLayout(path string) (loaded *VirtualMP4, result error) {
 	f, err := os.Open(path) //nolint:gosec // G304: The application selects this durable index path; it is not a remote file name.
 	if err != nil {
 		return nil, err
@@ -51,10 +69,10 @@ func LoadIndex(path string, sources map[string]Representation) (loaded *VirtualM
 		return nil, ErrUnsupported
 	}
 
-	return decodeIndex(io.LimitReader(f, (256<<20)+1), sources)
+	return decodeLayout(io.LimitReader(f, (256<<20)+1))
 }
 
-func decodeIndex(reader io.Reader, sources map[string]Representation) (*VirtualMP4, error) {
+func decodeLayout(reader io.Reader) (*VirtualMP4, error) {
 	var envelope struct {
 		Checksum string          `json:"checksum"`
 		Data     json.RawMessage `json:"data"`
@@ -84,7 +102,7 @@ func decodeIndex(reader io.Reader, sources map[string]Representation) (*VirtualM
 		return nil, ErrUnsupported
 	}
 
-	if err := v.bindSources(sources); err != nil {
+	if err := v.validateLayout(); err != nil {
 		return nil, err
 	}
 
