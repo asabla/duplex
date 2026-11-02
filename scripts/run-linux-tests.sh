@@ -35,6 +35,9 @@ else
   test "$(stat -f -c %T "$qualification_root/full")" = tmpfs
   test "$(stat -f -c %T "$qualification_root/pressure")" = tmpfs
 fi
-DUPLEX_FUSE_TEST=1 "$output/library-linux.test" -test.v -test.timeout=180s -test.coverprofile="$output/library-linux.cover"
-DUPLEX_DISK_FULL_DIR="$qualification_root/full" DUPLEX_PRESSURE_DIR="$qualification_root/pressure" DUPLEX_CACHE_CRASH_TEST=1 "$output/cache-linux.test" -test.v -test.timeout=180s -test.coverprofile="$output/cache-linux.cover"
-DUPLEX_FUSE_TEST=1 DUPLEX_APP_MEDIA_FIXTURES="$output/linux-fixtures" "$output/app-linux.test" -test.v -test.timeout=180s -test.coverprofile="$output/app-linux.cover"
+# A stalled FUSE request can also prevent Go's own timeout goroutine from running.
+# The process watchdog does not depend on Go's scheduler. CI also has a job
+# deadline for kernel-blocked processes that cannot exit until FUSE is aborted.
+DUPLEX_FUSE_TEST=1 timeout --signal=QUIT --kill-after=5s 200s "$output/library-linux.test" -test.v -test.timeout=180s -test.coverprofile="$output/library-linux.cover"
+DUPLEX_DISK_FULL_DIR="$qualification_root/full" DUPLEX_PRESSURE_DIR="$qualification_root/pressure" DUPLEX_CACHE_CRASH_TEST=1 timeout --signal=QUIT --kill-after=5s 200s "$output/cache-linux.test" -test.v -test.timeout=180s -test.coverprofile="$output/cache-linux.cover"
+DUPLEX_FUSE_TEST=1 DUPLEX_APP_MEDIA_FIXTURES="$output/linux-fixtures" timeout --signal=QUIT --kill-after=5s 200s "$output/app-linux.test" -test.v -test.timeout=180s -test.coverprofile="$output/app-linux.cover"

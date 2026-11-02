@@ -67,6 +67,13 @@ command. A failed download retries against the official Ubuntu archives with
 archive signature checks retained. Package installation uses downloaded archives
 without a timeout that could interrupt `dpkg`.
 
+Each Linux fixture binary keeps its 180-second Go test deadline and runs under
+an external 200-second process watchdog, followed by a forced kill after five
+seconds. The separate watchdog can act when Go's scheduler cannot run its test
+timer. A blocked kernel FUSE request can also delay process exit; the CI check
+job therefore has a separate 20-minute deadline. A timeout is a failed check,
+not passing qualification evidence.
+
 After the quality gate passes, CI builds the Docker image on native Linux amd64
 and arm64 runners. Each image must pass `scripts/test-image.sh`: pinned tool
 versions, bundled JavaScript solver, license files, initialization, NFS export
