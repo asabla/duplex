@@ -205,7 +205,7 @@ func TestBackgroundMetadataAdmissionReservesForegroundAndResumes(t *testing.T) {
 	}
 
 	// Foreground bindings never acquire the background resolver or heavy slot.
-	if _, err = a.resolveSource(t.Context(), "video000000"); err != nil {
+	if _, err = a.playbackMetadata(t.Context(), "video000000", false); err != nil {
 		t.Fatal("background resolver blocked foreground playback", err)
 	}
 

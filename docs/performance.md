@@ -313,6 +313,20 @@ admission waits. Status includes a separate `playback` object with the pause
 reason, aggregate session count, scanner state, last check, last successful
 check, and idle resume deadline. These values restart with the process.
 
+`resolution.request` counts actual full adapter resolutions. Its fixed cause
+suffixes identify preparation, filesystem access, assets, renewal, discovery,
+or an unspecified caller. Cache hits, misses, evictions, and coalesced waiters
+have separate `resolution.*` counters. `binding.coalesced_waiters` counts shared
+runtime bindings. A miss can wait for another caller and need no new process.
+
+`resolver.process.started` counts successful resolver command starts; version
+checks are excluded. `resolver.process.<cause>` includes catalogue fallbacks and
+lightweight artwork commands as well as playback commands. These counts can
+differ from adapter request counts. `resolver.process_cpu_ns.<cause>` retains
+the CPU time reported by the operating system for those processes. It is not a
+complete container CPU profile or a separate measurement of JavaScript helpers.
+No arguments, tokens, source URLs, or video IDs are included in these counters.
+
 Controlled tests read episode and show metadata, stat prepared media, and probe
 missing optional sidecars while source resolution is unavailable. These paths
 do not fetch source metadata or media. A cold MP4 open retains durable identity

@@ -55,7 +55,7 @@ type observedArtwork struct {
 
 func (s observedArtwork) ArtworkURL(ctx context.Context, id string) (string, error) {
 	defer s.observed.elapsed("source.artwork")()
-	return s.ArtworkSource.ArtworkURL(ctx, id)
+	return s.ArtworkSource.ArtworkURL(s.observed.processContext(ctx, CauseAsset), id)
 }
 
 // ArtworkURL uses the catalogue profile without its full-resolution fallback.

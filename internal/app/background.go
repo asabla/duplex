@@ -120,25 +120,17 @@ func (a *App) nextPreparation(ctx context.Context) (catalog.PreparationTask, fun
 }
 
 func (a *App) discoveryMetadata(ctx context.Context, id string) (source.Metadata, error) {
+	if m, ok, err := a.cachedMetadata(id); ok && err == nil {
+		return m, nil
+	}
+
 	release, err := a.acquireBackground(ctx, "metadata")
 	if err != nil {
 		return source.Metadata{}, err
 	}
 	defer release()
 
-	return a.Source.Metadata(ctx, id)
-}
-
-func (a *App) resolveSource(ctx context.Context, id string) (source.Metadata, error) {
-	if ctx.Value(backgroundContextKey{}) == true {
-		release, err := a.acquireBackground(ctx, "metadata")
-		if err != nil {
-			return source.Metadata{}, err
-		}
-		defer release()
-	}
-
-	return a.Source.Resolve(ctx, id)
+	return a.Source.Metadata(source.WithCause(ctx, source.CauseDiscovery), id)
 }
 
 func (a *App) automaticUpdatesAllowed() bool {

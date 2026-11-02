@@ -86,7 +86,7 @@ func openApplication(ctx context.Context, m *config.Manager, adapter source.Sour
 	}
 
 	store.Observe = a.Measurements.Add
-	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add}
+	a.Source = source.Observed{SourceAdapter: adapter, Record: a.Measurements.Add, Count: a.Measurements.Count}
 
 	if !noMount {
 		if e = a.startLibrary(c, socket, address); e != nil {
@@ -144,6 +144,8 @@ func (a *App) MountDone() <-chan struct{} {
 func (a *App) Close() error {
 	a.cancel()
 	a.wg.Wait()
+	a.bindingWork.close()
+	a.resolutionWork.close()
 
 	var mountErr error
 	if a.mount != nil {

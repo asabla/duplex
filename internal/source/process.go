@@ -53,7 +53,16 @@ func (y *YouTube) run(ctx context.Context, args ...string) ([]byte, error) {
 	stderr := &cappedBuffer{limit: 64 << 10}
 
 	cmd.Stderr = stderr
-	if e := cmd.Run(); e != nil {
+	if e := cmd.Start(); e != nil {
+		return nil, resolverError(ctx, stderr.String())
+	}
+
+	processStarted(ctx)
+
+	waitErr := cmd.Wait()
+	processFinished(ctx, cmd.ProcessState)
+
+	if waitErr != nil {
 		return nil, resolverError(ctx, stderr.String())
 	}
 
@@ -120,12 +129,15 @@ func (y *YouTube) scanProcess(ctx context.Context, args []string, consume func(c
 		return 0, errors.Join(err, pipe.Close())
 	}
 
+	processStarted(ctx)
+
 	count, readErr := consume(ctx, bufio.NewScanner(pipe))
 	if readErr != nil {
 		cancel()
 	}
 
 	waitErr := command.Wait()
+	processFinished(ctx, command.ProcessState)
 
 	if readErr != nil {
 		return count, readErr
@@ -161,6 +173,7 @@ func (y *YouTube) command(ctx context.Context, args []string, single bool) (*exe
 
 	command := exec.CommandContext(ctx, binary, append(base, args...)...) //nolint:gosec // G204: The operator selects the pinned executable; source URLs are validated and passed as arguments without a shell.
 	command.WaitDelay = 5 * time.Second
+	configureResolverProcess(command)
 
 	return command, nil
 }

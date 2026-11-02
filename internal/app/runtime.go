@@ -16,29 +16,25 @@ import (
 // representationState keeps immutable bindings and expiring locators together.
 // App.mu protects its maps; an open handle retains its representation after eviction.
 type representationState struct {
-	layouts       map[string]layoutLease
-	layoutBytes   int64
-	layoutSlots   chan struct{}
-	runtimeVideos map[string]string
-	renewAfter    map[string]time.Time
-	runtimeUsed   map[string]time.Time
-	streamUsed    map[string]time.Time
-	bindings      map[string]*representationBinding
-	metadata      map[string]metadataLease
-	leases        map[string]time.Time
-	reps          map[string]media.Representation
+	layouts         map[string]layoutLease
+	layoutBytes     int64
+	layoutSlots     chan struct{}
+	runtimeVideos   map[string]string
+	renewAfter      map[string]time.Time
+	runtimeUsed     map[string]time.Time
+	streamUsed      map[string]time.Time
+	bindingWork     sharedWork[media.Representation]
+	resolutionWork  sharedWork[source.Metadata]
+	resolutionSlots chan struct{}
+	metadata        map[string]metadataLease
+	leases          map[string]time.Time
+	reps            map[string]media.Representation
 }
 
 const (
 	runtimeRepresentations = 128
 	runtimeIndexBytes      = int64(64 << 20)
 )
-
-type representationBinding struct {
-	done chan struct{}
-	rep  media.Representation
-	err  error
-}
 
 func (a *App) acquirePreparation(ctx context.Context) (func(), error) {
 	a.mu.Lock()
@@ -159,41 +155,28 @@ func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.R
 		return rep, nil
 	}
 
-	a.mu.Lock()
-	if a.bindings == nil {
-		a.bindings = map[string]*representationBinding{}
-	}
-
-	if call := a.bindings[episode.Revision]; call != nil {
-		a.mu.Unlock()
-		defer a.Measurements.Begin("playback.binding.wait")()
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-call.done:
-			return call.rep, call.err
+	rep, shared, err := a.bindingWork.do(ctx, a.ctx, episode.Revision, func(work context.Context) (media.Representation, error) {
+		rep, failure := a.bindUncachedEpisode(work, episode)
+		if errors.Is(failure, media.ErrExpired) {
+			a.forgetMetadata(episode.VideoID)
 		}
+
+		if failure != nil {
+			failure = errors.Join(failure, a.recordBindingFailure(work, episode, failure))
+		}
+
+		return rep, failure
+	})
+	if shared {
+		a.Measurements.Count("binding.coalesced_waiters", 1)
 	}
 
-	call := &representationBinding{done: make(chan struct{})}
-	a.bindings[episode.Revision] = call
-	a.mu.Unlock()
-
-	call.rep, call.err = a.bindUncachedEpisode(ctx, episode)
-	if call.err != nil {
-		call.err = errors.Join(call.err, a.recordBindingFailure(ctx, episode, call.err))
-	}
-
-	a.mu.Lock()
-	delete(a.bindings, episode.Revision)
-	close(call.done)
-	a.mu.Unlock()
-
-	return call.rep, call.err
+	return rep, err
 }
 
 func (a *App) bindUncachedEpisode(ctx context.Context, episode catalog.Episode) (media.Representation, error) {
+	ctx = source.WithCause(ctx, source.CauseFilesystem)
+
 	defer a.Measurements.Begin("playback.binding")()
 
 	if rep := a.cachedRepresentation(episode.Revision); rep != nil {
@@ -305,35 +288,8 @@ func (a *App) recordBindingFailure(ctx context.Context, episode catalog.Episode,
 	return a.Catalog.SetPreparation(cleanup, episode.VideoID, "failed", preparationReason(failure))
 }
 
-type metadataLease struct {
-	value   source.Metadata
-	expires time.Time
-}
-
 func (a *App) metadataFresh(v catalog.Video, entry source.Entry) bool {
 	return time.Since(time.Unix(v.MetadataAt, 0)) < 6*time.Hour && (entry.Title == "" || entry.Title == v.Title)
-}
-
-func (a *App) remember(m source.Metadata) {
-	if len(m.Formats) == 0 {
-		return
-	}
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.metadata == nil {
-		a.metadata = map[string]metadataLease{}
-	}
-
-	if len(a.metadata) >= 8 {
-		for id := range a.metadata {
-			delete(a.metadata, id)
-			break
-		}
-	}
-
-	a.metadata[m.ID] = metadataLease{m, leaseExpiry(m)}
 }
 
 func leaseExpiry(m source.Metadata) time.Time {
@@ -359,25 +315,6 @@ func leaseExpiry(m source.Metadata) time.Time {
 	}
 
 	return until
-}
-
-func (a *App) playbackMetadata(ctx context.Context, id string, force bool) (source.Metadata, error) {
-	defer a.Measurements.Begin("playback.metadata")()
-
-	a.mu.RLock()
-	lease, ok := a.metadata[id]
-	a.mu.RUnlock()
-
-	if !force && ok && time.Now().Before(lease.expires) {
-		return lease.value, nil
-	}
-
-	m, err := a.resolveSource(ctx, id)
-	if err == nil {
-		a.remember(m)
-	}
-
-	return m, err
 }
 
 func (a *App) usable(ctx context.Context, id string) (bool, error) {

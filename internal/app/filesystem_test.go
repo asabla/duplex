@@ -404,6 +404,8 @@ func TestFailedBindingIsVisibleAndDoesNotDiscardTheVerifiedRevision(t *testing.T
 	}
 
 	adapter.unavailable = map[string]bool{prepared.Metadata.ID: true}
+	// The bounded failure cache must not hide the next provider state forever.
+	a.forgetMetadata(prepared.Metadata.ID)
 
 	if _, err = handle.ReadAt(t.Context(), make([]byte, 1), 0); !errors.Is(err, source.ErrUnavailable) {
 		t.Fatal(err)
