@@ -166,14 +166,14 @@ func TestCaptionFetchingDefaultsOffAndCanChangeWithoutRestart(t *testing.T) {
 
 	setCaptionFetching(t, a, true)
 
-	if _, err = a.acquireAssets(t.Context(), metadata, source.Candidate{}); err == nil || transport.requests.Load() != 3 {
+	if _, err = a.acquireAssets(t.Context(), metadata, source.Candidate{}); err == nil || transport.requests.Load() != 2 {
 		t.Fatal("enabled caption failure was not reported", err, transport.requests.Load())
 	}
 
 	transport.base["/captions"] = assetFixtureResponse{data: []byte("original captions")}
 
 	entries, err = a.acquireAssets(t.Context(), metadata, source.Candidate{})
-	if err != nil || len(entries) != 2 || transport.requests.Load() != 5 {
+	if err != nil || len(entries) != 2 || transport.requests.Load() != 3 {
 		t.Fatal("enabled captions were not fetched", entries, err, transport.requests.Load())
 	}
 
@@ -182,7 +182,7 @@ func TestCaptionFetchingDefaultsOffAndCanChangeWithoutRestart(t *testing.T) {
 	transport.base["/captions"] = assetFixtureResponse{status: http.StatusTooManyRequests}
 
 	retained, err := a.acquireAssets(t.Context(), metadata, source.Candidate{})
-	if err != nil || len(retained) != 2 || transport.requests.Load() != 6 {
+	if err != nil || len(retained) != 2 || transport.requests.Load() != 3 {
 		t.Fatal("disabled caption work retried or lost stored captions", retained, err, transport.requests.Load())
 	}
 

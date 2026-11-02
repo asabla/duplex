@@ -59,7 +59,7 @@ func (s *Store) SaveMetadata(ctx context.Context, m source.Metadata) error {
 	m.Formats = nil
 	m.Subtitles = nil
 	m.AutomaticCaptions = nil
-	m.Thumbnail = ""
+	m.Thumbnail = source.PersistentThumbnail(m.Thumbnail)
 
 	b, err := json.Marshal(m)
 	if err != nil {

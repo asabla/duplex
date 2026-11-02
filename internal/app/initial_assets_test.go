@@ -253,6 +253,10 @@ func TestAssetWorkerDrainsQueuedRecordingsWithoutPollingPerItem(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := a.Catalog.MarkUploadedSelection(t.Context(), second.ID); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, id := range []string{m.ID, second.ID} {
 		if err := a.Catalog.QueueAsset(t.Context(), id); err != nil {
 			t.Fatal(err)
