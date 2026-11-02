@@ -315,9 +315,43 @@ check, and idle resume deadline. These values restart with the process.
 
 Controlled tests read episode and show metadata, stat prepared media, and probe
 missing optional sidecars while source resolution is unavailable. These paths
-do not fetch source metadata or media. A cold MP4 open still resolves and verifies
-its source. This distinction helps diagnose a slow first episode visit; it does
+do not fetch source metadata or media. A cold MP4 open retains durable identity
+and size. Missing payload resolves and verifies its source on demand. This
+distinction helps diagnose a slow first episode visit; it does
 not establish the cause of a delay in Plex on a primary host.
+
+## Prepared-library scan workload, 2026-11-02
+
+`BenchmarkLibraryScan500` opens 500 selected prepared recordings and reads the
+first 64 header bytes in two complete passes. Each recording has its own source
+namespace. The fixture uses exact generated two-second media and splits its
+range maps into spans of at most 1 KiB to exercise large indexes without storing
+500 complete media files. It checks the returned header bytes. This is a stress
+shape for index and cache work, not a long-recording codec qualification.
+
+One paired sample on an Apple M3 Max, native arm64, Go 1.27.3, compared main
+`c1ed167` with the detached-layout implementation. Both runs used CPU and memory
+profiles. Runtime bindings and metadata were empty before the first pass; the
+media cache limit was 16 MiB. Fixture preparation is excluded from the benchmark
+wall time and allocation totals below.
+
+| Two complete header passes | Main baseline | Detached layout |
+| --- | ---: | ---: |
+| Wall time | 169.347 s | 2.607 s |
+| Full source resolutions | 1,000 | 0 |
+| Unique videos resolved | 500 | 0 |
+| Duplicate resolutions | 500 | 0 |
+| Upstream requests | 4,997 | 0 |
+| Upstream bytes | 2,392,120,487 | 0 |
+| Allocated bytes | 320,145,114,320 | 2,536,145,712 |
+
+The synthetic adapter launches no resolver subprocesses. These measurements
+therefore do not attribute production CPU usage to yt-dlp or Deno. The baseline
+allocation profile places most allocated bytes in verified cache-chunk reads
+entered through `VerifyRanges`; small spans amplify these reads. The detached
+path removes this verification from header-only scans. Payload reads can still
+require upstream work. These results do not establish primary-host scan time,
+Plex analysis behavior, or playback capacity.
 
 ## Reporting
 

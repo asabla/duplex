@@ -240,8 +240,8 @@ func TestMediaPreparationRebindAndChangedSourceKeepExactHandles(t *testing.T) {
 
 	viewers.Wait()
 
-	if adapter.resolved != resolvedBefore+1 {
-		t.Fatal("simultaneous viewers did not share source binding", adapter.resolved, resolvedBefore)
+	if adapter.resolved != resolvedBefore {
+		t.Fatal("cached viewers unnecessarily resolved sources", adapter.resolved, resolvedBefore)
 	}
 
 	after, err := app.Catalog.Video(t.Context(), "video000000")
@@ -256,7 +256,12 @@ func TestMediaPreparationRebindAndChangedSourceKeepExactHandles(t *testing.T) {
 	app.metadata = map[string]metadataLease{}
 	app.mu.Unlock()
 
-	if _, _, err = provider.Open(t.Context(), filename); !errors.Is(err, media.ErrChanged) {
+	file, err := provider.lookup(t.Context(), filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = app.bindEpisode(t.Context(), *file.episode); !errors.Is(err, media.ErrChanged) {
 		t.Fatal("changed source was silently rebound", err)
 	}
 
@@ -280,7 +285,12 @@ func TestMediaPreparationRebindAndChangedSourceKeepExactHandles(t *testing.T) {
 	app.metadata = map[string]metadataLease{}
 	app.mu.Unlock()
 
-	if _, _, err = provider.Open(t.Context(), filename); !errors.Is(err, media.ErrExpired) {
+	file, err = provider.lookup(t.Context(), filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = app.bindEpisode(t.Context(), *file.episode); !errors.Is(err, media.ErrExpired) {
 		t.Fatal("expired source became successful media", err)
 	}
 

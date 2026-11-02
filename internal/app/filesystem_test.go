@@ -378,8 +378,14 @@ func TestFailedBindingIsVisibleAndDoesNotDiscardTheVerifiedRevision(t *testing.T
 	provider := catalogueFS{app: a}
 
 	name := fmt.Sprintf("Channel-%s/Season 2026/Channel-%s - S2026E0001.mp4", testOwner, testOwner)
-	if _, _, err := provider.Open(t.Context(), name); err == nil {
-		t.Fatal("missing source became a successful handle")
+
+	handle, _, err := provider.Open(t.Context(), name)
+	if err != nil {
+		t.Fatal("durable open required source", err)
+	}
+
+	if _, err = handle.ReadAt(t.Context(), make([]byte, 1), 0); err == nil {
+		t.Fatal("missing payload became successful bytes")
 	}
 
 	stored, err := a.Catalog.Video(t.Context(), prepared.Metadata.ID)
@@ -399,7 +405,7 @@ func TestFailedBindingIsVisibleAndDoesNotDiscardTheVerifiedRevision(t *testing.T
 
 	adapter.unavailable = map[string]bool{prepared.Metadata.ID: true}
 
-	if _, _, err = provider.Open(t.Context(), name); !errors.Is(err, source.ErrUnavailable) {
+	if _, err = handle.ReadAt(t.Context(), make([]byte, 1), 0); !errors.Is(err, source.ErrUnavailable) {
 		t.Fatal(err)
 	}
 

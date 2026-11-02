@@ -48,8 +48,12 @@ func (p catalogueFS) Open(ctx context.Context, name string) (media.Representatio
 	}
 
 	if file.episode != nil {
-		rep, err := p.app.bindEpisode(ctx, *file.episode)
-		return p.observedFile(rep, name), file.info.Modified, err
+		rep := p.app.cachedRepresentation(file.episode.Revision)
+		if rep == nil {
+			rep = &lazyEpisode{app: p.app, episode: *file.episode}
+		}
+
+		return p.observedFile(rep, name), file.info.Modified, nil
 	}
 
 	return p.observedFile(file.data, name), file.info.Modified, nil
