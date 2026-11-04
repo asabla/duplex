@@ -5,6 +5,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -39,7 +40,9 @@ func TestPlexPlaylistQualification(t *testing.T) {
 		t.Fatal("qualification directory must be an absolute clean path")
 	}
 
-	app, adapter, _ := mediaPipeline(t)
+	app, adapter, origin := mediaPipeline(t)
+	t.Cleanup(func() { app.cancel(); app.wg.Wait() })
+
 	ch := pipelineChannel(config.Selection{Mode: "all"})
 	ch.ID, ch.URL = qualificationOwner, "https://www.youtube.com/channel/"+qualificationOwner
 	snapshot := app.Config.Snapshot()
@@ -51,6 +54,31 @@ func TestPlexPlaylistQualification(t *testing.T) {
 
 	if err := app.Config.Save(snapshot.Config, snapshot.Revision); err != nil {
 		t.Fatal(err)
+	}
+
+	mount, err := qualificationFilesystem(t.Context(), root, os.Getenv("DUPLEX_PLEX_NFS_LISTEN"), app)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		app.cancel()
+		app.wg.Wait()
+
+		if err := mount.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	if !mount.Ready() {
+		t.Fatal("qualification mount is not ready")
+	}
+
+	app.mount = mount
+
+	if snapshot.Config.Plex.URL != "" {
+		app.wg.Add(1)
+		go app.playbackWorker(app.ctx)
 	}
 
 	base := adapter.metadata["video000000"]
@@ -103,36 +131,29 @@ func TestPlexPlaylistQualification(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mount, err := qualificationFilesystem(t.Context(), root, os.Getenv("DUPLEX_PLEX_NFS_LISTEN"), app)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	defer func() {
-		app.cancel()
-		app.wg.Wait()
-
-		if err := mount.Close(); err != nil {
-			t.Error(err)
-		}
-	}()
-
-	if !mount.Ready() {
-		t.Fatal("qualification mount is not ready")
-	}
-
-	app.mount = mount
-
 	app.wg.Add(1)
 	go app.metadataWorker(app.ctx)
 
 	if app.Config.Snapshot().Config.Plex.URL != "" {
-		if err = app.Scan(t.Context()); err != nil {
+		if err = app.waitBackground(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+
+		if err = qualificationPlexUpdate(t.Context(), app, integrationDispatch); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	acknowledge := func(phase string) {
+		data, failure := json.Marshal(map[string]any{"phase": phase, "playback": app.PlaybackStatus(), "cache": app.Cache.Stats(), "measurements": app.Measurements.Snapshot(), "counters": app.Measurements.Counters(), "origin_requests": origin.requests.Load(), "origin_bytes": origin.bytes.Load()})
+		if failure != nil {
+			t.Fatal(failure)
+		}
+
+		if err := os.WriteFile(filepath.Join(root, "metrics.json"), data, 0o600); err != nil { // #nosec G703 -- The fixed metrics filename is beneath the explicit isolated qualification directory.
+			t.Fatal(err)
+		}
+
 		if err := os.WriteFile(filepath.Join(root, "phase"), []byte(phase), 0o644); err != nil { //nolint:gosec // G306: The isolated driver reads only a non-secret fixture phase name.
 			t.Fatal(err)
 		}
@@ -177,14 +198,14 @@ func TestPlexPlaylistQualification(t *testing.T) {
 
 			err = app.Sync(ctx, qualificationOwner)
 			if err == nil && app.Config.Snapshot().Config.Plex.URL != "" {
-				err = app.Scan(ctx)
+				err = qualificationPlexUpdate(ctx, app, integrationDispatch)
 			}
 		case "restore":
 			adapter.entries["PLfixture0001"] = []source.Entry{{ID: ids[0]}, {ID: ids[1]}, {ID: ids[2]}}
 
 			err = app.Sync(ctx, qualificationOwner)
 			if err == nil && app.Config.Snapshot().Config.Plex.URL != "" {
-				err = app.Scan(ctx)
+				err = qualificationPlexUpdate(ctx, app, integrationDispatch)
 			}
 		case "remove", "return":
 			adapter.entries["PLfixture0001"] = []source.Entry{{ID: ids[2]}, {ID: ids[1]}}
@@ -194,7 +215,7 @@ func TestPlexPlaylistQualification(t *testing.T) {
 
 			err = app.Sync(ctx, qualificationOwner)
 			if err == nil && app.Config.Snapshot().Config.Plex.URL != "" {
-				err = app.Scan(ctx)
+				err = qualificationPlexUpdate(ctx, app, integrationDispatch)
 			}
 		case "artwork":
 			var data bytes.Buffer
@@ -220,7 +241,26 @@ func TestPlexPlaylistQualification(t *testing.T) {
 			app.mu.Lock()
 			app.reps = map[string]media.Representation{}
 			app.metadata = map[string]metadataLease{}
+			app.layouts = map[string]layoutLease{}
+			app.layoutBytes = 0
 			app.mu.Unlock()
+		case "offline", "online":
+			origin.expired.Store(phase == "offline")
+		case "snapshot":
+		case "reconcile":
+			err = qualificationPlexUpdate(ctx, app, integrationBindings)
+		case "captions":
+			caption, failure := app.saveAsset(ids[0], ".en.srt", []byte("1\n00:00:00,000 --> 00:00:10,000\nDuplex local qualification\n\n2\n00:01:00,000 --> 00:01:10,000\nDistant seek subtitle\n"))
+
+			err = failure
+			if err == nil {
+				assets := append(app.loadAssets(ids[0]), caption)
+
+				err = app.saveAssetManifest(ids[0], assets)
+				if err == nil {
+					_, err = app.recordEpisodeAssets(ctx, ids[0], assets)
+				}
+			}
 		case "stop":
 			acknowledge(phase)
 			return
@@ -233,6 +273,35 @@ func TestPlexPlaylistQualification(t *testing.T) {
 		}
 
 		acknowledge(phase)
+	}
+}
+
+// Keep acknowledged scans separate from completion, including the playback
+// monitor's idle grace. A deferred reconciliation must not resend the scan.
+func qualificationPlexUpdate(ctx context.Context, app *App, mode integrationMode) error {
+	for {
+		if err := app.waitBackground(ctx); err != nil {
+			return err
+		}
+
+		err := app.integration(ctx, mode)
+		if err == nil {
+			return nil
+		}
+
+		if errors.Is(err, errScanPending) {
+			mode = integrationBindings
+		} else if !errors.Is(err, errBackgroundDeferred) {
+			return err
+		}
+
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 }
 

@@ -179,6 +179,17 @@ controls the recorded collection phases through the `command` and `phase` files.
 `DUPLEX_PLEX_GATE_SECTION` enables managed Plex updates using the isolated token
 at `/evidence/plex-test-token`.
 
+The fixture starts the filesystem before background work and runs the playback
+monitor when managed Plex updates are enabled. It waits for accepted scans and
+binding reconciliation without resending an accepted scan during the idle grace
+period. Each phase writes private `metrics.json` before its acknowledgement.
+`snapshot` records counters without changing state; `rebind` clears runtime
+bindings and layout leases; `offline` and `online` control the fixture HTTP
+origin. `captions` publishes a controlled English SRT after initial scanning.
+Verify that every occurrence detects it through targeted metadata refresh,
+without another full-section scan, and that Plex renders cues after a seek.
+The `reconcile` phase refreshes bindings without requesting a scan.
+
 Use controlled 120-second video and audio files through
 `DUPLEX_APP_MEDIA_FIXTURES`. Set `DUPLEX_PLEX_GATE_VIDEO_PREFIX` to a fresh
 five-character URL-safe prefix for each independent run. Retain that prefix
@@ -188,6 +199,9 @@ Read Plex's `MinimumProgressTime` and record a resume position above that limit.
 Check separate occurrence GUIDs, resume position, watched state, and artwork.
 A removed occurrence can return with a new numeric Plex key while retaining its
 GUID and progress; verify both values instead of treating them as one identity.
+The fixture rebuilds its catalogue on process restart. Retaining its NFS handle
+database checks wire handles, but does not establish catalogue/index recovery
+for the production application.
 
 `TestKernelFixture` in `internal/nfs` exposes 10,000 generated 256 MiB files when
 `DUPLEX_NFS_FIXTURE=1`. Set `DUPLEX_NFS_FIXTURE_TRANSPORT=fuse` to use the same
