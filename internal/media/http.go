@@ -27,8 +27,10 @@ type HTTPSource struct {
 	id, etag, modified string
 	size               int64
 	cache              cache.ChunkStore
-	UpstreamBytes      atomic.Int64
-	Requests           atomic.Int64
+	// AdmitPayload is assigned before concurrent use. Cached bytes bypass it.
+	AdmitPayload  func(context.Context) (context.Context, func(), error)
+	UpstreamBytes atomic.Int64
+	Requests      atomic.Int64
 }
 
 // OpenHTTP probes a byte, never the whole object. Callers must supply a client
@@ -254,25 +256,10 @@ func (s *HTTPSource) ReadAt(ctx context.Context, p []byte, offset int64) (int, e
 		start := (offset / ChunkSize) * ChunkSize
 		length := int(min(int64(ChunkSize), s.size-start))
 
-		var (
-			b       []byte
-			release func()
-			err     error
-		)
-		if s.cache != nil {
-			b, release, err = s.cache.Get(ctx, s.id, start, length, func(c context.Context) ([]byte, error) { return s.fetch(c, start, length) })
-		} else {
-			b, err = s.fetch(ctx, start, length)
-			release = func() {}
-		}
-
+		count, err := s.readChunk(ctx, p[n:], offset, start, length)
 		if err != nil {
 			return n, err
 		}
-
-		count := copy(p[n:], b[offset-start:])
-
-		release()
 
 		n += count
 		offset += int64(count)
@@ -283,4 +270,57 @@ func (s *HTTPSource) ReadAt(ctx context.Context, p []byte, offset int64) (int, e
 	}
 
 	return n, nil
+}
+
+func (s *HTTPSource) readChunk(ctx context.Context, p []byte, offset, start int64, length int) (int, error) {
+	if reader, ok := s.cache.(interface {
+		ReadCached(context.Context, string, int64, int, []byte, int) (int, error)
+	}); ok {
+		n, err := reader.ReadCached(ctx, s.id, start, length, p, int(offset-start))
+		if !errors.Is(err, cache.ErrMiss) {
+			return n, err
+		}
+	}
+
+	if s.AdmitPayload == nil {
+		return s.readUncached(ctx, p, offset, start, length)
+	}
+
+	for {
+		work, release, err := s.AdmitPayload(ctx)
+		if err != nil {
+			return 0, err
+		}
+
+		n, err := s.readUncached(work, p, offset, start, length)
+		interrupted := work.Err() != nil && ctx.Err() == nil
+
+		release()
+
+		if !interrupted {
+			return n, err
+		}
+	}
+}
+
+func (s *HTTPSource) readUncached(ctx context.Context, p []byte, offset, start int64, length int) (int, error) {
+	var (
+		data    []byte
+		release func()
+		err     error
+	)
+	if s.cache != nil {
+		data, release, err = s.cache.Get(ctx, s.id, start, length, func(c context.Context) ([]byte, error) { return s.fetch(c, start, length) })
+	} else {
+		data, err = s.fetch(ctx, start, length)
+		release = func() {}
+	}
+
+	if err != nil {
+		return 0, err
+	}
+
+	defer release()
+
+	return copy(p, data[offset-start:]), nil
 }
