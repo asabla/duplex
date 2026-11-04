@@ -33,7 +33,7 @@ func run() error {
 
 func execute(ctx context.Context, args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: duplex init|serve|backup|check-plex|health|gate; use COMMAND --help for options")
+		return errors.New("usage: duplex init|serve|backup|upgrade-layouts|check-plex|health|gate; use COMMAND --help for options")
 	}
 
 	switch args[0] {
@@ -49,6 +49,8 @@ func execute(ctx context.Context, args []string) error {
 		return library.ServeMountHelper(ctx)
 	case "backup":
 		return backup(ctx, args[1:])
+	case "upgrade-layouts":
+		return upgradeLayouts(ctx, args[1:])
 	case "health":
 		return health(ctx, args[1:])
 	case "fixture-http":
@@ -58,6 +60,6 @@ func execute(ctx context.Context, args []string) error {
 	case "gate":
 		return gateCommand(ctx, args[1:])
 	default:
-		return errors.New("unknown command; use duplex init|serve|backup|check-plex|health|gate")
+		return errors.New("unknown command; use duplex init|serve|backup|upgrade-layouts|check-plex|health|gate")
 	}
 }
