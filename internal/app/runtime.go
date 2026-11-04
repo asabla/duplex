@@ -28,6 +28,8 @@ type representationState struct {
 	metadata        map[string]metadataLease
 	leases          map[string]time.Time
 	reps            map[string]media.Representation
+	bindingEpochs   map[string]uint64
+	bindingEpoch    uint64
 }
 
 const (
@@ -81,7 +83,14 @@ func (a *App) cacheRepresentation(rep media.Representation, expires time.Time, v
 
 	a.runtimeVideos[rep.ID()] = videoID
 	a.reps[rep.ID()] = rep
+
 	a.leases[rep.ID()] = expires
+	if a.bindingEpochs == nil {
+		a.bindingEpochs = map[string]uint64{}
+	}
+
+	a.bindingEpoch++
+	a.bindingEpochs[rep.ID()] = a.bindingEpoch
 
 	a.runtimeUsed[rep.ID()] = time.Now()
 	for len(a.reps) > 1 && (len(a.reps) > runtimeRepresentations || a.runtimeIndexCost() > runtimeIndexBytes) {
@@ -97,17 +106,23 @@ func (a *App) cacheRepresentation(rep media.Representation, expires time.Time, v
 		delete(a.runtimeUsed, oldest)
 		delete(a.runtimeVideos, oldest)
 		delete(a.renewAfter, oldest)
+		delete(a.bindingEpochs, oldest)
 	}
 
 	a.trimLayoutsLocked()
 }
 
 func (a *App) cachedRepresentation(revision string) media.Representation {
+	rep, _ := a.cachedBinding(revision)
+	return rep
+}
+
+func (a *App) cachedBinding(revision string) (media.Representation, uint64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if !time.Now().Before(a.leases[revision]) {
-		return nil
+		return nil, 0
 	}
 
 	rep := a.reps[revision]
@@ -119,7 +134,7 @@ func (a *App) cachedRepresentation(revision string) media.Representation {
 		a.runtimeUsed[revision] = time.Now()
 	}
 
-	return rep
+	return rep, a.bindingEpochs[revision]
 }
 
 func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.Representation, error) {

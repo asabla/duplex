@@ -20,6 +20,12 @@ import (
 	"duplex/internal/source"
 )
 
+type representationDescription struct {
+	VideoID, Revision, VideoFormat, AudioFormat string
+	Size                                        int64
+	Media                                       media.Details
+}
+
 // Prepare verifies the highest supported candidate and records any quality fallback.
 // Optional assets run separately; no media payload is prepared as a complete file.
 func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (catalog.Prepared, error) {
@@ -90,7 +96,12 @@ func (a *App) mediaClient() *http.Client {
 
 func (a *App) openTrack(ctx context.Context, id string, f source.Format) (*media.HTTPSource, error) {
 	return diagnostics.Measure(a.Measurements, "media.probe", func() (*media.HTTPSource, error) {
-		return media.OpenVersionedHTTP(ctx, a.mediaClient(), f.URL, id+":"+f.ID, a.Cache, media.SourceVersion{Key: f.Revision, Size: f.VerifiedSize})
+		track, err := media.OpenVersionedHTTP(ctx, a.mediaClient(), f.URL, id+":"+f.ID, a.Cache, media.SourceVersion{Key: f.Revision, Size: f.VerifiedSize})
+		if err == nil {
+			track.AdmitPayload = a.startPayload
+		}
+
+		return track, err
 	})
 }
 
@@ -172,11 +183,7 @@ func (a *App) persistRepresentation(m source.Metadata, candidate source.Candidat
 		audio = candidate.Audio.ID
 	}
 
-	descriptor := struct {
-		VideoID, Revision, VideoFormat, AudioFormat string
-		Size                                        int64
-		Media                                       media.Details
-	}{m.ID, representation.ID(), candidate.Video.ID, audio, representation.Size(), representation.Details()}
+	descriptor := representationDescription{m.ID, representation.ID(), candidate.Video.ID, audio, representation.Size(), representation.Details()}
 
 	data, err := json.Marshal(descriptor)
 	if err != nil {

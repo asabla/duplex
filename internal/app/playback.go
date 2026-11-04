@@ -37,6 +37,10 @@ type playbackState struct {
 	backgroundMetadata    chan struct{}
 	backgroundPreparation chan struct{}
 	backgroundHeavy       chan struct{}
+	discoveryRuns         map[uint64]context.CancelCauseFunc
+	payloadRuns           map[uint64]payloadRun
+	protectedMedia        map[string]bool
+	admissionSequence     uint64
 }
 
 // Compare values, not optional-field pointers from cloned configuration snapshots.
@@ -108,9 +112,21 @@ func (a *App) observePlayback(p config.Plex, activity plex.Activity, failure err
 
 	a.observedPolicy = policyFor(p)
 	a.updatePlaybackLocked(activity, failure, now)
+	a.protectedMedia = map[string]bool{}
+
+	if failure == nil {
+		for _, key := range activity.MediaKeys {
+			a.protectedMedia[key] = true
+		}
+	}
+
 	a.signalPlaybackLocked()
 
 	if a.playbackStatusLocked(p, now).BackgroundPaused {
+		for _, cancel := range a.discoveryRuns {
+			cancel(errBackgroundDeferred)
+		}
+
 		if a.assetCancel != nil {
 			a.assetCancel(errBackgroundDeferred)
 		}
@@ -120,6 +136,12 @@ func (a *App) observePlayback(p config.Plex, activity plex.Activity, failure err
 				run.interrupted = true
 				run.cancel(errPlaybackPriority)
 			}
+		}
+	}
+
+	for _, run := range a.payloadRuns {
+		if !a.payloadAllowedLocked(p, run.key, now) {
+			run.cancel(errBackgroundDeferred)
 		}
 	}
 }

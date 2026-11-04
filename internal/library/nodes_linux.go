@@ -122,6 +122,10 @@ func (h *handle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadRes
 			return nil, syscall.EINTR
 		}
 
+		if errors.Is(e, media.ErrDeferred) {
+			return nil, syscall.EAGAIN
+		}
+
 		return nil, syscall.EIO
 	}
 

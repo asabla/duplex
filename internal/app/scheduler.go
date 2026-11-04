@@ -148,7 +148,7 @@ func (a *App) worker(ctx context.Context) {
 			a.mu.Unlock()
 
 			jobCtx, cancel := context.WithCancel(ctx)
-			err := a.Sync(jobCtx, id)
+			err := a.syncWhenIdle(jobCtx, id)
 
 			cancel()
 			a.operationFailure("channel discovery", err)

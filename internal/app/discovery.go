@@ -18,12 +18,21 @@ type discoveryRun struct {
 }
 
 // Sync records one discovery job and reconciles only successfully enumerated windows.
-func (a *App) Sync(ctx context.Context, id string) error {
+func (a *App) Sync(ctx context.Context, id string) (result error) {
 	defer a.Measurements.Begin("sync")()
 
-	if err := a.waitBackground(ctx); err != nil {
+	work, release, err := a.startDiscovery(ctx)
+	if err != nil {
 		return err
 	}
+	defer release()
+	defer func() {
+		if errors.Is(context.Cause(work), errBackgroundDeferred) {
+			result = errors.Join(errBackgroundDeferred, result)
+		}
+	}()
+
+	ctx = work
 
 	ch, err := a.followed(id)
 	if err != nil {
@@ -59,6 +68,10 @@ func (a *App) Sync(ctx context.Context, id string) error {
 
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 	defer stop()
+
+	if errors.Is(context.Cause(ctx), errBackgroundDeferred) {
+		return errors.Join(errBackgroundDeferred, a.Catalog.DeferJob(cleanup, runID))
+	}
 
 	finishErr := a.Catalog.FinishJob(cleanup, runID, id, err)
 

@@ -35,6 +35,8 @@ func status(err error) uint32 {
 		return 22
 	case errors.Is(err, media.ErrChanged), errors.Is(err, sql.ErrNoRows):
 		return 70
+	case errors.Is(err, media.ErrDeferred):
+		return 10008
 	default:
 		return 5
 	}

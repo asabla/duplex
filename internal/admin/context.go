@@ -170,7 +170,7 @@ func playback(v catalog.Video) playbackState {
 }
 
 func stageLabel(value string) string {
-	labels := map[string]string{"": "Discovery", "uploads": "Uploads", "playlists": "Playlists", "complete": "Finished", "running": "In progress", "failed": "Failed", "interrupted": "Interrupted", "recorded": "Upload", "replay-ready": "Completed broadcast", "upcoming": "Scheduled broadcast", "active": "Live broadcast", "processing": "YouTube processing", "discovered": "Discovered", "ready": "Prepared", "queued": "Queued", "resolving": "Checking source", "preparing": "Preparing media", "waiting": "Waiting for source", "skipped": "Skipped", "unavailable": "Unavailable"}
+	labels := map[string]string{"": "Discovery", "uploads": "Uploads", "playlists": "Playlists", "complete": "Finished", "running": "In progress", "failed": "Failed", "interrupted": "Interrupted", "deferred": "Paused for playback", "recorded": "Upload", "replay-ready": "Completed broadcast", "upcoming": "Scheduled broadcast", "active": "Live broadcast", "processing": "YouTube processing", "discovered": "Discovered", "ready": "Prepared", "queued": "Queued", "resolving": "Checking source", "preparing": "Preparing media", "waiting": "Waiting for source", "skipped": "Skipped", "unavailable": "Unavailable"}
 	if label, ok := labels[value]; ok {
 		return label
 	}

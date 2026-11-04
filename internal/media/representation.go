@@ -12,6 +12,7 @@ var (
 	ErrChanged     = errors.New("source representation changed")
 	ErrExpired     = errors.New("source locator expired; open a new representation")
 	ErrUnsupported = errors.New("unsupported media representation")
+	ErrDeferred    = errors.New("uncached media work is temporarily deferred")
 )
 
 // Representation is an immutable, exact-size object with context-aware offset reads.

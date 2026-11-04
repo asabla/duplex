@@ -12,6 +12,7 @@ import (
 
 	"duplex/internal/config"
 	"duplex/internal/diagnostics"
+	"duplex/internal/media"
 	"duplex/internal/plex"
 	"duplex/internal/source"
 )
@@ -65,11 +66,18 @@ func TestFirstVisitMetadataAndMissingAssetsNeverResolveMedia(t *testing.T) {
 		t.Fatal("episode metadata or optional assets resolved the source")
 	}
 
-	// Opening durable media does no source work. Missing payload still fails.
+	// An unrelated uncached probe defers without contacting the source.
 	cold, _, err := provider.Open(t.Context(), base+".mp4")
 	if err != nil || adapter.requests.Load() != 0 {
 		t.Fatal("opening durable media resolved its source", err)
 	}
+
+	if _, err = cold.ReadAt(t.Context(), make([]byte, 1), 0); !errors.Is(err, media.ErrDeferred) || adapter.requests.Load() != 0 {
+		t.Fatal("unrelated probe bypassed protection", err)
+	}
+
+	// An actual viewer can bind payload and receives the real source failure.
+	a.observePlayback(p, plex.Activity{Sessions: 1, MediaKeys: []string{plex.MediaKey(base + ".mp4")}}, nil, time.Now())
 
 	if _, err = cold.ReadAt(t.Context(), make([]byte, 1), 0); err == nil {
 		t.Fatal("uncached payload did not expose source failure")
@@ -99,4 +107,39 @@ func TestFirstVisitMetadataAndMissingAssetsNeverResolveMedia(t *testing.T) {
 			t.Fatal("missing first-visit measurement", operation)
 		}
 	}
+}
+
+func TestDeferredFilesystemReadIsCountedSeparatelyFromFailure(t *testing.T) {
+	recorder := &diagnostics.Recorder{}
+
+	reader := observedMedia{Representation: deferredMeasuredMedia{}, recorder: recorder, operation: "filesystem.read.media"}
+	if _, err := reader.ReadAt(t.Context(), make([]byte, 1), 0); !errors.Is(err, media.ErrDeferred) {
+		t.Fatal(err)
+	}
+
+	for _, counter := range recorder.Counters() {
+		if counter.Name == "filesystem.read.media.errors" {
+			t.Fatal("temporary deferral counted as a source failure")
+		}
+	}
+
+	found := false
+
+	for _, counter := range recorder.Counters() {
+		if counter.Name == "filesystem.read.media.deferred" && counter.Value == 1 {
+			found = true
+		}
+	}
+
+	if !found {
+		t.Fatal("missing deferral measurement")
+	}
+}
+
+type deferredMeasuredMedia struct{}
+
+func (deferredMeasuredMedia) ID() string  { return "deferred" }
+func (deferredMeasuredMedia) Size() int64 { return 1 }
+func (deferredMeasuredMedia) ReadAt(context.Context, []byte, int64) (int, error) {
+	return 0, media.ErrDeferred
 }

@@ -224,6 +224,13 @@ func TestHandleReturnsSourceFailuresAndExactEndReads(t *testing.T) {
 		t.Fatal("source failure became successful data", code)
 	}
 
+	h.rep = failedRange{media.ErrDeferred}
+	if _, code := h.Read(t.Context(), make([]byte, 4), 0); code != syscall.EAGAIN {
+		t.Fatal("temporary deferral became a permanent failure", code)
+	}
+
+	h.rep = failedRange{failure}
+
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 

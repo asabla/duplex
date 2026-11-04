@@ -8,6 +8,8 @@ import (
 	"math"
 	"path"
 	"strings"
+
+	"duplex/internal/media"
 )
 
 func (s *Server) operation(ctx context.Context, procedure uint32, d *decoder) encoder {
@@ -156,6 +158,10 @@ func (s *Server) read(ctx context.Context, r record, d *decoder) encoder {
 	data := make([]byte, min(int64(count), max(0, rep.Size()-int64(offset))))
 
 	n, err := rep.ReadAt(ctx, data, int64(offset))
+	if errors.Is(err, media.ErrDeferred) {
+		return operationError(10008, 6) // NFS3ERR_JUKEBOX: retry without holding a server slot.
+	}
+
 	if (err != nil && !errors.Is(err, io.EOF)) || n != len(data) {
 		return operationError(5, 6)
 	}

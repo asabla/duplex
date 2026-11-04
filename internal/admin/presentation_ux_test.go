@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"duplex/internal/app"
+	"duplex/internal/catalog"
 )
 
 func TestOptionalPlexSetupDoesNotHideServiceFailures(t *testing.T) {
@@ -109,4 +110,31 @@ func TestFirstChannelStartsWithUploadsAndExposesRecordingSelection(t *testing.T)
 	body, _ = f.request(t, http.MethodGet, "/channels?q=does-not-match", "", nil, http.StatusOK)
 	requireElement(t, body, "strong", nil, "No matching channels")
 	requireElement(t, body, "a", map[string]string{"href": "/channels"}, "Clear filters")
+}
+
+func TestDeferredDiscoveryUsesInformationalStatusAndFilter(t *testing.T) {
+	server, err := New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var body bytes.Buffer
+
+	view := page{Status: app.Status{Jobs: []catalog.Job{{ID: 1, ChannelID: "controlled-channel", State: "deferred"}}}, Filters: url.Values{"state": {"deferred"}}}
+	if err = server.templates.ExecuteTemplate(&body, "jobs", view); err != nil {
+		t.Fatal(err)
+	}
+
+	requireElement(t, body.Bytes(), "span", nil, "Paused for playback")
+
+	var filters bytes.Buffer
+	if err = server.templates.ExecuteTemplate(&filters, "job-filters", view); err != nil {
+		t.Fatal(err)
+	}
+
+	requireElement(t, filters.Bytes(), "option", map[string]string{"value": "deferred"}, "Paused for playback")
+
+	if strings.Contains(body.String(), "status-danger") || strings.Contains(body.String(), "Inspect failure") {
+		t.Fatal("playback deferral was presented as a failure")
+	}
 }

@@ -130,7 +130,13 @@ func (a *App) discoveryMetadata(ctx context.Context, id string) (source.Metadata
 	}
 	defer release()
 
-	return a.Source.Metadata(source.WithCause(ctx, source.CauseDiscovery), id)
+	work, stop, err := a.startDiscovery(ctx)
+	if err != nil {
+		return source.Metadata{}, err
+	}
+	defer stop()
+
+	return a.Source.Metadata(source.WithCause(work, source.CauseDiscovery), id)
 }
 
 func (a *App) automaticUpdatesAllowed() bool {

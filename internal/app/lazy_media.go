@@ -27,11 +27,14 @@ type lazyEpisode struct {
 	episode catalog.Episode
 	mu      sync.Mutex
 	rep     media.Representation
+	name    string
+	epoch   uint64
 }
 
 func (r *lazyEpisode) ID() string  { return r.episode.Revision }
 func (r *lazyEpisode) Size() int64 { return r.episode.Size }
 func (r *lazyEpisode) ReadAt(ctx context.Context, p []byte, offset int64) (int, error) {
+	ctx = payloadContext(ctx, r.name)
 	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
@@ -60,9 +63,21 @@ func (r *lazyEpisode) ReadAt(ctx context.Context, p []byte, offset int64) (int, 
 	}
 
 	rep := r.rep
+	epoch := r.epoch
 	r.mu.Unlock()
 
-	return rep.ReadAt(ctx, p, offset)
+	n, err := rep.ReadAt(ctx, p, offset)
+	if epoch == 0 || !errors.Is(err, media.ErrExpired) || ctx.Err() != nil {
+		return n, err
+	}
+
+	r.app.rejectBinding(r.episode, epoch)
+	r.mu.Lock()
+	r.rep = nil
+	r.epoch = 0
+	r.mu.Unlock()
+
+	return r.ReadAt(ctx, p, offset)
 }
 
 func (a *App) localLayout(ctx context.Context, episode catalog.Episode) (media.Representation, error) {
@@ -210,7 +225,7 @@ func (r *lazyTrack) ReadAt(ctx context.Context, p []byte, offset int64) (int, er
 		start := (offset / media.ChunkSize) * media.ChunkSize
 		length := int(min(int64(media.ChunkSize), r.size-start))
 
-		data, release, err := r.app.Cache.Lookup(ctx, r.id, start, length)
+		count, err := r.app.Cache.ReadCached(ctx, r.id, start, length, p[n:], int(offset-start))
 		if err != nil {
 			if !errors.Is(err, cache.ErrMiss) {
 				return n, err
@@ -228,10 +243,6 @@ func (r *lazyTrack) ReadAt(ctx context.Context, p []byte, offset int64) (int, er
 
 		r.app.Measurements.Count("payload.cache_hit", 1)
 
-		count := copy(p[n:], data[offset-start:])
-
-		release()
-
 		n += count
 		offset += int64(count)
 	}
@@ -244,11 +255,76 @@ func (r *lazyTrack) ReadAt(ctx context.Context, p []byte, offset int64) (int, er
 }
 
 func (r *lazyTrack) readLive(ctx context.Context, p []byte, offset int64) (int, error) {
-	rep, err := r.app.bindEpisode(ctx, r.episode)
+	for {
+		work, release, err := r.app.startPayload(ctx)
+		if err != nil {
+			return 0, err
+		}
+
+		n, err := r.readRecovering(work, p, offset)
+		deferred := errors.Is(context.Cause(work), errBackgroundDeferred)
+
+		release()
+
+		if !deferred {
+			return n, err
+		}
+	}
+}
+
+func (r *lazyTrack) readRecovering(ctx context.Context, p []byte, offset int64) (int, error) {
+	rep, epoch, err := r.liveBinding(ctx)
 	if err != nil {
 		return 0, err
 	}
 
+	n, err := r.readBound(ctx, rep, p, offset)
+	if !errors.Is(err, media.ErrExpired) || ctx.Err() != nil {
+		return n, err
+	}
+
+	r.app.rejectBinding(r.episode, epoch)
+
+	rep, _, err = r.liveBinding(ctx)
+	if err != nil {
+		return n, err
+	}
+
+	return r.readBound(ctx, rep, p, offset)
+}
+
+func (r *lazyTrack) liveBinding(ctx context.Context) (media.Representation, uint64, error) {
+	if rep, epoch := r.app.cachedBinding(r.episode.Revision); rep != nil {
+		return rep, epoch, nil
+	}
+
+	rep, err := r.app.bindEpisode(ctx, r.episode)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if cached, epoch := r.app.cachedBinding(r.episode.Revision); cached != nil {
+		return cached, epoch, nil
+	}
+
+	return rep, 0, nil
+}
+
+func (a *App) rejectBinding(episode catalog.Episode, epoch uint64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// A late failure from an older reader must not invalidate a renewed lease.
+	if a.bindingEpochs[episode.Revision] != epoch {
+		return
+	}
+
+	a.leases[episode.Revision] = time.Time{}
+	delete(a.metadata, episode.VideoID)
+	delete(a.renewAfter, episode.Revision)
+}
+
+func (r *lazyTrack) readBound(ctx context.Context, rep media.Representation, p []byte, offset int64) (int, error) {
 	if r.combined {
 		return rep.ReadAt(ctx, p, offset)
 	}

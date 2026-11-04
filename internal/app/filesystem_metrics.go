@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"duplex/internal/diagnostics"
@@ -27,7 +28,9 @@ func (m observedMedia) ReadAt(ctx context.Context, data []byte, offset int64) (i
 	defer m.recorder.Begin(m.operation)()
 
 	n, err := m.Representation.ReadAt(ctx, data, offset)
-	if err != nil {
+	if errors.Is(err, media.ErrDeferred) {
+		m.recorder.Count(m.operation+".deferred", 1)
+	} else if err != nil {
 		m.recorder.Count(m.operation+".errors", 1)
 	}
 
