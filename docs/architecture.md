@@ -97,6 +97,12 @@ retained visible directories. Unchanged publication and unrelated settings do
 not advance directory times. Publication does not hold `App.mu` during database
 work or wait for a Plex request.
 
+Changed episode assets advance the uploader's and all playlist owners' directory
+times in the same transaction that queues the asset digest. NFS clients can then
+discover added or removed sidecar files. An unchanged digest preserves directory
+times and pending retry state. Asset publication does not change the recording's
+revision, timestamps, occurrence identities, or scanner file slots.
+
 Channel configuration operations live in `channels.go`; compatibility status is
 in `status.go`; publication and scan scheduling are in `publication.go`. Durable
 asset I/O is separate from asset composition and queue work. Discovery keeps its
