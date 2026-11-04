@@ -28,6 +28,9 @@ builds. Validate production Compose with `docker compose config --quiet`.
 
 Controlled media tests compare packet payloads, timestamps, decode results,
 distant reads, and cache behavior against independently generated references.
+Separate-track mux tests must bound chunk duration and size at sample boundaries,
+preserve variable sample timing and source gaps, and retain the exact identity,
+bytes, and saved format of legacy version 1 indexes.
 Linux tests cover FUSE handles, write rejection, source failures, physical disk
 pressure, pinned reads, interrupted publication, and mount recovery. Inspect
 skipped tests; live Plex qualification needs a separate controlled installation.
@@ -66,6 +69,9 @@ Use a dedicated test library and preserve existing user state. Verify:
   directories or reset pending retries.
 - Sustained playback for four independent viewers with the documented host,
   quality, cache limit, source workload, and Plex conversion settings.
+  For packaging changes, compare HTTP range counts and transferred bytes using
+  the same source tracks, playback duration, client, and Plex settings. Confirm
+  that reduced range traffic retains decoded frames, audio, and seek results.
 - Playback protection with media in other Plex libraries, including paused
   sessions; preparation and optional asset interruption and queue recovery;
   unavailable monitoring and the continuous idle grace period. Test manual scans

@@ -98,7 +98,7 @@ func decodeLayout(reader io.Reader) (*VirtualMP4, error) {
 		return nil, ErrUnsupported
 	}
 
-	if v.Revision != PackagingVersion || len(v.Sources) != 2 || len(v.Header) < 16 || v.Length < int64(len(v.Header)) {
+	if (v.Revision != PackagingVersion && v.Revision != legacyPackagingVersion) || len(v.Sources) != 2 || len(v.Header) < 16 || v.Length < int64(len(v.Header)) {
 		return nil, ErrUnsupported
 	}
 

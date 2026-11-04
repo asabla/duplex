@@ -337,6 +337,20 @@ tables and an interleaved output range map. Generated headers have fixed size;
 output offsets map to exact upstream track ranges. Media payloads are not copied
 into a complete prepared file.
 
+New separate-track layouts use `progressive-mp4-v2`. The muxer splits source
+chunks at sample boundaries so each output chunk covers at most half a second
+and 1 MiB. A single longer or larger sample remains intact. It rebuilds the
+sample-to-chunk table and sorts chunks by rational decode time, while retaining
+sample bytes, timestamps, codec data, and edit lists. Planning checks cancellation
+and rejects malformed timing counts. Header and chunk-count limits bound the work.
+
+`progressive-mp4-v1` indexes remain readable with their original identities and
+byte maps. Preparation reuses a valid saved index, including version 1. The new
+layout applies when a new index is built; this change does not automatically
+repack the existing catalogue. A future upgrade operation must preserve retained
+revision indexes, open-handle byte contracts, filenames, and Plex occurrence
+identities.
+
 Fragment metadata is read under size, concurrency, pacing, and work limits.
 Encrypted tracks, unsupported descriptions, discontinuous timelines, invalid
 bounds, and ambiguous addressing fail verification. A lower supported quality
