@@ -63,12 +63,15 @@ also pause background work. Startup checks, failed checks, and status older than
 five seconds keep work paused. Work resumes after 30 seconds of continuous,
 confirmed idle status. Diagnostics shows the reason and the last successful check.
 
-Discovery pauses between source calls and result batches. Optional assets pause
-between jobs. Ordinary preparation is canceled and returned to its queue without
-a failure. **Prepare now** and scheduled source renewal also wait. Media reads
-and requested payload bindings can continue. Opens, headers, and cached reads do
-not identify an active viewer. A source call or asset operation
-already in progress can finish at its next admission boundary.
+Discovery pauses between source calls and result batches. The monitor cancels
+active optional asset requests when playback, Plex activity, or a status failure
+requires a pause. Interrupted asset jobs retain completed files and return to the
+queue without a failure or retry delay. Ordinary preparation also returns to its
+queue. **Prepare now** and scheduled source renewal wait. Media reads and requested
+payload bindings can continue, including a shared source request still needed by
+playback. Opens, headers, and cached reads do not identify an active viewer.
+An independent discovery source call already in progress can finish at its next
+admission boundary.
 
 Without a Plex connection, work uses the same bounded background limits, but
 duplex cannot protect playback in other Plex libraries. Changes to these Plex

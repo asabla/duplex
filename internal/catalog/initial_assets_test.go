@@ -48,6 +48,10 @@ func TestInitialAssetOwnershipAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err = s.DeferAsset(t.Context(), "initial"); err != nil {
+		t.Fatal(err)
+	}
+
 	if _, err = s.NextAsset(t.Context()); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatal("background worker stole initial work", err)
 	}

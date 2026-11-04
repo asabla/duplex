@@ -111,6 +111,10 @@ func (a *App) observePlayback(p config.Plex, activity plex.Activity, failure err
 	a.signalPlaybackLocked()
 
 	if a.playbackStatusLocked(p, now).BackgroundPaused {
+		if a.assetCancel != nil {
+			a.assetCancel(errBackgroundDeferred)
+		}
+
 		for _, run := range a.preparations {
 			if run.priority < streamRenewalPriority && !run.interrupted {
 				run.interrupted = true

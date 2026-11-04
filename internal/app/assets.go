@@ -382,16 +382,30 @@ func (a *App) runAssetWork(ctx context.Context, id string) error {
 		return err
 	}
 
-	ctx = backgroundContext(ctx)
-
 	workCtx, stop := context.WithTimeout(ctx, time.Minute)
 	defer stop()
 
-	release, err := a.acquireAsset(workCtx)
+	workCtx, release, err := a.startAssetWork(workCtx)
 	if err == nil {
 		defer release()
 
-		err = a.refreshAssets(workCtx, id)
+		err = workCtx.Err()
+		if err == nil {
+			err = a.refreshAssets(workCtx, id)
+		}
+	}
+
+	if errors.Is(context.Cause(workCtx), errBackgroundDeferred) {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
+		defer cancel()
+
+		a.Measurements.Count("assets.deferred", 1)
+
+		return a.Catalog.DeferAsset(cleanup, id)
+	}
+
+	if ctx.Err() != nil {
+		return ctx.Err()
 	}
 
 	a.operationFailure("optional assets", err)

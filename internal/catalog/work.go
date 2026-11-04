@@ -213,6 +213,13 @@ func (s *Store) RetryInitialAsset(ctx context.Context, id string) error {
 	return err
 }
 
+// DeferAsset returns an interrupted refresh to the queue without a failure or
+// the normal retry delay. Initial warming retains its separate owner.
+func (s *Store) DeferAsset(ctx context.Context, id string) error {
+	_, err := s.DB.ExecContext(ctx, `UPDATE asset_jobs SET state='queued',updated=0,error='' WHERE video_id=? AND state<>'warming'`, id)
+	return err
+}
+
 // NextAsset returns one pending optional asset job.
 func (s *Store) NextAsset(ctx context.Context) (string, error) {
 	var id string
