@@ -92,6 +92,7 @@ func (s *Store) acquireChunk(key string, reservation int64) (*entry, bool, <-cha
 		}
 
 		delete(s.items, key)
+		s.dropHotLocked(key)
 		s.used -= item.allocation
 	}
 
@@ -153,6 +154,9 @@ func (s *Store) readChunk(key string, item *entry, length int) ([]byte, func(), 
 	item.pins--
 
 	item.err = errors.New("corrupt cache entry; retry after invalidation")
+
+	s.dropHotLocked(key)
+
 	if item.pins == 0 {
 		if err = removeChunkFile(item.path); err != nil {
 			return nil, nil, err
@@ -232,6 +236,7 @@ func (s *Store) finishChunk(key string, item *entry, failure error, retained str
 
 		if retained == "" {
 			delete(s.items, key)
+			s.dropHotLocked(key)
 			s.used -= item.allocation
 		} else {
 			item.path = retained

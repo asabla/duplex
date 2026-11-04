@@ -23,6 +23,7 @@ type ChunkStore interface {
 }
 
 type entry struct {
+	readMu     sync.Mutex
 	path       string
 	digest     string
 	allocation int64
@@ -41,6 +42,8 @@ type Store struct {
 	dir         string
 	limit, used int64
 	items       map[string]*entry
+	hot         map[string][]byte
+	hotBytes    int64
 	lock        *os.File
 	closed      bool
 	space       func() (free, total int64, err error)
@@ -109,6 +112,7 @@ func (s *Store) Close() error {
 	}
 
 	s.closed = true
+	s.hot, s.hotBytes = nil, 0
 
 	return unlockDirectory(s.lock)
 }
@@ -137,6 +141,8 @@ func (s *Store) Resize(limit int64) error {
 		s.limit = old
 		return e
 	}
+
+	s.trimHotLocked()
 
 	return nil
 }

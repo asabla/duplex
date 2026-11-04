@@ -57,6 +57,7 @@ func (s *Store) evictOne() error {
 	}
 
 	delete(s.items, key)
+	s.dropHotLocked(key)
 	s.used -= oldest.allocation
 
 	return nil
