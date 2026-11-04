@@ -104,6 +104,19 @@ Use a dedicated test library and preserve existing user state. Verify:
   identity and progress across these selection changes.
 - Source expiry and truncated reads, disk exhaustion, cache pressure, and recovery
   after a killed mount process. Failed bytes must reach the client as errors.
+  Reject a locator before its advertised expiry and verify that concurrent
+  readers share recovery without changing media identity. A late rejection
+  must not invalidate a newer lease.
+- Viewer-specific uncached admission: an unrelated scanner read receives a
+  temporary NFS retry while active viewers, including a viewer that joins later,
+  continue. Verify actual Plex session file matching, free server request slots,
+  retry recovery, and source process cancellation. Stop discovery during metadata
+  resolution and listing, then resume without failure state or partial removals.
+- Offline layout maintenance: preview, service-lock refusal, conversion with no
+  network requests, interrupted-run recovery, and repeated apply. Retain old
+  revision files, exact source bytes, recording slots, Plex keys, and progress
+  across the upgrade and a subsequent scan. A cached range may reuse only
+  private verified bytes; mutation of a caller buffer must not change them.
 - Read-only NFS projection, unchanged file handles after restart, and reconnect
   while Plex stays running. Old representation handles must return their original
   bytes or fail, and must never return replacement content. Legacy FUSE deployments

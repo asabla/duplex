@@ -241,13 +241,26 @@ every two seconds with a two-second deadline. Startup, errors, or observations
 older than five seconds block background admission. Thirty seconds of continuous
 idle observations allow it to resume. A gap restarts this grace period.
 
-Discovery waits before source calls and result batches. Optional assets and
-artwork wait between jobs or channels. Admitted source calls can finish at their
-next boundary. Preparation cancellation returns interrupted work to the durable
+Discovery waits before source calls and result batches. The monitor cancels
+active discovery contexts when protection pauses background work. Interrupted
+jobs become `deferred`, discard incomplete staging, and retain completed
+selections without a source-failure message. The worker starts a fresh
+enumeration after admission resumes. Optional assets and artwork wait between
+jobs or channels. Preparation cancellation returns interrupted work to the durable
 queue without a failure. A UI priority request does not override protection.
-Media reads and requested payload bindings remain available. Opens, header reads,
-and cache reads do not identify a viewer or promote scheduled renewal work.
-NFS does not distinguish a scanner from a viewer that requests uncached payload.
+Opens, generated headers, and verified cache reads remain available. They do not
+identify a viewer or promote scheduled renewal work. NFS does not identify
+scanners separately. While fresh Plex observations report sessions, uncached
+reads require a matching managed file slot in those sessions. Only hashes of
+managed filenames are retained; mount roots, titles, users, and player details
+are discarded. A new viewer can proceed after its session is observed.
+Unrelated reads return a temporary deferral, which NFS maps to
+[`NFS3ERR_JUKEBOX`](https://www.rfc-editor.org/rfc/rfc1813.html#section-2.6)
+so the client retries without occupying a server request slot. Legacy FUSE maps
+it to `EAGAIN`. Active unrelated payload work is interrupted independently per
+waiter; shared work needed by a viewer continues. With no reported sessions,
+analysis can complete. Unavailable monitoring still blocks background jobs,
+while requested media reads remain available.
 
 Automatic Plex updates have a separate policy. Monitoring-only connections issue
 no mutations and require no NFO agent or section. Automatic scans coalesce in
@@ -320,7 +333,11 @@ estimated 8 MiB. It evicts by last use and expires at the earliest format lease,
 with a five-minute maximum. Results without formats have a one-minute lifetime.
 Failures retain only a bounded error class for one second. Explicit renewal
 bypasses cached results, and a manual preparation retry clears cached failures.
-An expired-source binding invalidates its metadata. No locator is persisted.
+A rejected payload lease invalidates its runtime binding and metadata, then
+retries with freshly verified sources. A generation check prevents an old
+reader's rejection from invalidating a newer binding. The requested revision and
+source identities remain mandatory; changed content returns an error. Retained
+open representations use this recovery path too. No locator is persisted.
 
 Two shared resolution slots bound full source work. Background work also retains
 its single metadata admission slot. Admission happens before request sharing,
@@ -346,10 +363,17 @@ and rejects malformed timing counts. Header and chunk-count limits bound the wor
 
 `progressive-mp4-v1` indexes remain readable with their original identities and
 byte maps. Preparation reuses a valid saved index, including version 1. The new
-layout applies when a new index is built; this change does not automatically
-repack the existing catalogue. A future upgrade operation must preserve retained
-revision indexes, open-handle byte contracts, filenames, and Plex occurrence
-identities.
+layout applies when a new index is built. The explicit `upgrade-layouts`
+maintenance command converts retained version 1 layouts using only saved headers
+and range maps. It requires the service ownership lock and starts no workers or
+network requests. Preview leaves media files and catalogue records unchanged.
+Apply saves the new immutable index and descriptor, replaces the reusable alias,
+then changes the current catalogue revision and size in a transaction. An
+interrupted run can be repeated. Old revision files and representation rows,
+filenames, scanner slots, and Plex bindings remain. Old handles retain their
+byte contract or fail; they never return the replacement layout. Combined media
+and records without a retained layout are skipped. The command does not run
+automatically. See [Operations](operations.md#upgrade-existing-mp4-layouts).
 
 Fragment metadata is read under size, concurrency, pacing, and work limits.
 Encrypted tracks, unsupported descriptions, discontinuous timelines, invalid
@@ -366,7 +390,7 @@ resolver's documented [`formats=duplicate` option](https://github.com/yt-dlp/yt-
 
 A saved index can bind live upstream readers only when fresh sources establish
 the same identities. Loading its checksummed layout and generated header requires
-no locator. Local chunk lookups verify hashes and retain pins without reserving
+no locator. Local chunk lookups use verified bytes and retain pins without reserving
 space or fetching data. Missing payload triggers live binding and the existing
 source identity checks. An open alone does not start resolution.
 A strong ETag is one source of evidence. The YouTube version path also checks the
@@ -397,6 +421,14 @@ The chunk store reserves configured and physical capacity before fetching. It
 counts unfinished writes, deduplicates concurrent requests, publishes by synced
 atomic rename, and validates content hashes. Reads pin chunks. Eviction considers
 only unpinned data. Failed cleanup stays accounted for until it can be removed.
+
+Small range reads share private, verified memory snapshots, bounded by 128
+entries and the smaller of 32 MiB or the configured disk limit. The first load
+checks the complete published chunk hash. Later reads copy only the requested
+range from those immutable bytes. Disk corruption cannot alter a retained
+snapshot; a new disk load still validates its hash. `Get` and `Lookup` retain
+their independent mutable-buffer contract. Eviction, failed-entry removal,
+resize, and close remove matching snapshots. Active copies retain their pins.
 
 The cache has one owner process. Startup checks its directory and recovers
 unfinished writes. Disk exhaustion and a fully pinned cache return errors.

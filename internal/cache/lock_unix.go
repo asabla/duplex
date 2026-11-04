@@ -29,3 +29,14 @@ func unlockDirectory(f *os.File) error {
 
 	return f.Close()
 }
+
+// LockMaintenance obtains the service's ownership lock without recovering,
+// resizing, reading, or deleting any media chunks. Stop Duplex before use.
+func LockMaintenance(dir string) (func() error, error) {
+	file, err := lockDirectory(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	return func() error { return unlockDirectory(file) }, nil
+}

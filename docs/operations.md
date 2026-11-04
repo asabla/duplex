@@ -57,10 +57,44 @@ The cache is evictable. Durable indexes and assets can grow with catalogue histo
 Do not delete files from a running cache directory; it has a single-process lock
 and its own recovery rules.
 
-An open handle stays bound to one representation. Range responses with changed
-content, incorrect lengths, or an expired locator fail that handle. A new locator
-must preserve the verified object identity before its index can be reused. Without
+An open handle stays bound to one representation. A rejected locator gets a
+bounded retry with fresh sources. Those sources must establish the original
+identity; changed content or incorrect lengths remain read errors. Without
 strong identity evidence, a new resolution receives a new cache namespace.
+
+## Upgrade existing MP4 layouts
+
+New separate-track indexes use improved audio/video interleaving. Existing
+version 1 indexes remain unchanged until an explicit upgrade. Wait until Plex
+has no active viewers, stop Duplex, and preview the local conversion:
+
+```sh
+docker compose stop duplex
+docker compose run --rm --no-deps duplex upgrade-layouts --config /state/config.yaml
+```
+
+The JSON report counts scanned, eligible, upgraded, and skipped recordings.
+Preview changes no media indexes or catalogue records. Apply the same operation
+and restart Duplex:
+
+```sh
+docker compose run --rm --no-deps duplex upgrade-layouts --config /state/config.yaml --apply
+docker compose up -d duplex
+```
+
+Add `--video VIDEO_ID` to limit either command to one recording. Maintenance
+refuses to run while another process owns the media cache. It uses saved tables
+and range maps, without downloading or encoding media. Combined files and
+records without a retained index are skipped. Invalid saved data stops the run;
+completed upgrades remain committed. Repeating an interrupted run is safe.
+
+The current media revision and size change. Old revision files remain, and an
+old handle returns its original bytes or fails. Filenames, recording slots,
+playlist occurrences, and Plex bindings remain. After restart, use the normal
+managed scan, or scan the dedicated Plex library manually if automatic updates
+are disabled. This updates file observations while episode identities retain progress.
+Keep the durable catalogue, indexes, and NFS handle database in the normal
+backup. This operation does not change Plex settings or contact the source.
 
 ## Refresh and restart
 
