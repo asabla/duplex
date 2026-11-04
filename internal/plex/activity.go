@@ -8,18 +8,24 @@ import (
 
 // Activity contains no media titles, user identities, or client details.
 type Activity struct {
-	Sessions int
-	Scanning bool
-	Tasks    int
+	Sessions  int
+	Scanning  bool
+	Tasks     int
+	MediaKeys []string
 }
 
 // Activity reads server-wide sessions and, optionally, the dedicated scanner.
 // Every reported session, including paused and unknown states, protects playback.
 func (c *Client) Activity(ctx context.Context, section string) (Activity, error) {
 	var response struct {
-		XMLName xml.Name                     `xml:"MediaContainer"`
-		Size    *int                         `xml:"size,attr"`
-		Items   []struct{ XMLName xml.Name } `xml:",any"`
+		XMLName xml.Name `xml:"MediaContainer"`
+		Size    *int     `xml:"size,attr"`
+		Items   []struct {
+			XMLName xml.Name
+			Parts   []struct {
+				File string `xml:"file,attr"`
+			} `xml:"Media>Part"`
+		} `xml:",any"`
 	}
 
 	if err := c.get(ctx, "/status/sessions", &response); err != nil {
@@ -31,6 +37,13 @@ func (c *Client) Activity(ctx context.Context, section string) (Activity, error)
 	}
 
 	activity := Activity{Sessions: *response.Size}
+	for _, item := range response.Items {
+		for _, part := range item.Parts {
+			if key := MediaKey(part.File); key != "" && len(activity.MediaKeys) < 128 {
+				activity.MediaKeys = append(activity.MediaKeys, key)
+			}
+		}
+	}
 
 	tasks, err := c.BackgroundTasks(ctx)
 	if err != nil {

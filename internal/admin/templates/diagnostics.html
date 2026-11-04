@@ -122,7 +122,7 @@
     <label
       >Result<select name="state">
         <option value="">All results</option
-        >{{range states "running" "complete" "failed" "interrupted"}}
+        >{{range states "running" "deferred" "complete" "failed" "interrupted"}}
           <option
             value="{{.}}"
             {{if eq . ($.Filters.Get "state")}}selected{{end}}
@@ -183,7 +183,7 @@
                 <span
                   class="status {{if eq .State "complete"}}
                     status-success
-                  {{else if eq .State "running"}}
+                  {{else if or (eq .State "running") (eq .State "deferred")}}
                     status-info
                   {{else}}
                     status-danger

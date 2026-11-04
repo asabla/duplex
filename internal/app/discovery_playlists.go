@@ -102,6 +102,10 @@ func (r *discoveryRun) playlist(ctx context.Context, id string, policy config.Se
 
 	_, err := r.reader.Entries(ctx, source.Scope{PlaylistID: id, Start: 1}, func(batch []source.Entry) error { return p.consume(ctx, batch) })
 	if err != nil {
+		if errors.Is(context.Cause(ctx), errBackgroundDeferred) {
+			return err
+		}
+
 		cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 		defer stop()
 

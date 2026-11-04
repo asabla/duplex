@@ -119,3 +119,23 @@ func (s *Store) JobsPage(ctx context.Context, number, size int) ([]Job, int, err
 
 	return jobs, total, tx.Commit()
 }
+
+// DeferJob discards incomplete staging without recording a source failure.
+// The worker starts a fresh enumeration after playback protection permits it.
+func (s *Store) DeferJob(ctx context.Context, id int64) error {
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollback(tx)
+
+	if _, err = tx.ExecContext(ctx, `UPDATE sync_jobs SET state='deferred',finished=?,error='' WHERE id=?`, time.Now().Unix(), id); err != nil {
+		return err
+	}
+
+	if _, err = tx.ExecContext(ctx, `DELETE FROM discovery_items WHERE run_id=?`, id); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
