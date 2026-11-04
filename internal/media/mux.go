@@ -15,8 +15,9 @@ import (
 
 // PackagingVersion identifies the immutable progressive MP4 layout.
 const (
-	PackagingVersion = "progressive-mp4-v1"
-	maxIndexBytes    = 64 * 1024 * 1024
+	PackagingVersion       = "progressive-mp4-v2"
+	legacyPackagingVersion = "progressive-mp4-v1"
+	maxIndexBytes          = 64 * 1024 * 1024
 )
 
 // Span maps an output range to source bytes. Headers are generated separately;
@@ -30,6 +31,7 @@ type Span struct {
 	track, chunk int
 	dts          uint64
 	scale        uint32
+	samples      uint32
 }
 
 // VirtualMP4 maps deterministic progressive MP4 offsets to immutable source ranges.
@@ -178,9 +180,13 @@ func Mux(ctx context.Context, video, audio Representation) (result *VirtualMP4, 
 			return nil, err
 		}
 
-		spans, err := track.sourceSpans(i)
+		spans, err := track.timedSpans(ctx, i)
 		if err != nil {
 			return nil, err
+		}
+
+		if len(spans) > maxMuxChunks-len(virtual.Spans) {
+			return nil, ErrUnsupported
 		}
 
 		virtual.Spans = append(virtual.Spans, spans...)

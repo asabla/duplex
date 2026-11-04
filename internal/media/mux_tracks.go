@@ -130,6 +130,7 @@ func (t muxTrack) sourceSpans(track int) ([]Span, error) {
 		}
 
 		span.track, span.chunk = track, chunk
+		span.samples = count
 		result = append(result, span)
 		sample += count
 	}
