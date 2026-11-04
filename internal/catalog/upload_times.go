@@ -1,6 +1,11 @@
 package catalog
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
+
+const advanceProjectionTime = `UPDATE channels SET updated=MAX(updated+1,unixepoch(),COALESCE((SELECT v.updated+1 FROM videos v WHERE v.channel_id=channels.id ORDER BY v.updated DESC LIMIT 1),0),COALESCE((SELECT MAX(MAX(p.updated,COALESCE((SELECT t.modified FROM projection_playlist_times t WHERE t.playlist_id=p.id ORDER BY t.modified DESC LIMIT 1),0)))+1 FROM playlists p WHERE p.channel_id=channels.id),0))`
 
 // TouchProjection advances retained directory times when YAML hides or returns
 // collections. Recording rows, media identities, and Plex bindings are retained.
@@ -12,13 +17,20 @@ func (s *Store) TouchProjection(ctx context.Context, channels []string) error {
 	defer rollback(tx)
 
 	for _, id := range channels {
-		_, err = tx.ExecContext(ctx, `UPDATE channels SET updated=MAX(updated+1,unixepoch(),COALESCE((SELECT v.updated+1 FROM videos v WHERE v.channel_id=channels.id ORDER BY v.updated DESC LIMIT 1),0),COALESCE((SELECT MAX(MAX(p.updated,COALESCE((SELECT t.modified FROM projection_playlist_times t WHERE t.playlist_id=p.id ORDER BY t.modified DESC LIMIT 1),0)))+1 FROM playlists p WHERE p.channel_id=channels.id),0)) WHERE id=?`, id)
+		_, err = tx.ExecContext(ctx, advanceProjectionTime+` WHERE id=?`, id)
 		if err != nil {
 			return err
 		}
 	}
 
 	return tx.Commit()
+}
+
+// A changed sidecar must invalidate every owner directory cached by an NFS
+// consumer. Keep the recording's own revision, timestamps, and scanner slot.
+func touchEpisodeDirectories(ctx context.Context, tx *sql.Tx, video string) error {
+	_, err := tx.ExecContext(ctx, advanceProjectionTime+` WHERE id IN (SELECT channel_id FROM videos WHERE id=? UNION SELECT p.channel_id FROM playlist_members m JOIN playlists p ON p.id=m.playlist_id WHERE m.video_id=?)`, video, video)
+	return err
 }
 
 // Directory timestamps must advance when a visible upload leaves or returns,

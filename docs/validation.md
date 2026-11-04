@@ -60,7 +60,10 @@ Use a dedicated test library and preserve existing user state. Verify:
 - A public 2160p upload and a completed long replay, from preparation through
   rendered Plex Web playback, distant seeking, and resume.
 - Original audio and, with caption fetching enabled, available original-language
-  subtitles, including after seeks.
+  subtitles, including after seeks. Publish a subtitle after the initial NFS
+  directory scan and verify detection for the upload and every playlist
+  occurrence through targeted refresh. Unchanged assets must not invalidate
+  directories or reset pending retries.
 - Sustained playback for four independent viewers with the documented host,
   quality, cache limit, source workload, and Plex conversion settings.
 - Playback protection with media in other Plex libraries, including paused

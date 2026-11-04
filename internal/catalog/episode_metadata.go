@@ -52,14 +52,29 @@ func (s *Store) RecordEpisodeAssets(ctx context.Context, video, digest string) (
 		return false, err
 	}
 
-	result, err := s.DB.ExecContext(ctx, `INSERT INTO episode_metadata(video_id,digest) VALUES(?,?) ON CONFLICT(video_id) DO UPDATE SET digest=excluded.digest,pending=1,attempted=0,error='' WHERE digest<>excluded.digest`, video, digest)
+	tx, err := s.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer rollback(tx)
+
+	result, err := tx.ExecContext(ctx, `INSERT INTO episode_metadata(video_id,digest) VALUES(?,?) ON CONFLICT(video_id) DO UPDATE SET digest=excluded.digest,pending=1,attempted=0,error='' WHERE digest<>excluded.digest`, video, digest)
 	if err != nil {
 		return false, err
 	}
 
 	count, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
 
-	return count > 0, err
+	if count > 0 {
+		if err = touchEpisodeDirectories(ctx, tx, video); err != nil {
+			return false, err
+		}
+	}
+
+	return count > 0, tx.Commit()
 }
 
 // NextEpisodeRefresh reserves work after Plex has observed an episode. Failures
