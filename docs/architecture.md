@@ -78,8 +78,11 @@ application stops, or the hard deadline expires. At most 128 jobs per group are
 retained. Canceled jobs remain registered until work exits, so a retry cannot
 overlap an abandoned process. Shutdown waits for these groups before closing
 the mount, cache, and catalogue.
-`assetState` owns the optional asset wake channel and the single active asset
-operation. Its mutex only protects channel creation; it does not span I/O.
+`assetState` owns the optional asset channels and the active operation's
+cancellation. `App.mu` protects them and does not span I/O. Initial and background
+asset work register cancellation after acquiring their shared slot and recheck
+playback admission under the monitor's lock. Cleanup removes that cancellation
+before releasing capacity to the next operation.
 `playbackState` owns the current Plex observation, policy generation, idle grace
 period, and background admission channels. `App.mu` protects these values. The
 single monitor has a bounded request context and is part of application shutdown.
@@ -259,6 +262,12 @@ Restart also returns interrupted `warming` jobs to `queued`. The background
 worker drains pending jobs without a per-item polling delay and keeps its
 one-minute operation deadline. Initial warming and background work share one
 asset slot. Optional source errors remain separate from media readiness.
+The playback monitor cancels the active asset context when protection requires a
+pause. Interrupted refresh jobs return to `queued` with their error and retry
+time cleared; completed files remain. Initial warming retains its separate queue
+ownership. Canceling an asset waiter does not cancel a shared source resolution
+that still has a foreground waiter. Local asset publication already in progress
+can complete; cancellation does not undo durable files.
 
 Asset manifests retain a modification timestamp for each content-addressed file.
 Changed content advances that timestamp even within the same second; unchanged

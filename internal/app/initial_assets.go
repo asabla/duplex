@@ -12,10 +12,11 @@ import (
 const initialAssetBudget = 250 * time.Millisecond
 
 // assetState bounds all optional asset network work to one active operation.
-// App.mu protects channel creation; no application lock spans acquisition or I/O.
+// App.mu protects channels and the active cancellation; no lock spans I/O.
 type assetState struct {
-	assetWake  chan struct{}
-	assetSlots chan struct{}
+	assetWake   chan struct{}
+	assetSlots  chan struct{}
+	assetCancel context.CancelCauseFunc
 }
 
 func (a *App) assetChannels() (chan struct{}, chan struct{}) {
@@ -50,6 +51,34 @@ func (a *App) acquireAsset(ctx context.Context) (func(), error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+
+// Register after acquiring capacity and recheck protection under the same lock
+// as the monitor. A session observed while waiting must prevent new requests.
+func (a *App) startAssetWork(ctx context.Context) (context.Context, func(), error) {
+	release, err := a.acquireAsset(ctx)
+	if err != nil {
+		return ctx, nil, err
+	}
+
+	work, cancel := context.WithCancelCause(backgroundContext(ctx))
+	p := a.playbackConfig()
+	a.mu.Lock()
+	a.assetCancel = cancel
+
+	if a.playbackStatusLocked(p, time.Now()).BackgroundPaused {
+		cancel(errBackgroundDeferred)
+	}
+
+	a.mu.Unlock()
+
+	return work, func() {
+		a.mu.Lock()
+		a.assetCancel = nil
+		a.mu.Unlock()
+		cancel(nil)
+		release()
+	}, nil
 }
 
 func (a *App) queueRecordingAssets(ctx context.Context, m source.Metadata, initial bool) error {
@@ -94,17 +123,23 @@ func (a *App) warmInitialAssets(ctx context.Context, m source.Metadata) error {
 
 	work, stop := context.WithTimeout(ctx, initialAssetBudget)
 
-	release, err := a.acquireAsset(work)
+	work, release, err := a.startAssetWork(work)
 	if err == nil {
-		_, err = a.acquireMetadataAssets(work, m)
+		defer release()
 
-		release()
+		err = work.Err()
+		if err == nil {
+			_, err = a.acquireMetadataAssets(work, m)
+		}
 	}
 
 	interrupted := work.Err() != nil
 
 	stop()
-	a.operationFailure("initial assets", err)
+
+	if !errors.Is(context.Cause(work), errBackgroundDeferred) {
+		a.operationFailure("initial assets", err)
+	}
 
 	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), finishTimeout)
 	defer cancel()

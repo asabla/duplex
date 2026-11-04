@@ -67,9 +67,13 @@ Use a dedicated test library and preserve existing user state. Verify:
 - Sustained playback for four independent viewers with the documented host,
   quality, cache limit, source workload, and Plex conversion settings.
 - Playback protection with media in other Plex libraries, including paused
-  sessions; preparation interruption and queue recovery; unavailable monitoring
-  and the continuous idle grace period. Test manual scans with a monitoring-only
-  connection and verify that duplex sends no Plex mutation requests.
+  sessions; preparation and optional asset interruption and queue recovery;
+  unavailable monitoring and the continuous idle grace period. Test manual scans
+  with a monitoring-only connection and verify that duplex sends no Plex mutation
+  requests.
+  Interrupt thumbnail and caption requests, initial warming, and an expired
+  asset retry. Completed files must remain, deferred jobs must retain no failure
+  or retry delay, and shared foreground source requests must continue.
 - First episode-details visit and first Play separately, with cold and warm
   bindings. Record filesystem, cache, source, CPU, disk, and Plex conversion
   activity while multiple channels are queued. Local media playback must remain
