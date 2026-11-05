@@ -62,6 +62,14 @@ bounded retry with fresh sources. Those sources must establish the original
 identity; changed content or incorrect lengths remain read errors. Without
 strong identity evidence, a new resolution receives a new cache namespace.
 
+HTTP 429 and 503 responses delay further requests for the affected video and
+format. Duplex accepts `Retry-After` seconds or dates, with a minimum of one
+second and a maximum of five minutes. Repeated reads and fresh source URLs do
+not bypass the delay. Cached media remains readable, and uncached filesystem
+reads return a temporary retry response. A prepared recording remains ready;
+an initial preparation waits for the next normal or explicit retry. The delay
+does not persist across a service restart.
+
 ## Upgrade existing MP4 layouts
 
 New separate-track indexes use improved audio/video interleaving. Existing

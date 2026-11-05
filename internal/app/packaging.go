@@ -96,7 +96,7 @@ func (a *App) mediaClient() *http.Client {
 
 func (a *App) openTrack(ctx context.Context, id string, f source.Format) (*media.HTTPSource, error) {
 	return diagnostics.Measure(a.Measurements, "media.probe", func() (*media.HTTPSource, error) {
-		track, err := media.OpenVersionedHTTP(ctx, a.mediaClient(), f.URL, id+":"+f.ID, a.Cache, media.SourceVersion{Key: f.Revision, Size: f.VerifiedSize})
+		track, err := a.sourceRetries.OpenVersionedHTTP(ctx, a.mediaClient(), f.URL, id+":"+f.ID, a.Cache, media.SourceVersion{Key: f.Revision, Size: f.VerifiedSize})
 		if err == nil {
 			track.AdmitPayload = a.startPayload
 		}

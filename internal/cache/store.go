@@ -134,6 +134,10 @@ func (s *Store) Resize(limit int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.closed {
+		return errors.New("cache is closed")
+	}
+
 	old := s.limit
 
 	s.limit = limit

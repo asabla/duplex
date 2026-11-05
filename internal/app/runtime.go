@@ -30,6 +30,7 @@ type representationState struct {
 	reps            map[string]media.Representation
 	bindingEpochs   map[string]uint64
 	bindingEpoch    uint64
+	sourceRetries   media.RetryPolicy
 }
 
 const (
@@ -159,7 +160,7 @@ func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.R
 			}
 		}
 
-		if failure != nil {
+		if failure != nil && !errors.Is(failure, media.ErrDeferred) {
 			failure = errors.Join(failure, a.recordBindingFailure(work, episode, failure))
 		}
 
