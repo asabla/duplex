@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 CHECK = Path(os.environ.get("DUPLEX_CHECK_SCRIPT", "scripts/check.sh")).resolve()
+FINGERPRINT = Path("scripts/coverage-source.sh").resolve()
 
 
 class FormatterDiagnosticsTest(unittest.TestCase):
@@ -52,6 +53,40 @@ esac
                     self.assertIn(message, result.stderr)
                     self.assertEqual(result.stdout, difference)
                     self.assertNotIn("Unexpected lint execution", result.stderr)
+
+
+class SourceFingerprintTest(unittest.TestCase):
+    def test_embedded_files_and_fixtures_change_the_fingerprint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".cache").mkdir()
+            (root / "cmd").mkdir()
+            (root / "internal").mkdir()
+            (root / "go.mod").write_text("module fixture\n")
+            (root / "go.sum").write_text("")
+            inputs = (
+                root / "cmd/main.go",
+                root / "internal/page.html",
+                root / "internal/layout.json",
+            )
+            for path in inputs:
+                path.write_text("original\n")
+
+            def fingerprint():
+                return subprocess.check_output(
+                    ["sh", str(FINGERPRINT)], cwd=root, text=True
+                ).strip()
+
+            original = fingerprint()
+            for path in inputs:
+                with self.subTest(path=path.name):
+                    path.write_text("changed\n")
+                    self.assertNotEqual(fingerprint(), original)
+                    path.write_text("original\n")
+                    self.assertEqual(fingerprint(), original)
+
+            (root / ".cache/unrelated-profile").write_text("private measurement\n")
+            self.assertEqual(fingerprint(), original)
 
 
 if __name__ == "__main__":
