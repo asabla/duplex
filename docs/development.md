@@ -14,7 +14,7 @@ Use the versions in [`.tool-versions`](../.tool-versions) and [go.mod](../go.mod
 - golangci-lint 2.15.0, with formatting and imports enforced.
 - gitleaks 8.30.1.
 - govulncheck 1.9.0.
-- Node.js 26.7.0, shfmt 3.14.1, and Ruff 0.17.2 for development checks.
+- Node.js 26.7.0, shfmt 3.14.1, Ruff 0.17.2, and ShellCheck 0.11.0 for development checks.
 - Prettier 3.9.10, prettier-plugin-go-template 0.0.15, and html-validate 11.17.0,
   pinned in the development-only `tools/readability/package-lock.json`.
 - Python 3 for the existing scripts and their controlled behavioral tests.
@@ -51,7 +51,10 @@ working files and Git history for secrets, checks Go vulnerabilities, runs race
 and controlled media tests, enforces package coverage, and builds Linux amd64
 and arm64 binaries. It also checks the handwritten templates, CSS, JavaScript,
 shell, and Python files without rewriting them, runs script behavioral tests, and
-validates controlled rendered pages and HTMX fragments. The gate is defined in [`scripts/check.sh`](../scripts/check.sh).
+validates controlled rendered pages and HTMX fragments. Python lint selects
+`E4,E7,E9,F,B`; ShellCheck uses POSIX shell rules. Production Go imports must
+follow the boundaries in Architecture, enforced by `depguard`. The gate is
+defined in [`scripts/check.sh`](../scripts/check.sh).
 [`CI`](../.github/workflows/ci.yml) calls `make check` and also validates production
 Compose configuration. Use `golangci-lint fmt` only for an authorized formatting
 change, then review the diff. It can rewrite Go files across the checkout; keep
@@ -157,7 +160,20 @@ are uploaded. Keep that path list limited to the reviewed check outputs above.
 
 Controlled MP4 tests compare packet data and timing against independently prepared
 references, decode original audio, read distant ranges concurrently, and check
-end-of-file behavior. Real-source and Plex tests are separate release gates.
+end-of-file behavior. The warm four-byte payload benchmark is also a test with
+memory and upstream-work budgets defined in Validation. Repeated cold header
+opens must share one local index load and perform no source resolution or HTTP
+requests. These budgets use counts and allocated bytes, rather than elapsed time.
+
+`./scripts/check-fuzz.sh` runs active mutation testing for `FuzzLayout` and
+`FuzzRequest`, with ten seconds per target, two workers, and a 45-second Go test
+timeout. Ordinary tests also run the fixed seeds. Go retains new interesting
+inputs in its build cache and writes a failing input beneath the package's
+`testdata/fuzz` directory. Review and retain a useful failure as a regression
+case; do not commit raw cache directories. The local gate and CI use the same
+bounded fuzz commands.
+
+Real-source and Plex tests are separate release gates.
 FFprobe 6.1 can omit a nonterminal AAC packet duration. The comparison derives
 only that absent field from adjacent integer decode timestamps and the stream
 time base. Explicit durations, payload hashes, PTS, DTS, decoded audio, and

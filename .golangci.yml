@@ -11,6 +11,7 @@ linters:
     - contextcheck
     - copyloopvar
     - cyclop
+    - depguard
     - durationcheck
     - errcheck
     - errorlint
@@ -21,6 +22,8 @@ linters:
     - gosec
     - govet
     - ineffassign
+    - makezero
+    - nilnesserr
     - noctx
     - nolintlint
     - revive
@@ -28,9 +31,56 @@ linters:
     - sqlclosecheck
     - staticcheck
     - unused
+    - unparam
     - wsl_v5
     - funlen
   settings:
+    depguard:
+      rules:
+        independent:
+          files: ["**/internal/cache/*.go", "**/internal/config/*.go", "**/internal/plex/*.go", "**/internal/diagnostics/*.go", "!$test"]
+          list-mode: lax
+          deny: [{pkg: "duplex/internal/", desc: "This package must not depend on another internal package."}]
+        configured-adapters:
+          files: ["**/internal/artwork/*.go", "**/internal/source/*.go", "!$test"]
+          list-mode: lax
+          allow: ["duplex/internal/config$"]
+          deny: [{pkg: "duplex/internal/", desc: "Use only the dependencies defined in docs/architecture.md."}]
+        catalogue:
+          files: ["**/internal/catalog/*.go", "!$test"]
+          list-mode: lax
+          allow: ["duplex/internal/config$", "duplex/internal/source$"]
+          deny: [{pkg: "duplex/internal/", desc: "Use only the dependencies defined in docs/architecture.md."}]
+        media:
+          files: ["**/internal/media/*.go", "!$test"]
+          list-mode: lax
+          allow: ["duplex/internal/cache$", "duplex/internal/config$"]
+          deny: [{pkg: "duplex/internal/", desc: "Use only the dependencies defined in docs/architecture.md."}]
+        filesystem:
+          files: ["**/internal/library/*.go", "!$test"]
+          list-mode: lax
+          allow: ["duplex/internal/media$"]
+          deny: [{pkg: "duplex/internal/", desc: "Use only the dependencies defined in docs/architecture.md."}]
+        nfs:
+          files: ["**/internal/nfs/*.go", "!$test"]
+          list-mode: lax
+          allow: ["duplex/internal/library$", "duplex/internal/media$"]
+          deny: [{pkg: "duplex/internal/", desc: "Use only the dependencies defined in docs/architecture.md."}]
+        administration:
+          files: ["**/internal/admin/*.go", "!$test"]
+          list-mode: lax
+          allow: ["duplex/internal/app$", "duplex/internal/catalog$", "duplex/internal/config$"]
+          deny: [{pkg: "duplex/internal/", desc: "Use only the dependencies defined in docs/architecture.md."}]
+        application:
+          files: ["**/internal/app/*.go", "!$test"]
+          list-mode: lax
+          allow: ["duplex/internal/artwork$", "duplex/internal/cache$", "duplex/internal/catalog$", "duplex/internal/config$", "duplex/internal/diagnostics$", "duplex/internal/library$", "duplex/internal/media$", "duplex/internal/nfs$", "duplex/internal/plex$", "duplex/internal/source$"]
+          deny: [{pkg: "duplex/internal/", desc: "Use only the dependencies defined in docs/architecture.md."}]
+        command:
+          files: ["**/cmd/duplex/*.go", "!$test"]
+          list-mode: lax
+          allow: ["duplex/internal/admin$", "duplex/internal/app$", "duplex/internal/cache$", "duplex/internal/catalog$", "duplex/internal/config$", "duplex/internal/diagnostics$", "duplex/internal/library$", "duplex/internal/media$", "duplex/internal/plex$", "duplex/internal/source$"]
+          deny: [{pkg: "duplex/internal/", desc: "Use only the dependencies defined in docs/architecture.md."}]
     wsl_v5:
       default: default
       enable: [after-block]

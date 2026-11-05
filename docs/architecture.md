@@ -6,7 +6,7 @@ settings; SQLite stores catalogue and work state; the media cache is evictable.
 
 ## Current code organization
 
-The package map below describes production imports rechecked on 2026-10-26,
+The package map below describes production imports rechecked on 2026-11-05,
 including platform-specific files. It does not describe test imports or a new
 package layout. Concurrent changes can alter the source; recheck affected
 boundaries before starting a refactor. [Code standards](code-standards.md) defines
@@ -33,7 +33,10 @@ to storage and adapters. The current graph also contains direct command access
 for backup and qualification, admin use of catalogue/configuration types,
 catalogue use of source metadata, and media use of cache/configuration. These are
 existing dependencies to review; this map does not introduce a universal layer
-rule or require new packages.
+rule or require new packages. The `depguard` rules in `.golangci.yml` enforce
+these direct internal imports in production files on native and Linux builds.
+They permit external dependencies and exclude test fixtures. A new dependency
+requires review of this map and the corresponding import rule.
 
 The `library.Provider` interface is defined by the filesystem consumer. The
 application implements it with bounded catalogue reads and representation binding.
@@ -338,6 +341,11 @@ retries with freshly verified sources. A generation check prevents an old
 reader's rejection from invalidating a newer binding. The requested revision and
 source identities remain mandatory; changed content returns an error. Retained
 open representations use this recovery path too. No locator is persisted.
+If newly resolved locators are also rejected, the bounded metadata failure cache
+delays another resolution for one second. Reads during that delay do not extend
+it. Late readers can invalidate each binding generation only once, so they cannot
+erase the delay. A handle captures its representation, generation, and canonical
+video ID under one lock; later runtime eviction cannot remove its renewal identity.
 
 Two shared resolution slots bound full source work. Background work also retains
 its single metadata admission slot. Admission happens before request sharing,

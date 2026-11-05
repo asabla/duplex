@@ -2,7 +2,7 @@
 # Check handwritten languages without rewriting source or installing tools.
 set -eu
 
-for tool in node python3 shfmt ruff; do
+for tool in node python3 shfmt ruff shellcheck; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'Required development tool is missing: %s\n' "$tool" >&2
     exit 1
@@ -17,6 +17,7 @@ check_version() {
 check_version node v26.7.0 "$(node --version)"
 check_version shfmt v3.14.1 "$(shfmt --version)"
 check_version ruff 'ruff 0.17.2' "$(ruff --version)"
+check_version shellcheck 0.11.0 "$(shellcheck --version | awk '/^version:/ { print $2 }')"
 
 prettier=tools/readability/node_modules/.bin/prettier
 if ! test -x "$prettier"; then
@@ -32,10 +33,12 @@ check_layout() {
 check_layout --parser go-template internal/admin/templates/*.html
 check_layout internal/admin/static/app.css internal/admin/static/app.js internal/admin/static/selection.js tools/readability/*.mjs tools/readability/prettier.json tools/readability/package.json
 shfmt -d -i 2 -ln posix scripts/*.sh
+shellcheck --shell=sh scripts/*.sh
 for file in scripts/*.sh; do
   sh -n "$file"
 done
 ruff format --check scripts
+ruff check --select E4,E7,E9,F,B scripts
 python3 scripts/test-notices.py
 python3 scripts/test-check.py
 python3 scripts/test-ci-prerequisites.py
