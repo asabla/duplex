@@ -37,10 +37,16 @@ func (s *Store) ProjectionPage(ctx context.Context, v Visibility, owner string, 
 // ProjectionFile resolves an immutable scanner slot, independently of the
 // current display episode number in a reordered playlist.
 func (s *Store) ProjectionFile(ctx context.Context, v Visibility, owner string, season, fileNumber int) (Episode, error) {
-	cte, args := projectionCTE(v)
-	args = append(args, owner, season, fileNumber)
+	if err := ctx.Err(); err != nil {
+		return Episode{}, err
+	}
 
-	rows, err := s.queryProjectionRows(ctx, cte+`SELECT owner,title,video,name,description,playlist,season_title,season,number,file_number,revision,size,updated FROM episodes WHERE owner=? AND season=? AND file_number=? LIMIT 1`, args...)
+	query, args := projectionFilesQuery(v, owner, season, false, true, fileNumber, 1)
+	if query == "" {
+		return Episode{}, sql.ErrNoRows
+	}
+
+	rows, err := s.queryProjectionRows(ctx, query, args...)
 	if err != nil {
 		return Episode{}, err
 	}

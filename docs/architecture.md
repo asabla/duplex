@@ -471,6 +471,26 @@ payload requires fresh upstream binding against the saved revision. Plex scanner
 reads and playback reads follow this same byte contract; NFS cannot identify
 their intent.
 
+Configuration channel lookups use an index under the manager mutex and copy only
+the requested channel. Saves and valid reloads discard that index. Returned
+policies retain the mutation isolation of full configuration snapshots.
+Filesystem callbacks use a narrower visibility view with enabled channel IDs,
+playlist enablement, and copied skip lists. The manager derives those lists once
+per applied configuration; file lookups do not copy per-video selection rules.
+Root membership reads preserve configured order and read the applied timestamp
+without copying the full settings snapshot.
+Versioned opens resolve an uncached path once. MP4 attribute queries read only
+canonical video identity, revision, size, and modification time through the
+existing scanner-name indexes; metadata lookups retain complete episode fields.
+
+Generated episode and show NFO bytes share an LRU cache with at most 1,024 entries
+and an estimated 8 MiB budget, including retained inputs. Catalogue reads remain
+authoritative for each lookup. Reuse requires equal metadata inputs and season
+names; timestamp-only changes reuse bytes with the current timestamp rules.
+Rendering happens outside the cache mutex. Eviction removes only cache references,
+so open metadata handles retain their immutable bytes. Oversized artifacts are
+rendered without retention. Reads do not persist this cache or change file IDs.
+
 Episode directory pages seek through partial indexes on the formatted file
 number. Upload years and playlist seasons use separate queries; playlist season
 allocation excludes the reserved year range. This keeps lexical ordering above
@@ -649,6 +669,13 @@ database reads populate this cache; handle issuance still commits to durable
 storage first. Cached records copy handle bytes instead of retaining RPC request
 buffers. File GETATTR checks and directory refreshes still use the current
 provider, so this cache cannot keep a replaced path valid.
+
+The optional `library.AttributeProvider` supplies file attributes with a bounded
+directory page. Season pages query episode details once and reuse generated NFO
+bytes. NFS uses those attributes without a separate provider Stat for each file;
+other providers and directory entries keep the existing fallback. Handle issuance
+still commits before reply, and later GETATTR requests still validate current
+path identity. Directory timestamp checks remain on their existing path.
 
 Directories retain path-based handles. The root also supplies a membership
 identity, because its children can appear when the first recording becomes

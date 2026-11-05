@@ -24,6 +24,7 @@ type App struct {
 	publicationState
 	assetState
 	playbackState
+	nfoCache metadataArtifacts
 
 	httpClient       *http.Client
 	Measurements     *diagnostics.Recorder
