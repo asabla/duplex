@@ -294,8 +294,8 @@ func (r *lazyTrack) readRecovering(ctx context.Context, p []byte, offset int64) 
 }
 
 func (r *lazyTrack) liveBinding(ctx context.Context) (media.Representation, uint64, error) {
-	if rep, epoch := r.app.cachedBinding(r.episode.Revision); rep != nil {
-		return rep, epoch, nil
+	if bound := r.app.cachedBinding(r.episode.Revision); bound.rep != nil {
+		return bound.rep, bound.epoch, nil
 	}
 
 	rep, err := r.app.bindEpisode(ctx, r.episode)
@@ -303,8 +303,8 @@ func (r *lazyTrack) liveBinding(ctx context.Context) (media.Representation, uint
 		return nil, 0, err
 	}
 
-	if cached, epoch := r.app.cachedBinding(r.episode.Revision); cached != nil {
-		return cached, epoch, nil
+	if bound := r.app.cachedBinding(r.episode.Revision); bound.rep != nil {
+		return bound.rep, bound.epoch, nil
 	}
 
 	return rep, 0, nil
@@ -314,8 +314,9 @@ func (a *App) rejectBinding(episode catalog.Episode, epoch uint64) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// A late failure from an older reader must not invalidate a renewed lease.
-	if a.bindingEpochs[episode.Revision] != epoch {
+	// Reject each lease once. Late readers must preserve both a renewed lease
+	// and the failure delay installed after an unsuccessful renewal.
+	if epoch == 0 || a.bindingEpochs[episode.Revision] != epoch || a.leases[episode.Revision].IsZero() {
 		return
 	}
 

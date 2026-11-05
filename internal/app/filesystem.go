@@ -48,8 +48,8 @@ func (p catalogueFS) Open(ctx context.Context, name string) (media.Representatio
 	}
 
 	if file.episode != nil {
-		bound, epoch := p.app.cachedBinding(file.episode.Revision)
-		rep := &lazyEpisode{app: p.app, episode: *file.episode, name: name, rep: bound, epoch: epoch}
+		bound := p.app.cachedBinding(file.episode.Revision)
+		rep := &lazyEpisode{app: p.app, episode: *file.episode, name: name, rep: bound.rep, epoch: bound.epoch}
 
 		return p.observedFile(rep, name), file.info.Modified, nil
 	}
@@ -61,14 +61,10 @@ func (p catalogueFS) OpenVersion(ctx context.Context, name, revision string) (me
 	defer p.app.Measurements.Begin(filesystemOperation("bind", name))()
 
 	if strings.HasSuffix(name, ".mp4") {
-		if rep, epoch := p.app.cachedBinding(revision); rep != nil {
-			p.app.mu.RLock()
-			id := p.app.runtimeVideos[revision]
-			p.app.mu.RUnlock()
+		if bound := p.app.cachedBinding(revision); bound.rep != nil {
+			episode := catalog.Episode{VideoID: bound.videoID, Revision: revision, Size: bound.rep.Size()}
 
-			episode := catalog.Episode{VideoID: id, Revision: revision, Size: rep.Size()}
-
-			return p.observedFile(&lazyEpisode{app: p.app, episode: episode, name: name, rep: rep, epoch: epoch}, name), nil
+			return p.observedFile(&lazyEpisode{app: p.app, episode: episode, name: name, rep: bound.rep, epoch: bound.epoch}, name), nil
 		}
 	}
 
