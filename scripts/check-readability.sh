@@ -2,7 +2,7 @@
 # Check handwritten languages without rewriting source or installing tools.
 set -eu
 
-for tool in node python3 shfmt ruff shellcheck; do
+for tool in node python3 shfmt ruff shellcheck actionlint; do
   command -v "$tool" >/dev/null 2>&1 || {
     printf 'Required development tool is missing: %s\n' "$tool" >&2
     exit 1
@@ -18,13 +18,16 @@ check_version node v26.7.0 "$(node --version)"
 check_version shfmt v3.14.1 "$(shfmt --version)"
 check_version ruff 'ruff 0.17.2' "$(ruff --version)"
 check_version shellcheck 0.11.0 "$(shellcheck --version | awk '/^version:/ { print $2 }')"
+check_version actionlint 1.7.12 "$(actionlint -version | awk 'NR == 1 { sub(/^v/, ""); print }')"
 
 prettier=tools/readability/node_modules/.bin/prettier
-if ! test -x "$prettier"; then
+eslint=tools/readability/node_modules/.bin/eslint
+if ! test -x "$prettier" || ! test -x "$eslint"; then
   printf '%s\n' 'Install development tools: npm ci --ignore-scripts --prefix tools/readability' >&2
   exit 1
 fi
 check_version prettier 3.9.10 "$("$prettier" --version)"
+check_version eslint v10.14.0 "$("$eslint" --version)"
 check_layout() {
   "$prettier" --config tools/readability/prettier.json \
     --plugin "$PWD/tools/readability/node_modules/prettier-plugin-go-template/lib/index.js" \
@@ -32,6 +35,9 @@ check_layout() {
 }
 check_layout --parser go-template internal/admin/templates/*.html
 check_layout internal/admin/static/app.css internal/admin/static/app.js internal/admin/static/selection.js tools/readability/*.mjs tools/readability/prettier.json tools/readability/package.json
+"$eslint" --config tools/readability/eslint.config.mjs --max-warnings 0 \
+  internal/admin/static tools/readability/*.mjs
+actionlint
 shfmt -d -i 2 -ln posix scripts/*.sh
 shellcheck --shell=sh scripts/*.sh
 for file in scripts/*.sh; do

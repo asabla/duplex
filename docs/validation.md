@@ -25,8 +25,12 @@ The gate checks layout, lint, secrets in files and Git history, Go vulnerabiliti
 race behavior, controlled media comparisons, Linux filesystem and cache behavior,
 at least 80% statement coverage per production package, and Linux amd64/arm64
 builds. Validate production Compose with `docker compose config --quiet`.
-The gate also enforces production import boundaries, Python semantic lint and
-ShellCheck, and active bounded fuzz testing for retained MP4 layouts and NFS RPC.
+The gate also enforces production import boundaries, Python and JavaScript
+semantic lint, ShellCheck, and Actionlint. Bounded fuzz tests cover retained MP4
+layouts, structured legacy sample-table mutations, and NFS RPC.
+Valid retained layout seeds must reach a complete legacy upgrade and match the
+current layout. Repacking must not mutate a retained input or return an invalid
+range map. Embedded assets and test fixtures are part of the coverage fingerprint.
 
 Controlled media tests compare packet payloads, timestamps, decode results,
 distant reads, and cache behavior against independently generated references.
@@ -48,6 +52,14 @@ Recovery tests must retain the canonical video ID across concurrent binding
 eviction. Rejected fresh locators must share the one-second failure delay;
 repeated and late readers must not erase or extend it. After the delay expires,
 the same retained handle must recover without changing durable media identity.
+HTTP 429 and 503 tests must cover retry seconds and dates, invalid and excessive
+values, shared delays across readers and source-URL renewals, cached reads,
+cancellation, unrelated sources, and recovery after expiry. Temporary deferrals
+must not mark prepared media failed. Initial preparation must wait without a
+worker retry loop. Source 401/403 and 412 responses retain their existing error
+classes.
+After cache close and reopen, calls through the closed store must not change
+limits, remove the new owner's pinned files, start a fetch, or release its lock.
 
 These checks establish the tested code contracts. They do not establish browser
 rendering, provider availability, conversion capacity, or household acceptance.

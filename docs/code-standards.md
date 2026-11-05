@@ -41,7 +41,8 @@ The repository configuration and scripts determine actual enforcement:
 | Package dependencies | `depguard` enforces the production import boundaries defined in Architecture. Test fixtures can import across these boundaries. |
 | Static analysis and security | Checks include `govet`, `staticcheck`, `gosec`, secret scans, and vulnerability checks. |
 | Suppression syntax | `nolintlint` requires a named check and an explanation. |
-| Templates, CSS, and JavaScript | Prettier 3.9.10; Go templates use `prettier-plugin-go-template` 0.0.15 with strict whitespace handling. |
+| Templates, CSS, and JavaScript | Prettier 3.9.10; Go templates use `prettier-plugin-go-template` 0.0.15 with strict whitespace handling. ESLint 10.14.0 checks handwritten browser and development JavaScript with zero warnings. |
+| GitHub Actions | Actionlint 1.7.12 checks workflows and invokes ShellCheck for embedded shell commands. |
 | Rendered HTML | `html-validate` 11.17.0 checks `input-missing-label` and `prefer-native-element` on controlled pages and HTMX fragments. |
 | Shell and Python | shfmt 3.14.1 with POSIX syntax and two-space indentation; `sh -n`; ShellCheck 0.11.0; Ruff 0.17.2 formatting and lint rules `E4,E7,E9,F,B`. Script behavior has controlled tests. |
 | Behavior and coverage | The quality gate runs race and controlled media tests, cached-read memory and source-work budgets, bounded layout and NFS fuzz testing, Linux-specific tests, coverage checks, and both Linux architecture builds. |
@@ -49,6 +50,10 @@ The repository configuration and scripts determine actual enforcement:
 The full enabled Go rule list is in [`.golangci.yml`](../.golangci.yml).
 [`scripts/check.sh`](../scripts/check.sh) defines the local gate; CI calls the
 same gate, including [`scripts/check-readability.sh`](../scripts/check-readability.sh).
+The JavaScript rules and browser/Node globals are defined in
+[`eslint.config.mjs`](../tools/readability/eslint.config.mjs). Rules cover undefined
+and unused names, unreachable code, unsafe control flow, promise executors, and
+strict equality. Third-party HTMX remains excluded.
 The `_test.go` exemption applies only to `cyclop`, `gocognit`, and `funlen`. Other
 enabled checks, including statement spacing, still apply to tests.
 

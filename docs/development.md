@@ -15,8 +15,10 @@ Use the versions in [`.tool-versions`](../.tool-versions) and [go.mod](../go.mod
 - gitleaks 8.30.1.
 - govulncheck 1.9.0.
 - Node.js 26.7.0, shfmt 3.14.1, Ruff 0.17.2, and ShellCheck 0.11.0 for development checks.
+- Actionlint 1.7.12 for GitHub Actions and embedded shell checks.
 - Prettier 3.9.10, prettier-plugin-go-template 0.0.15, and html-validate 11.17.0,
   pinned in the development-only `tools/readability/package-lock.json`.
+- ESLint 10.14.0 and globals 17.14.0 use that same development-only lockfile.
 - Python 3 for the existing scripts and their controlled behavioral tests.
 - Git and ripgrep (`rg`) for source fingerprints and history checks. CI installs
   ripgrep with its system prerequisites; these tools must also be on the local PATH.
@@ -36,6 +38,9 @@ npm ci --ignore-scripts --prefix tools/readability
 The quality gate does not install tools or dependencies. CI installs the same
 locked packages before it calls `make check`. Node.js is not required to build or
 run the application.
+The nested `tools/readability/go.mod` is a package-discovery boundary. It keeps
+Go examples shipped by Node dependencies out of root Go commands; it adds no
+application module dependency or package.
 
 `make` prints the four supported targets. It performs no setup or downloads.
 
@@ -52,7 +57,9 @@ and controlled media tests, enforces package coverage, and builds Linux amd64
 and arm64 binaries. It also checks the handwritten templates, CSS, JavaScript,
 shell, and Python files without rewriting them, runs script behavioral tests, and
 validates controlled rendered pages and HTMX fragments. Python lint selects
-`E4,E7,E9,F,B`; ShellCheck uses POSIX shell rules. Production Go imports must
+`E4,E7,E9,F,B`; ShellCheck uses POSIX shell rules. ESLint checks handwritten
+browser and development JavaScript with zero warnings. Actionlint checks all
+workflows and their embedded shell commands. Production Go imports must
 follow the boundaries in Architecture, enforced by `depguard`. The gate is
 defined in [`scripts/check.sh`](../scripts/check.sh).
 [`CI`](../.github/workflows/ci.yml) calls `make check` and also validates production
@@ -65,7 +72,10 @@ also start a branch-push run. New updates cancel obsolete runs for the same pull
 request or branch. Manual runs are available through GitHub Actions.
 Go module, compiler, and lint caches use the runner platform and tool/dependency
 versions. Tests and coverage evidence are regenerated; cached results do not
-replace checks. Package index and archive downloads have a 120-second limit per
+replace checks. The coverage fingerprint includes all files under `cmd` and
+`internal`, including embedded assets and retained test fixtures, plus root Go
+dependency files. A changed fixture invalidates the combined native/Linux evidence.
+Package index and archive downloads have a 120-second limit per
 command. A failed download retries against the official Ubuntu archives with
 archive signature checks retained. Package installation uses downloaded archives
 without a timeout that could interrupt `dpkg`.
@@ -165,13 +175,16 @@ memory and upstream-work budgets defined in Validation. Repeated cold header
 opens must share one local index load and perform no source resolution or HTTP
 requests. These budgets use counts and allocated bytes, rather than elapsed time.
 
-`./scripts/check-fuzz.sh` runs active mutation testing for `FuzzLayout` and
-`FuzzRequest`, with ten seconds per target, two workers, and a 45-second Go test
-timeout. Ordinary tests also run the fixed seeds. Go retains new interesting
-inputs in its build cache and writes a failing input beneath the package's
-`testdata/fuzz` directory. Review and retain a useful failure as a regression
-case; do not commit raw cache directories. The local gate and CI use the same
-bounded fuzz commands.
+`./scripts/check-fuzz.sh` runs active mutation testing for `FuzzLayout`,
+`FuzzRepackTables`, and `FuzzRequest`, with ten seconds per target, two workers,
+and a 45-second Go test timeout. Ordinary tests also run the fixed seeds. Go
+retains interesting inputs in its build cache. A failure is written beneath the
+package's `testdata/fuzz` directory. Retain a useful failure as a regression test;
+do not commit raw cache directories. The local gate and CI use the same commands.
+Retained generated MP4 layouts seed both packaging versions. A fixed test
+requires a complete legacy upgrade to match the current header, identity, and
+size. Structured mutations also change sample counts, timing, offsets, sizes,
+and timescales without first destroying the MP4 box structure.
 
 Real-source and Plex tests are separate release gates.
 FFprobe 6.1 can omit a nonterminal AAC packet duration. The comparison derives
