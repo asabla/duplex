@@ -87,7 +87,7 @@ func (s *HTTPSource) probe(ctx context.Context) error {
 
 	closeErr := resp.Body.Close()
 	if readErr != nil || closeErr != nil || len(body) != 1 {
-		return errors.New("invalid range probe body")
+		return sourceFailure(ctx, errors.Join(readErr, closeErr), "invalid range probe body")
 	}
 
 	var start, end, total int64
@@ -176,16 +176,7 @@ func (s *HTTPSource) request(ctx context.Context, offset int64, length int) (*ht
 	s.Requests.Add(1)
 
 	if err != nil {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-
-		var networkError net.Error
-		if errors.As(err, &networkError) && networkError.Timeout() {
-			return nil, context.DeadlineExceeded
-		}
-
-		return nil, errors.New("source request failed")
+		return nil, sourceFailure(ctx, err, "source request failed")
 	}
 
 	if resp.StatusCode != http.StatusPartialContent {
@@ -235,7 +226,7 @@ func (s *HTTPSource) fetch(ctx context.Context, offset int64, length int) (data 
 	s.UpstreamBytes.Add(int64(len(b)))
 
 	if err != nil {
-		return nil, errors.New("source body read failed")
+		return nil, sourceFailure(ctx, err, "source body read failed")
 	}
 
 	if len(b) != length {
@@ -243,6 +234,27 @@ func (s *HTTPSource) fetch(ctx context.Context, offset int64, length int) (data 
 	}
 
 	return b, nil
+}
+
+// Preserve control-flow error classes without retaining locators from network
+// errors. Client timeouts can occur during body reads while ctx is still live.
+func sourceFailure(ctx context.Context, err error, message string) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	for _, kind := range []error{context.Canceled, context.DeadlineExceeded} {
+		if errors.Is(err, kind) {
+			return kind
+		}
+	}
+
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return context.DeadlineExceeded
+	}
+
+	return errors.New(message)
 }
 
 // ReadAt reads only requested ranges and pins cache chunks until the copy completes.
