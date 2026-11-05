@@ -3,6 +3,38 @@
 Measure catalogue work and media playback separately. A faster SQLite query does
 not establish faster Plex startup or a lower total service memory requirement.
 
+## Repeated projection reads, 2026-11-05
+
+A matched Linux arm64 comparison used synthetic catalogues with 1,000 and 10,000
+recordings, two CPUs, 1 GiB of memory, GOMAXPROCS=2, a 256 MiB tmpfs, and no
+network. Before and after runs were sequential, with six 200 ms samples per
+benchmark. The same added benchmark source ran against both implementations.
+These selected results use the 10,000-recording catalogue:
+
+| Provider operation | Before median | After median | Allocated bytes before / after |
+| --- | ---: | ---: | ---: |
+| MP4 attributes, upload | 112.7 microseconds | 22.3 microseconds | 7,121 / 3,056 |
+| Versioned episode-NFO open | 227.9 microseconds | 31.3 microseconds | 25,639 / 4,313 |
+| Missing sidecar lookup | 114.5 microseconds | 32.1 microseconds | 7,474 / 4,305 |
+| 128-entry upload attribute page | 14.71 ms | 0.364 ms | 1,377,511 / 146,313 |
+| 128-entry playlist attribute page | 14.92 ms | 0.433 ms | 1,392,117 / 156,632 |
+
+`benchstat` reports p = 0.002 for each listed time comparison. The replacement
+uses narrow configuration visibility views, indexed media-attribute queries,
+single-lookup versioned opens, and cached immutable NFO bytes. Directory pages
+carry attributes from one episode query, avoiding separate lookups for each
+file. Generated metadata retention is limited to 1,024 entries and an estimated
+8 MiB, including retained inputs. Current catalogue reads still enforce visibility
+and input changes; old metadata handles retain their immutable bytes.
+
+The [structured results](projection-read-performance.json) retain all 24
+comparisons, source identities, benchmark hash, limits, significance, and excluded
+trials. Several channel, season, and show-NFO comparisons do not establish a
+time difference; the full record marks those results. The workload uses small
+metadata and repeated provider calls. It does not measure mounted NFS, a complete
+Plex scan, CPU or memory on the primary Intel host, or playback startup. Cold
+media-header range-map loading and Plex media analysis need separate measurements.
+
 ## Catalogue workloads
 
 The application benchmarks generate controlled catalogue fixtures. They cover

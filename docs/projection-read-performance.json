@@ -1,0 +1,424 @@
+{
+  "before_commit": "6aa5b815e9af97af46134ef8252fb159bf0029da",
+  "after_source_fingerprint": "157d22f08a82fd4cc06f772883dd12eb83d0e1c7",
+  "benchmark_sha256": "2cce5ad4482e77ce3aafc91ab49c25110f212ba64636ba3376c2c678e2f687b9",
+  "platform": "Linux arm64, Colima on Apple M3 Max",
+  "limits": {
+    "cpus": 2,
+    "memory_bytes": 1073741824,
+    "GOMAXPROCS": 2,
+    "storage": "256 MiB tmpfs",
+    "network": "none",
+    "image": "debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587"
+  },
+  "go": "go version go1.27.3 darwin/arm64",
+  "workload": "Synthetic 1000/10000 recording catalogues; repeated metadata lookups and 128-entry upload/playlist attribute pages; six sequential 200ms samples per version",
+  "results": {
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_false/channel-2": {
+      "before": {
+        "ns": 8635.5,
+        "bytes": 4240.0,
+        "allocations": 39.0
+      },
+      "after": {
+        "ns": 8318.0,
+        "bytes": 4040.0,
+        "allocations": 33.0
+      },
+      "time_reduction_percent": 3.68,
+      "samples": 6,
+      "time_p_value": 0.093,
+      "time_change_established": false
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_false/season-2": {
+      "before": {
+        "ns": 10297.5,
+        "bytes": 4937.0,
+        "allocations": 56.0
+      },
+      "after": {
+        "ns": 9917.0,
+        "bytes": 4737.0,
+        "allocations": 50.0
+      },
+      "time_reduction_percent": 3.7,
+      "samples": 6,
+      "time_p_value": 0.058,
+      "time_change_established": false
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_false/media-2": {
+      "before": {
+        "ns": 111405.0,
+        "bytes": 7121.0,
+        "allocations": 97.0
+      },
+      "after": {
+        "ns": 21355.5,
+        "bytes": 3056.0,
+        "allocations": 56.0
+      },
+      "time_reduction_percent": 80.83,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_false/episode_nfo-2": {
+      "before": {
+        "ns": 112877.0,
+        "bytes": 12771.0,
+        "allocations": 122.0
+      },
+      "after": {
+        "ns": 31007.5,
+        "bytes": 4241.0,
+        "allocations": 86.0
+      },
+      "time_reduction_percent": 72.53,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_false/show_nfo-2": {
+      "before": {
+        "ns": 32314.0,
+        "bytes": 16893.0,
+        "allocations": 172.0
+      },
+      "after": {
+        "ns": 31794.5,
+        "bytes": 11498.0,
+        "allocations": 148.0
+      },
+      "time_reduction_percent": 1.61,
+      "samples": 6,
+      "time_p_value": 0.18,
+      "time_change_established": false
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_true/channel-2": {
+      "before": {
+        "ns": 10145.0,
+        "bytes": 4240.0,
+        "allocations": 39.0
+      },
+      "after": {
+        "ns": 10213.0,
+        "bytes": 4040.0,
+        "allocations": 33.0
+      },
+      "time_reduction_percent": -0.67,
+      "samples": 6,
+      "time_p_value": 0.485,
+      "time_change_established": false
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_true/season-2": {
+      "before": {
+        "ns": 10262.0,
+        "bytes": 4945.0,
+        "allocations": 53.0
+      },
+      "after": {
+        "ns": 10331.5,
+        "bytes": 4745.0,
+        "allocations": 47.0
+      },
+      "time_reduction_percent": -0.68,
+      "samples": 6,
+      "time_p_value": 0.31,
+      "time_change_established": false
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_true/media-2": {
+      "before": {
+        "ns": 115152.0,
+        "bytes": 7257.0,
+        "allocations": 99.0
+      },
+      "after": {
+        "ns": 38766.0,
+        "bytes": 3929.0,
+        "allocations": 54.0
+      },
+      "time_reduction_percent": 66.33,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_true/episode_nfo-2": {
+      "before": {
+        "ns": 116654.5,
+        "bytes": 12939.0,
+        "allocations": 121.0
+      },
+      "after": {
+        "ns": 48219.0,
+        "bytes": 5265.0,
+        "allocations": 90.0
+      },
+      "time_reduction_percent": 58.67,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/1000/playlist_true/show_nfo-2": {
+      "before": {
+        "ns": 37427.5,
+        "bytes": 17485.5,
+        "allocations": 185.0
+      },
+      "after": {
+        "ns": 35532.0,
+        "bytes": 12010.0,
+        "allocations": 158.0
+      },
+      "time_reduction_percent": 5.06,
+      "samples": 6,
+      "time_p_value": 0.004,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_false/channel-2": {
+      "before": {
+        "ns": 9164.5,
+        "bytes": 4240.0,
+        "allocations": 39.0
+      },
+      "after": {
+        "ns": 8867.5,
+        "bytes": 4040.0,
+        "allocations": 33.0
+      },
+      "time_reduction_percent": 3.24,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_false/season-2": {
+      "before": {
+        "ns": 10418.0,
+        "bytes": 4937.0,
+        "allocations": 56.0
+      },
+      "after": {
+        "ns": 10280.5,
+        "bytes": 4737.0,
+        "allocations": 50.0
+      },
+      "time_reduction_percent": 1.32,
+      "samples": 6,
+      "time_p_value": 0.18,
+      "time_change_established": false
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_false/media-2": {
+      "before": {
+        "ns": 112711.5,
+        "bytes": 7121.0,
+        "allocations": 97.0
+      },
+      "after": {
+        "ns": 22329.5,
+        "bytes": 3056.0,
+        "allocations": 56.0
+      },
+      "time_reduction_percent": 80.19,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_false/episode_nfo-2": {
+      "before": {
+        "ns": 113774.0,
+        "bytes": 12771.0,
+        "allocations": 122.0
+      },
+      "after": {
+        "ns": 30591.5,
+        "bytes": 4240.0,
+        "allocations": 86.0
+      },
+      "time_reduction_percent": 73.11,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_false/show_nfo-2": {
+      "before": {
+        "ns": 32552.5,
+        "bytes": 16893.0,
+        "allocations": 172.0
+      },
+      "after": {
+        "ns": 31910.0,
+        "bytes": 11498.0,
+        "allocations": 148.0
+      },
+      "time_reduction_percent": 1.97,
+      "samples": 6,
+      "time_p_value": 0.041,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_true/channel-2": {
+      "before": {
+        "ns": 10590.0,
+        "bytes": 4240.0,
+        "allocations": 39.0
+      },
+      "after": {
+        "ns": 10435.0,
+        "bytes": 4040.0,
+        "allocations": 33.0
+      },
+      "time_reduction_percent": 1.46,
+      "samples": 6,
+      "time_p_value": 0.31,
+      "time_change_established": false
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_true/season-2": {
+      "before": {
+        "ns": 10544.0,
+        "bytes": 4945.0,
+        "allocations": 53.0
+      },
+      "after": {
+        "ns": 10485.0,
+        "bytes": 4745.0,
+        "allocations": 47.0
+      },
+      "time_reduction_percent": 0.56,
+      "samples": 6,
+      "time_p_value": 0.589,
+      "time_change_established": false
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_true/media-2": {
+      "before": {
+        "ns": 116513.5,
+        "bytes": 7257.0,
+        "allocations": 99.0
+      },
+      "after": {
+        "ns": 38204.5,
+        "bytes": 3929.0,
+        "allocations": 54.0
+      },
+      "time_reduction_percent": 67.21,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_true/episode_nfo-2": {
+      "before": {
+        "ns": 116597.5,
+        "bytes": 12939.0,
+        "allocations": 121.0
+      },
+      "after": {
+        "ns": 48917.5,
+        "bytes": 5265.0,
+        "allocations": 90.0
+      },
+      "time_reduction_percent": 58.05,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkCatalogueFilesystemMetadata/10000/playlist_true/show_nfo-2": {
+      "before": {
+        "ns": 38695.5,
+        "bytes": 17486.0,
+        "allocations": 185.0
+      },
+      "after": {
+        "ns": 36414.0,
+        "bytes": 12010.0,
+        "allocations": 158.0
+      },
+      "time_reduction_percent": 5.9,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkProjectionDirectoryAttributes/Season_2026-2": {
+      "before": {
+        "ns": 14710356.0,
+        "bytes": 1377510.5,
+        "allocations": 15665.0
+      },
+      "after": {
+        "ns": 364143.0,
+        "bytes": 146312.5,
+        "allocations": 2756.0
+      },
+      "time_reduction_percent": 97.52,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkProjectionDirectoryAttributes/Season_0001-2": {
+      "before": {
+        "ns": 14920356.5,
+        "bytes": 1392116.5,
+        "allocations": 15700.5
+      },
+      "after": {
+        "ns": 433311.5,
+        "bytes": 156631.5,
+        "allocations": 2887.0
+      },
+      "time_reduction_percent": 97.1,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkProjectionReadAmplification/nfo_versioned_open-2": {
+      "before": {
+        "ns": 227936.0,
+        "bytes": 25639.0,
+        "allocations": 247.0
+      },
+      "after": {
+        "ns": 31313.0,
+        "bytes": 4313.0,
+        "allocations": 88.0
+      },
+      "time_reduction_percent": 86.26,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    },
+    "BenchmarkProjectionReadAmplification/missing_sidecar-2": {
+      "before": {
+        "ns": 114484.0,
+        "bytes": 7474.0,
+        "allocations": 102.0
+      },
+      "after": {
+        "ns": 32127.0,
+        "bytes": 4305.0,
+        "allocations": 84.0
+      },
+      "time_reduction_percent": 71.94,
+      "samples": 6,
+      "time_p_value": 0.002,
+      "time_change_established": true
+    }
+  },
+  "limits_of_evidence": [
+    "Provider calls, not mounted NFS/Plex latency",
+    "Small synthetic metadata, not arbitrary description sizes",
+    "No primary host or live source contacted",
+    "Cache retention is bounded separately by 1024 entries and estimated 8 MiB"
+  ],
+  "after_commit": "251442dd54a07e181aab7785bcda65858f7b2ff5",
+  "after_tree": "da8d9ef5434a1634b38660b56085813a84a0d27e",
+  "method": "Before and after runs were sequential, with six 200ms samples per benchmark. Medians are recorded. benchstat uses its default 0.05 significance level. Fixture creation is outside benchmark loops. The same added benchmark source was overlaid onto the exported baseline commit.",
+  "validation": {
+    "local_quality_gate": "passed",
+    "tested_source_fingerprint": "157d22f08a82fd4cc06f772883dd12eb83d0e1c7",
+    "live_plex": "not run",
+    "hosted_ci": "separate result"
+  },
+  "excluded_trials": [
+    "The initial playlist detail query required a temporary sort; it was corrected before final timing.",
+    "An intermediate optimized run preceded the narrow configuration view and is excluded from the final comparison."
+  ],
+  "date": "2026-11-05",
+  "before_tree": "30e6803b98dc483a2858b18d2b690bcf14f97f8b",
+  "benchstat": "mod\tgolang.org/x/perf\tv0.0.0-20250813145418-2f7363a06fe1\th1:stGRioFgvBd3x8HoGVg9bb41lLTWLjBMFT/dMB7f4mQ="
+}
