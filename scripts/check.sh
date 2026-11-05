@@ -32,6 +32,7 @@ gitleaks git --redact=100 --no-banner .
 govulncheck ./...
 ./scripts/test-coverage.sh
 make test GO="$GO"
+GO="$GO" sh ./scripts/check-recovery.sh
 GO="$GO" ./scripts/check-fuzz.sh
 GO="$GO" ./scripts/check-linux.sh
 cmp .cache/native-coverage-source .cache/linux-coverage-source || {
