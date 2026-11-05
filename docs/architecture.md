@@ -406,7 +406,12 @@ Preparation retains the pinned resolver's duplicate format alternatives. If one
 client rejects a media URL, another client can still supply the same resolution.
 Video and audio from the same client are paired only when the audio has the same
 original-language preference and codec class. All candidates still pass range,
-size, and container checks; preparation attempts remain bounded. This uses the
+size, and container checks. Preparation tries at most six combined candidates
+and six separate-track candidates in ranked order. Failed combined alternatives
+cannot consume the separate-track budget. Equal-ranked candidates retain their
+resolver order. Muxing and offline repacking validate the complete output map
+before returning it; repacking also validates the detached source lengths.
+This uses the
 resolver's documented [`formats=duplicate` option](https://github.com/yt-dlp/yt-dlp/blob/2026.10.21/README.md#extractor-arguments).
 
 A saved index can bind live upstream readers only when fresh sources establish

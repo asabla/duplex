@@ -225,6 +225,11 @@ func muxTracks(ctx context.Context, tracks []muxTrack) (*VirtualMP4, error) {
 	videoTrack, audioTrack := tracks[0].track, tracks[1].track
 	virtual.Sources = []string{tracks[0].source.ID(), tracks[1].source.ID()}
 	virtual.Info = Details{Container: "mp4", VideoCodec: videoTrack.Mdia.Minf.Stbl.Stsd.Children[0].Type(), AudioCodec: audioTrack.Mdia.Minf.Stbl.Stsd.Children[0].Type(), Width: int(videoTrack.Tkhd.Width >> 16), Height: int(videoTrack.Tkhd.Height >> 16), DurationSeconds: float64(videoTrack.Mdia.Mdhd.Duration) / float64(videoTrack.Mdia.Mdhd.Timescale)}
+
+	if err = virtual.validateLayout(); err != nil {
+		return nil, err
+	}
+
 	virtual.setIdentity()
 
 	return virtual, nil

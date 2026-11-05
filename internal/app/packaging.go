@@ -26,6 +26,36 @@ type representationDescription struct {
 	Media                                       media.Details
 }
 
+const preparationCandidatesPerKind = 6
+
+// Independent limits reserve separate-track fallbacks even when combined
+// alternatives fail first. The ranked order is retained within both limits.
+func preparationCandidates(m source.Metadata, maxHeight int) []source.Candidate {
+	var combined, separate int
+
+	plan := make([]source.Candidate, 0, 2*preparationCandidatesPerKind)
+
+	for _, candidate := range source.Candidates(m, maxHeight) {
+		if candidate.Combined {
+			if combined == preparationCandidatesPerKind {
+				continue
+			}
+
+			combined++
+		} else {
+			if separate == preparationCandidatesPerKind {
+				continue
+			}
+
+			separate++
+		}
+
+		plan = append(plan, candidate)
+	}
+
+	return plan
+}
+
 // Prepare verifies the highest supported candidate and records any quality fallback.
 // Optional assets run separately; no media payload is prepared as a complete file.
 func (a *App) Prepare(ctx context.Context, m source.Metadata, maxHeight int) (catalog.Prepared, error) {
@@ -49,14 +79,7 @@ func (a *App) prepareWithRepresentation(ctx context.Context, m source.Metadata, 
 
 	var causes []error
 
-	attempts := 0
-	for _, candidate := range source.Candidates(m, maxHeight) {
-		if !candidate.Combined && attempts >= 6 {
-			continue
-		}
-
-		attempts++
-
+	for _, candidate := range preparationCandidates(m, maxHeight) {
 		prepared, rep, err := a.prepareCandidate(ctx, m, candidate, maxHeight)
 		if err == nil {
 			prepared.Fallback = failure

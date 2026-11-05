@@ -61,6 +61,10 @@ func Repack(ctx context.Context, old *VirtualMP4) (result *VirtualMP4, err error
 		result.Spans[i].source = nil
 	}
 
+	if err = result.validateLayout(); err != nil {
+		return nil, err
+	}
+
 	return result, nil
 }
 

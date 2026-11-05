@@ -57,14 +57,18 @@ func Candidates(m Metadata, maxHeight int) []Candidate {
 	}
 
 	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].Height != result[j].Height {
-			return result[i].Height > result[j].Height
-		}
-
-		return result[i].Combined
+		return candidateLess(result[i], result[j])
 	})
 
 	return result
+}
+
+func candidateLess(a, b Candidate) bool {
+	if a.Height != b.Height {
+		return a.Height > b.Height
+	}
+
+	return a.Combined && !b.Combined
 }
 
 // matchingAudio keeps the preferred language and codec while choosing the same
