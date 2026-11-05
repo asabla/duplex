@@ -3,6 +3,8 @@ package nfs
 import (
 	"context"
 	"path"
+
+	"duplex/internal/library"
 )
 
 func (s *Server) readDirectory(ctx context.Context, directory record, d *decoder, plus bool) encoder {
@@ -50,7 +52,12 @@ func (s *Server) directoryPage(ctx context.Context, directory record, after stri
 
 	limit := min(128, int(maximum-128)/256)
 
-	children, err := s.provider.ReadDir(ctx, directory.name, after, limit+1)
+	readDirectory := s.provider.ReadDir
+	if provider, ok := s.provider.(library.AttributeProvider); ok {
+		readDirectory = provider.ReadDirAttributes
+	}
+
+	children, err := readDirectory(ctx, directory.name, after, limit+1)
 	if err != nil {
 		return operationError(status(err), procedure)
 	}
@@ -65,7 +72,7 @@ func (s *Server) directoryPage(ctx context.Context, directory record, after stri
 	var entries encoder
 
 	for _, child := range children {
-		r, err := s.describe(ctx, path.Join(directory.name, child.Name))
+		r, err := s.describeChild(ctx, directory.name, child)
 		if err != nil {
 			return operationError(status(err), procedure)
 		}
@@ -103,6 +110,19 @@ func (s *Server) directoryPage(ctx context.Context, directory record, after stri
 	}
 
 	return reply
+}
+
+func (s *Server) describeChild(ctx context.Context, directory string, child library.Child) (record, error) {
+	name := path.Join(directory, child.Name)
+	if child.Info == nil || child.Info.Directory {
+		return s.describe(ctx, name)
+	}
+
+	if child.Info.Revision == "" || child.Info.Size < 0 {
+		return record{}, errEncoding
+	}
+
+	return s.handles.describe(name, *child.Info), nil
 }
 
 func directoryEntry(r record, plus bool) encoder {

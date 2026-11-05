@@ -176,6 +176,21 @@ memory and upstream-work budgets defined in Validation. Repeated cold header
 opens must share one local index load and perform no source resolution or HTTP
 requests. These budgets use counts and allocated bytes, rather than elapsed time.
 
+`BenchmarkProjectionDirectoryAttributes` measures 128-entry upload and playlist
+pages from a 10,000-recording catalogue. It uses the optional attribute-page
+interface when available and otherwise performs individual attribute lookups,
+so the same benchmark can compare the earlier provider contract. Run matched
+committed versions sequentially with the same tools and resource limits:
+
+```sh
+go test ./internal/app -run '^$' -bench '^BenchmarkProjectionDirectoryAttributes$' -benchmem -benchtime=200ms -count=6
+```
+
+Pair this with `BenchmarkCatalogueFilesystemMetadata` for individual lookups.
+Provider timings do not establish mounted NFS or Plex scan latency. Keep profiles
+separate from timing runs and retain failed comparisons as described in
+[Performance tooling](performance-tooling.md).
+
 `sh ./scripts/check-recovery.sh` runs the source recovery, retry, closed-cache
 ownership, preparation-budget, and candidate-order tests with race detection and
 a shuffled order. Its verbose output records the random seed. To reproduce a

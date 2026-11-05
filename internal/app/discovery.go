@@ -79,10 +79,8 @@ func (a *App) Sync(ctx context.Context, id string) (result error) {
 }
 
 func (a *App) followed(id string) (config.Channel, error) {
-	for _, ch := range a.Config.Snapshot().Config.Channels {
-		if ch.ID == id && ch.Enabled {
-			return ch, nil
-		}
+	if ch, ok := a.Config.Channel(id); ok && ch.Enabled {
+		return ch, nil
 	}
 
 	return config.Channel{}, errors.New("channel is not followed or enabled")

@@ -22,10 +22,12 @@ type Snapshot struct {
 
 // Manager serializes valid YAML edits and retains the last valid external configuration.
 type Manager struct {
-	fileMu  sync.Mutex // Serializes file operations without blocking filesystem callbacks.
-	mu      sync.Mutex
-	path    string
-	current Snapshot
+	fileMu          sync.Mutex // Serializes file operations without blocking filesystem callbacks.
+	mu              sync.Mutex
+	path            string
+	current         Snapshot
+	channels        map[string]int
+	libraryChannels map[string]LibraryChannel
 }
 
 func revision(b []byte) string {
@@ -74,31 +76,53 @@ func clone(c Config) Config {
 
 	s.Channels = append([]Channel{}, c.Channels...)
 	for i := range s.Channels {
-		ch := &s.Channels[i]
-
-		ch.Unlisted = append([]string{}, ch.Unlisted...)
-
-		ch.VideoOverrides = maps.Clone(ch.VideoOverrides)
-		if ch.Content != nil {
-			content := *ch.Content
-			ch.Content = &content
-		}
-
-		if ch.Indexing != nil {
-			p := *ch.Indexing
-			ch.Indexing = &p
-		}
-
-		if ch.Playlists != nil {
-			p := *ch.Playlists
-			p.Overrides = maps.Clone(p.Overrides)
-			ch.Playlists = &p
-		}
-
-		ch.Artwork.Seasons = maps.Clone(ch.Artwork.Seasons)
+		s.Channels[i] = cloneChannel(s.Channels[i])
 	}
 
 	return s
+}
+
+// Channel copies one channel without cloning unrelated configuration. Returned
+// maps and optional policies retain the same mutation isolation as Snapshot.
+func (m *Manager) Channel(id string) (Channel, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.channels == nil {
+		m.indexChannels()
+	}
+
+	index, ok := m.channels[id]
+	if !ok {
+		return Channel{}, false
+	}
+
+	return cloneChannel(m.current.Config.Channels[index]), true
+}
+
+func cloneChannel(ch Channel) Channel {
+	ch.Unlisted = append([]string{}, ch.Unlisted...)
+
+	ch.VideoOverrides = maps.Clone(ch.VideoOverrides)
+	if ch.Content != nil {
+		content := *ch.Content
+		ch.Content = &content
+	}
+
+	if ch.Indexing != nil {
+		p := *ch.Indexing
+		ch.Indexing = &p
+	}
+
+	if ch.Playlists != nil {
+		p := *ch.Playlists
+		p.Overrides = maps.Clone(p.Overrides)
+		ch.Playlists = &p
+	}
+
+	ch.Artwork.Seasons = maps.Clone(ch.Artwork.Seasons)
+
+	return ch
 }
 
 // Reload applies a valid external edit and records an error for an invalid edit.
@@ -142,6 +166,7 @@ func (m *Manager) Reload() bool {
 	}
 
 	m.current = Snapshot{Config: c, Revision: r, LoadedAt: time.Now().UTC()}
+	m.channels = nil
 
 	return true
 }
@@ -175,6 +200,7 @@ func (m *Manager) Save(c Config, expected string) error {
 
 	m.mu.Lock()
 	m.current = Snapshot{Config: clone(c), Revision: revision(b), LoadedAt: time.Now().UTC()}
+	m.channels = nil
 	m.mu.Unlock()
 
 	return nil

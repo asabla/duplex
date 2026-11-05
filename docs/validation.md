@@ -56,6 +56,18 @@ once and make no source requests, including when uncached reads are deferred.
 These count and memory budgets run with the controlled media tests. They do not
 set a host throughput or latency target.
 
+Projection-read tests must retain upload and playlist membership, lexical order
+above episode 9,999, stable scanner slots, metadata identities, and timestamps.
+Batched directory attributes must equal individual current lookups, including
+after metadata, playlist order, selection, and sidecar changes. NFS must commit
+issued handles and detect later path replacement without per-file Stat calls
+during an attribute page. Query plans must use the scanner-name indexes without
+a temporary sort. Warm episode metadata opens must not render XML or write the
+catalogue. Generated metadata retention must enforce both byte and entry limits,
+and old open handles must retain their bytes after cache replacement or eviction.
+Single-channel lookup allocations must not grow with unrelated channel count;
+returned policies must remain isolated through saves and reloads.
+
 Recovery tests must retain the canonical video ID across concurrent binding
 eviction. Rejected fresh locators must share the one-second failure delay;
 repeated and late readers must not erase or extend it. After the delay expires,

@@ -43,6 +43,10 @@ func (p catalogueFS) Open(ctx context.Context, name string) (media.Representatio
 		return nil, 0, err
 	}
 
+	return p.openFile(file, name)
+}
+
+func (p catalogueFS) openFile(file resolvedFile, name string) (media.Representation, int64, error) {
 	if file.info.Directory {
 		return nil, 0, fs.ErrInvalid
 	}
@@ -68,16 +72,16 @@ func (p catalogueFS) OpenVersion(ctx context.Context, name, revision string) (me
 		}
 	}
 
-	info, err := p.Stat(ctx, name)
+	file, err := p.lookup(ctx, name)
 	if err != nil {
 		return nil, err
 	}
 
-	if info.Revision != revision {
+	if file.info.Revision != revision {
 		return nil, media.ErrChanged
 	}
 
-	rep, _, err := p.Open(ctx, name)
+	rep, _, err := p.openFile(file, name)
 	if err == nil && rep.ID() != revision {
 		return nil, media.ErrChanged
 	}
@@ -85,14 +89,14 @@ func (p catalogueFS) OpenVersion(ctx context.Context, name, revision string) (me
 	return rep, err
 }
 
-func (p catalogueFS) channel(name string) (config.Channel, error) {
+func (p catalogueFS) channel(name string) (config.LibraryChannel, error) {
 	id, ok := strings.CutPrefix(name, "Channel-")
 	if !ok {
-		return config.Channel{}, fs.ErrNotExist
+		return config.LibraryChannel{}, fs.ErrNotExist
 	}
 
-	ch, err := p.app.followed(id)
-	if err != nil {
+	ch, ok := p.app.Config.LibraryChannel(id)
+	if !ok || !ch.Enabled {
 		return ch, fs.ErrNotExist
 	}
 
@@ -131,7 +135,7 @@ func (p catalogueFS) lookup(ctx context.Context, name string) (resolvedFile, err
 		return resolvedFile{}, err
 	}
 
-	visible := visibility(config.Config{Channels: []config.Channel{ch}})
+	visible := libraryVisibility(ch)
 	if len(parts) == 1 {
 		modified, err := p.app.Catalog.ProjectionChanged(ctx, visible, ch.ID)
 		return resolvedFile{info: library.Node{Directory: true, Modified: modified}}, projectionError(err)
@@ -144,7 +148,7 @@ func (p catalogueFS) lookup(ctx context.Context, name string) (resolvedFile, err
 	return p.episodeItem(ctx, ch, visible, parts[1], parts[2])
 }
 
-func (p catalogueFS) episodeItem(ctx context.Context, ch config.Channel, visible catalog.Visibility, seasonName, fileName string) (resolvedFile, error) {
+func (p catalogueFS) episodeItem(ctx context.Context, ch config.LibraryChannel, visible catalog.Visibility, seasonName, fileName string) (resolvedFile, error) {
 	season, err := seasonNumber(seasonName)
 	if err != nil {
 		return resolvedFile{}, err
@@ -170,17 +174,18 @@ func (p catalogueFS) episodeItem(ctx context.Context, ch config.Channel, visible
 		return resolvedFile{}, err
 	}
 
+	if suffix == ".mp4" {
+		ep, err := p.app.Catalog.ProjectionMedia(ctx, visible, ch.ID, season, number)
+		return resolvedFile{info: library.Node{Size: ep.Size, Modified: ep.Updated, Revision: ep.Revision}, episode: &ep}, projectionError(err)
+	}
+
 	ep, err := p.app.Catalog.ProjectionFile(ctx, visible, ch.ID, season, number)
 	if err != nil {
 		return resolvedFile{}, projectionError(err)
 	}
 
-	if suffix == ".mp4" {
-		return resolvedFile{info: library.Node{Size: ep.Size, Modified: ep.Updated, Revision: ep.Revision}, episode: &ep}, nil
-	}
-
 	if suffix == ".nfo" {
-		entry, err := library.EpisodeMetadata(libraryEpisode(ep))
+		entry, err := p.app.episodeMetadata(ep)
 		return entryFile(entry), err
 	}
 
@@ -230,7 +235,7 @@ func episodeNumber(channel string, season int, name string) (int, string, error)
 	return number, "." + suffix, nil
 }
 
-func (p catalogueFS) channelItem(ctx context.Context, ch config.Channel, visible catalog.Visibility, name string) (resolvedFile, error) {
+func (p catalogueFS) channelItem(ctx context.Context, ch config.LibraryChannel, visible catalog.Visibility, name string) (resolvedFile, error) {
 	if name == "tvshow.nfo" {
 		entry, err := p.showMetadata(ctx, ch, visible)
 		return entryFile(entry), err
@@ -285,7 +290,7 @@ func (p catalogueFS) poster(ctx context.Context, channel, scope string) (resolve
 	return entryFile(library.Entry{Media: localAsset{file: preview.Path, size: stat.Size()}, Modified: stat.ModTime().Unix()}), nil
 }
 
-func (p catalogueFS) showMetadata(ctx context.Context, ch config.Channel, visible catalog.Visibility) (library.Entry, error) {
+func (p catalogueFS) showMetadata(ctx context.Context, ch config.LibraryChannel, visible catalog.Visibility) (library.Entry, error) {
 	names := map[int]string{}
 
 	after := ""
@@ -318,7 +323,7 @@ func (p catalogueFS) showMetadata(ctx context.Context, ch config.Channel, visibl
 		return library.Entry{}, projectionError(err)
 	}
 
-	entry, err := library.ShowMetadata(ch.ID, title, names, modified)
+	entry, err := p.app.showMetadataArtifact(ch.ID, title, names, modified)
 	if err != nil {
 		return library.Entry{}, err
 	}
@@ -345,7 +350,7 @@ func (p catalogueFS) checkDirectory(ctx context.Context, name string) error {
 			return err
 		}
 
-		visible := visibility(config.Config{Channels: []config.Channel{ch}})
+		visible := libraryVisibility(ch)
 
 		exists, err := p.app.Catalog.HasProjectionSeason(ctx, visible, ch.ID, season)
 		if err != nil {
@@ -396,7 +401,7 @@ func (p catalogueFS) ReadDir(ctx context.Context, name, after string, limit int)
 			return nil, err
 		}
 
-		visible := visibility(config.Config{Channels: []config.Channel{ch}})
+		visible := libraryVisibility(ch)
 		if len(parts) == 1 {
 			children, err = p.channelChildren(ctx, ch, visible, after, limit)
 		} else {
@@ -420,7 +425,7 @@ func (p catalogueFS) ReadDir(ctx context.Context, name, after string, limit int)
 func (p catalogueFS) rootChildren(ctx context.Context, after string) ([]library.Child, error) {
 	children := []library.Child{}
 
-	for _, ch := range p.app.Config.Snapshot().Config.Channels {
+	for _, ch := range p.app.Config.LibraryChannels() {
 		child := "Channel-" + ch.ID
 		if !ch.Enabled || child <= after {
 			continue
@@ -438,7 +443,7 @@ func (p catalogueFS) rootChildren(ctx context.Context, after string) ([]library.
 	return children, nil
 }
 
-func (p catalogueFS) channelChildren(ctx context.Context, ch config.Channel, visible catalog.Visibility, after string, limit int) ([]library.Child, error) {
+func (p catalogueFS) channelChildren(ctx context.Context, ch config.LibraryChannel, visible catalog.Visibility, after string, limit int) ([]library.Child, error) {
 	result := []library.Child{}
 
 	seasons, err := p.app.Catalog.ProjectionSeasons(ctx, visible, ch.ID, after, limit)
@@ -486,7 +491,7 @@ func (p catalogueFS) channelChildren(ctx context.Context, ch config.Channel, vis
 	return result, nil
 }
 
-func (p catalogueFS) episodeChildren(ctx context.Context, ch config.Channel, visible catalog.Visibility, seasonName, after string, limit int) ([]library.Child, error) {
+func (p catalogueFS) episodeChildren(ctx context.Context, ch config.LibraryChannel, visible catalog.Visibility, seasonName, after string, limit int) ([]library.Child, error) {
 	season, err := seasonNumber(seasonName)
 	if err != nil {
 		return nil, err
@@ -537,4 +542,17 @@ func (p catalogueFS) episodeChildren(ctx context.Context, ch config.Channel, vis
 	}
 
 	return children, nil
+}
+
+func libraryVisibility(ch config.LibraryChannel) catalog.Visibility {
+	v := catalog.Visibility{}
+	if ch.Enabled {
+		v.Channels = []string{ch.ID}
+		if ch.Playlists {
+			v.PlaylistChannels = []string{ch.ID}
+			v.SkippedPlaylists = ch.SkippedPlaylists
+		}
+	}
+
+	return v
 }

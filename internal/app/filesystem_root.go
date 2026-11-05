@@ -27,7 +27,7 @@ func (p catalogueFS) rootInfo(ctx context.Context) (library.Node, error) {
 
 	return library.Node{
 		Directory: true,
-		Modified:  p.app.Config.Snapshot().LoadedAt.Unix(),
+		Modified:  p.app.Config.LoadedAt().Unix(),
 		Revision:  fmt.Sprintf("%x", digest.Sum(nil)),
 	}, nil
 }

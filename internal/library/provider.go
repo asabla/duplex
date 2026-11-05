@@ -25,6 +25,13 @@ type VersionedProvider interface {
 type Child struct {
 	Name      string
 	Directory bool
+	Info      *Node // Optional attributes from the same bounded directory query.
+}
+
+// AttributeProvider can supply file attributes with a directory page. Callers
+// still validate later GETATTR requests against current provider state.
+type AttributeProvider interface {
+	ReadDirAttributes(context.Context, string, string, int) ([]Child, error)
 }
 
 // Provider supplies bounded filesystem reads from durable catalogue state.
