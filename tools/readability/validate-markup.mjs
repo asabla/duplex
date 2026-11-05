@@ -35,7 +35,15 @@ if (!files.length) {
 const validator = new HtmlValidate({
   root: true,
   elements: ['html5'],
-  rules: { 'input-missing-label': 'error', 'prefer-native-element': 'error' },
+  rules: {
+    'input-missing-label': 'error',
+    'prefer-native-element': 'error',
+    'no-dup-id': 'error',
+    'element-permitted-content': 'error',
+    'element-required-attributes': 'error',
+    'valid-id': 'error',
+    'no-unknown-elements': 'error',
+  },
 });
 const reports = [];
 for (const file of files) {

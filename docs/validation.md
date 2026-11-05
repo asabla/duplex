@@ -30,7 +30,15 @@ semantic lint, ShellCheck, and Actionlint. Bounded fuzz tests cover retained MP4
 layouts, structured legacy sample-table mutations, and NFS RPC.
 Valid retained layout seeds must reach a complete legacy upgrade and match the
 current layout. Repacking must not mutate a retained input or return an invalid
-range map. Embedded assets and test fixtures are part of the coverage fingerprint.
+range map. Coordinated sample-size and offset mutations must reject overlapping
+track sources. A successful repack must reload with the same identity, header,
+and size. Embedded assets and test fixtures are part of the coverage fingerprint.
+
+Preparation tests must prove that failed combined formats cannot consume the
+separate-track fallback budget and that each class has at most six attempts.
+Candidate ordering must be strict and preserve equal-ranked input order.
+The gate also runs the focused recovery tests in a shuffled order and records
+the seed so a failed order can be reproduced.
 
 Controlled media tests compare packet payloads, timestamps, decode results,
 distant reads, and cache behavior against independently generated references.

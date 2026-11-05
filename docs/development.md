@@ -160,7 +160,8 @@ omit `--parser go-template`.
 controlled pages and fragments in `.cache/markup` through
 `DUPLEX_MARKUP_TEST=1 go test -race -count=1 -run '^TestRenderedMarkupFixtures$' ./internal/admin`.
 The fixture adapter uses no external source or Plex service. The HTML validator
-checks labels and native elements, and writes `.cache/markup/markup-validation.json`.
+checks labels, native elements, duplicate and invalid IDs, element content,
+required attributes, and unknown elements. It writes `.cache/markup/markup-validation.json`.
 CI retains this summary. Do not upload the raw HTML, CSRF tokens, or local
 fixture configuration. These checks complement the Browser and keyboard review.
 The artifact step includes hidden directories so its explicit `.cache` paths
@@ -175,6 +176,13 @@ memory and upstream-work budgets defined in Validation. Repeated cold header
 opens must share one local index load and perform no source resolution or HTTP
 requests. These budgets use counts and allocated bytes, rather than elapsed time.
 
+`sh ./scripts/check-recovery.sh` runs the source recovery, retry, closed-cache
+ownership, preparation-budget, and candidate-order tests with race detection and
+a shuffled order. Its verbose output records the random seed. To reproduce a
+failure, rerun the script's Go test command with `-shuffle=SEED` instead of
+`-shuffle=on`.
+The full quality gate runs this check with controlled media fixtures enabled.
+
 `./scripts/check-fuzz.sh` runs active mutation testing for `FuzzLayout`,
 `FuzzRepackTables`, and `FuzzRequest`, with ten seconds per target, two workers,
 and a 45-second Go test timeout. Ordinary tests also run the fixed seeds. Go
@@ -185,6 +193,9 @@ Retained generated MP4 layouts seed both packaging versions. A fixed test
 requires a complete legacy upgrade to match the current header, identity, and
 size. Structured mutations also change sample counts, timing, offsets, sizes,
 and timescales without first destroying the MP4 box structure.
+Coordinated offset and sample-size mutations also test source ownership.
+Every successful structured repack must reload through the saved-layout decoder
+with the same identity, header, and size.
 
 Real-source and Plex tests are separate release gates.
 FFprobe 6.1 can omit a nonterminal AAC packet duration. The comparison derives
