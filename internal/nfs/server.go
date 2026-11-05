@@ -19,6 +19,7 @@ import (
 const (
 	maxRequest = 1 << 20
 	maxRead    = 128 << 10
+	maxReads   = 24 // Leave eight request slots available for metadata and retry replies.
 )
 
 // Server owns its TCP listener, bounded request workers, and durable file handles.
@@ -35,6 +36,7 @@ type Server struct {
 	mu       sync.Mutex
 	peers    map[net.Conn]bool
 	slots    chan struct{}
+	reads    chan struct{}
 	ready    atomic.Bool
 }
 
@@ -51,7 +53,7 @@ func Listen(ctx context.Context, address, directory string, provider library.Ver
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	s := &Server{provider: provider, handles: h, listener: listener, ctx: ctx, cancel: cancel, done: make(chan struct{}), peers: map[net.Conn]bool{}, slots: make(chan struct{}, 32)}
+	s := &Server{provider: provider, handles: h, listener: listener, ctx: ctx, cancel: cancel, done: make(chan struct{}), peers: map[net.Conn]bool{}, slots: make(chan struct{}, 32), reads: make(chan struct{}, maxReads)}
 
 	s.ready.Store(true)
 	go s.accept(ctx)

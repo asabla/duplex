@@ -36,6 +36,10 @@ func (s *Server) rpc(ctx context.Context, request []byte) encoder {
 		return accepted(xid, 2, versions)
 	}
 
+	if !validArguments(program, procedure, d.data) {
+		return accepted(xid, 4, nil)
+	}
+
 	if procedure == 0 {
 		return accepted(xid, 0, nil)
 	}

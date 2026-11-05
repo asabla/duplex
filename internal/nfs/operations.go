@@ -146,6 +146,13 @@ func (s *Server) read(ctx context.Context, r record, d *decoder) encoder {
 		return operationError(22, 6)
 	}
 
+	select {
+	case s.reads <- struct{}{}:
+		defer func() { <-s.reads }()
+	default:
+		return operationError(10008, 6)
+	}
+
 	rep, err := s.provider.OpenVersion(ctx, r.name, r.info.Revision)
 	if err != nil {
 		return operationError(status(err), 6)
