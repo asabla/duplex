@@ -196,6 +196,10 @@ and timescales without first destroying the MP4 box structure.
 Coordinated offset and sample-size mutations also test source ownership.
 Every successful structured repack must reload through the saved-layout decoder
 with the same identity, header, and size.
+NFS seeds include valid directory and file handles, complete operation arguments,
+truncated requests, and trailing data. A fixed test requires the file READ seed
+to reach payload bytes. Fuzzing also requires every GARBAGE_ARGS rejection to
+leave provider-call counts unchanged.
 
 Real-source and Plex tests are separate release gates.
 FFprobe 6.1 can omit a nonterminal AAC packet duration. The comparison derives

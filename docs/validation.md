@@ -66,8 +66,18 @@ cancellation, unrelated sources, and recovery after expiry. Temporary deferrals
 must not mark prepared media failed. Initial preparation must wait without a
 worker retry loop. Source 401/403 and 412 responses retain their existing error
 classes.
+Cancellation and timeout types must survive HTTP probe and payload body-read
+failures, including a client timeout while the request context remains live.
+Error messages must not expose source locators.
 After cache close and reopen, calls through the closed store must not change
 limits, remove the new owner's pinned files, start a fetch, or release its lock.
+
+NFS overload tests must fill all 24 payload-read slots and prove that excess
+READs return JUKEBOX before provider access. GETATTR and directory requests must
+still complete on the same or a separate connection while payloads remain
+blocked. Released reads must restore capacity. Malformed read-only RPCs must
+return GARBAGE_ARGS without provider access. File-handle fuzz seeds must reach
+successful payload reads, and mutations must retain this rejection invariant.
 
 These checks establish the tested code contracts. They do not establish browser
 rendering, provider availability, conversion capacity, or household acceptance.
