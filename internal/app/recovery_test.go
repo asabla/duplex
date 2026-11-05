@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -111,8 +112,8 @@ func TestRejectedPayloadLeaseRefreshesOnceAndRetainsIdentity(t *testing.T) {
 		t.Fatal("renewal changed durable media", after, err)
 	}
 
-	_, epoch := a.cachedBinding(video.Revision)
-	a.rejectBinding(catalog.Episode{VideoID: video.ID, Revision: video.Revision}, epoch-1)
+	bound := a.cachedBinding(video.Revision)
+	a.rejectBinding(catalog.Episode{VideoID: video.ID, Revision: video.Revision}, bound.epoch-1)
 
 	if a.cachedRepresentation(video.Revision) == nil {
 		t.Fatal("late failure invalidated fresh binding")
@@ -120,7 +121,7 @@ func TestRejectedPayloadLeaseRefreshesOnceAndRetainsIdentity(t *testing.T) {
 }
 
 func BenchmarkWarmPayloadRange(b *testing.B) {
-	a, _, _ := mediaPipeline(b)
+	a, adapter, origin := mediaPipeline(b)
 	if err := a.Sync(b.Context(), testOwner); err != nil {
 		b.Fatal(err)
 	}
@@ -161,9 +162,33 @@ func BenchmarkWarmPayloadRange(b *testing.B) {
 	b.ReportAllocs()
 	b.SetBytes(4)
 
+	requests := origin.requests.Load()
+
+	adapter.mu.Lock()
+	resolved := adapter.resolved
+	adapter.mu.Unlock()
+
 	for b.Loop() {
 		if _, err = reader.ReadAt(b.Context(), data, index.Spans[0].Offset); err != nil {
 			b.Fatal(err)
 		}
+	}
+
+	adapter.mu.Lock()
+	defer adapter.mu.Unlock()
+
+	if origin.requests.Load() != requests || adapter.resolved != resolved {
+		b.Fatal("warm payload reads performed upstream work")
+	}
+}
+
+func TestWarmPayloadReadMemoryBudget(t *testing.T) {
+	if os.Getenv("DUPLEX_MEDIA_TEST") != "1" && os.Getenv("DUPLEX_APP_MEDIA_FIXTURES") == "" {
+		t.Skip("requires explicit controlled media tests")
+	}
+
+	result := testing.Benchmark(BenchmarkWarmPayloadRange)
+	if result.N == 0 || result.AllocedBytesPerOp() > 4096 || result.AllocsPerOp() > 32 {
+		t.Fatal("four-byte warm payload read exceeded its memory budget", result.MemString())
 	}
 }

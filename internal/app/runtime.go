@@ -37,6 +37,13 @@ const (
 	runtimeIndexBytes      = int64(64 << 20)
 )
 
+// A binding snapshot retains every value needed by a handle after eviction.
+type runtimeBinding struct {
+	rep     media.Representation
+	epoch   uint64
+	videoID string
+}
+
 func (a *App) acquirePreparation(ctx context.Context) (func(), error) {
 	a.mu.Lock()
 	if a.prepareSlots == nil {
@@ -113,16 +120,15 @@ func (a *App) cacheRepresentation(rep media.Representation, expires time.Time, v
 }
 
 func (a *App) cachedRepresentation(revision string) media.Representation {
-	rep, _ := a.cachedBinding(revision)
-	return rep
+	return a.cachedBinding(revision).rep
 }
 
-func (a *App) cachedBinding(revision string) (media.Representation, uint64) {
+func (a *App) cachedBinding(revision string) runtimeBinding {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
 	if !time.Now().Before(a.leases[revision]) {
-		return nil, 0
+		return runtimeBinding{}
 	}
 
 	rep := a.reps[revision]
@@ -134,7 +140,7 @@ func (a *App) cachedBinding(revision string) (media.Representation, uint64) {
 		a.runtimeUsed[revision] = time.Now()
 	}
 
-	return rep, a.bindingEpochs[revision]
+	return runtimeBinding{rep: rep, epoch: a.bindingEpochs[revision], videoID: a.runtimeVideos[revision]}
 }
 
 func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.Representation, error) {
@@ -144,8 +150,13 @@ func (a *App) bindEpisode(ctx context.Context, episode catalog.Episode) (media.R
 
 	rep, shared, err := a.bindingWork.do(ctx, a.ctx, episode.Revision, func(work context.Context) (media.Representation, error) {
 		rep, failure := a.bindUncachedEpisode(work, episode)
-		if errors.Is(failure, media.ErrExpired) {
-			a.forgetMetadata(episode.VideoID)
+		if errors.Is(failure, media.ErrExpired) && work.Err() == nil {
+			// Fresh locators were rejected too. Keep the existing bounded failure
+			// delay, rather than resolving again for every filesystem retry.
+			_, cached, cachedFailure := a.cachedMetadata(episode.VideoID)
+			if !cached || cachedFailure == nil {
+				a.rememberResolution(episode.VideoID, source.Metadata{}, failure)
+			}
 		}
 
 		if failure != nil {
