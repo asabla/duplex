@@ -27,6 +27,8 @@ type HTTPSource struct {
 	id, etag, modified string
 	size               int64
 	cache              cache.ChunkStore
+	retries            *RetryPolicy
+	retryIdentity      string
 	// AdmitPayload is assigned before concurrent use. Cached bytes bypass it.
 	AdmitPayload  func(context.Context) (context.Context, func(), error)
 	UpstreamBytes atomic.Int64
@@ -36,7 +38,7 @@ type HTTPSource struct {
 // OpenHTTP probes a byte, never the whole object. Callers must supply a client
 // with appropriate destination and redirect restrictions for untrusted URLs.
 func OpenHTTP(ctx context.Context, client *http.Client, raw, identity string, store cache.ChunkStore) (*HTTPSource, error) {
-	return openHTTP(ctx, client, raw, identity, store, SourceVersion{})
+	return openHTTP(ctx, client, raw, identity, store, SourceVersion{}, &RetryPolicy{})
 }
 
 // SourceVersion is an opaque version from the authenticated source adapter.
@@ -49,15 +51,17 @@ type SourceVersion struct {
 // OpenVersionedHTTP also validates fresh start, middle, and end fingerprints
 // before allowing a provider version to reuse cached chunks or packaging indexes.
 func OpenVersionedHTTP(ctx context.Context, client *http.Client, raw, identity string, store cache.ChunkStore, version SourceVersion) (*HTTPSource, error) {
-	return openHTTP(ctx, client, raw, identity, store, version)
+	return openHTTP(ctx, client, raw, identity, store, version, &RetryPolicy{})
 }
 
-func openHTTP(ctx context.Context, client *http.Client, raw, identity string, store cache.ChunkStore, version SourceVersion) (*HTTPSource, error) {
+func openHTTP(ctx context.Context, client *http.Client, raw, identity string, store cache.ChunkStore, version SourceVersion, retries *RetryPolicy) (*HTTPSource, error) {
 	if client == nil || identity == "" {
 		return nil, errors.New("HTTP client and source identity are required")
 	}
 
-	s := &HTTPSource{client: client, url: raw, cache: store}
+	retryKey := sha256.Sum256([]byte(identity))
+	s := &HTTPSource{client: client, url: raw, cache: store, retries: retries, retryIdentity: hex.EncodeToString(retryKey[:])}
+
 	if err := s.probe(ctx); err != nil {
 		return nil, err
 	}
@@ -148,6 +152,14 @@ func (s *HTTPSource) ID() string { return s.id }
 func (s *HTTPSource) Size() int64 { return s.size }
 
 func (s *HTTPSource) request(ctx context.Context, offset int64, length int) (*http.Response, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
+	if s.retries.blocked(s.retryIdentity, time.Now()) {
+		return nil, ErrDeferred
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.url, nil) //nolint:gosec // G704: The source adapter validates destinations; the supplied client enforces redirect restrictions.
 	if err != nil {
 		return nil, errors.New("invalid source locator")
@@ -183,6 +195,9 @@ func (s *HTTPSource) request(ctx context.Context, offset int64, length int) (*ht
 			return nil, fmt.Errorf("%w (HTTP %d, offset %d)", errors.Join(ErrExpired, closeErr), resp.StatusCode, offset)
 		case 412:
 			return nil, errors.Join(ErrChanged, closeErr)
+		case 429, 503:
+			s.retries.postpone(s.retryIdentity, resp.Header.Get("Retry-After"), time.Now())
+			return nil, errors.Join(ErrDeferred, closeErr)
 		}
 
 		return nil, errors.Join(fmt.Errorf("source rejected byte range (HTTP %d)", resp.StatusCode), closeErr)

@@ -57,7 +57,7 @@ The read API supplies CSRF tokens; response handling remains in `responses.go`.
 | `app.App` | Shared runtime maps and status fields use `mu`. It also owns queues, wake channels, preparation slots, library-update serialization, cancellation, and worker waiting. | `Open` acquires cache ownership, opens the catalogue, starts the selected filesystem transport, and starts workers. `Close` cancels and waits, then closes the mount, cache, and catalogue. |
 | `config.Manager` | `fileMu` serializes file operations; `mu` protects the active snapshot. | YAML saves use expected revisions and atomic replacement. Invalid reloads keep the last valid snapshot. |
 | `catalog.Store` | Owns one write connection and at most two read-only projection connections. Catalogue operations manage rows and transactions. | SQLite retains identities, selections, preparation work, and projection state through restart. Readers open after migration and recovery and see committed WAL state. Callers must close rows and finish transactions; shutdown closes both pools. |
-| `cache.Store` | A mutex protects reservations, entries, pins, and close state; a directory lock enforces one process owner. | Chunk reads hold pins until release. Publication and recovery preserve accounting; the application closes the store. |
+| `cache.Store` | A mutex protects reservations, entries, pins, and close state; a directory lock enforces one process owner. | Chunk reads hold pins until release. Publication and recovery preserve accounting; the application closes the store. After close, reads, fetches, and resize fail. Repeated close cannot release a replacement owner's lock. |
 | `nfs.Server` | Owns its listener, connection/request bounds, and a separate `data/nfs.sqlite` database of wire identities. | Shutdown cancels requests, closes connections, waits, then closes the handle database. The application closes the cache and catalogue afterward. |
 | `library.Mount` and open handles | The mount owns the FUSE server and provider. Each handle retains one representation; static qualification snapshots use atomic replacement. | The application unmounts after its workers stop. Cache eviction or source renewal must not change an open handle's representation. |
 | Source adapter and diagnostics | The resolver bounds listing and metadata work with slots. The recorder protects its aggregates with a mutex. | Process calls have contexts and deadlines. Locators remain transient; measurements retain bounded operation data. |
@@ -346,6 +346,19 @@ delays another resolution for one second. Reads during that delay do not extend
 it. Late readers can invalidate each binding generation only once, so they cannot
 erase the delay. A handle captures its representation, generation, and canonical
 video ID under one lock; later runtime eviction cannot remove its renewal identity.
+
+Media HTTP requests share a retry policy owned by the representation state, with
+its own mutex and at most 128 source-identity hashes. HTTP 429 and 503 responses
+delay later requests for that video/format identity, including probes through a
+renewed locator. `Retry-After` accepts seconds or HTTP dates, bounded to one
+second through five minutes; absent, invalid, or past values use one second.
+Delayed readers do not extend the deadline. Cached bytes bypass this admission,
+and cancellation remains immediate. Delays are transient runtime state.
+The filesystem returns `ErrDeferred`, which uses the existing temporary NFS/FUSE
+retry responses. A deferred bind does not mark prepared media failed. Deferred
+preparation restores an existing verified revision to ready, or leaves a new
+recording waiting for normal or explicit preparation retry. Neither path starts
+a retry loop or changes the durable media identity.
 
 Two shared resolution slots bound full source work. Background work also retains
 its single metadata admission slot. Admission happens before request sharing,

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"duplex/internal/catalog"
+	"duplex/internal/media"
 	"duplex/internal/source"
 )
 
@@ -164,10 +165,28 @@ func (a *App) runPreparation(ctx context.Context, task catalog.PreparationTask) 
 		return
 	}
 
+	if errors.Is(err, media.ErrDeferred) {
+		a.operationFailure("defer recording preparation", a.deferPreparation(cleanup, task.VideoID))
+		return
+	}
+
 	if err != nil {
 		a.operationFailure("recording preparation", err)
 		a.operationFailure("preparation result", a.Catalog.SetPreparation(cleanup, task.VideoID, "failed", preparationReason(err)))
 	}
+}
+
+func (a *App) deferPreparation(ctx context.Context, id string) error {
+	video, err := a.Catalog.Video(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if video.Revision != "" && video.Size > 0 {
+		return a.Catalog.SetPreparation(ctx, id, "ready", "")
+	}
+
+	return a.Catalog.SetPreparation(ctx, id, "waiting", "Source media work is temporarily deferred")
 }
 
 func (a *App) prepareTask(ctx context.Context, task catalog.PreparationTask) error {
