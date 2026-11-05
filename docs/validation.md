@@ -25,6 +25,8 @@ The gate checks layout, lint, secrets in files and Git history, Go vulnerabiliti
 race behavior, controlled media comparisons, Linux filesystem and cache behavior,
 at least 80% statement coverage per production package, and Linux amd64/arm64
 builds. Validate production Compose with `docker compose config --quiet`.
+The gate also enforces production import boundaries, Python semantic lint and
+ShellCheck, and active bounded fuzz testing for retained MP4 layouts and NFS RPC.
 
 Controlled media tests compare packet payloads, timestamps, decode results,
 distant reads, and cache behavior against independently generated references.
@@ -34,6 +36,18 @@ bytes, and saved format of legacy version 1 indexes.
 Linux tests cover FUSE handles, write rejection, source failures, physical disk
 pressure, pinned reads, interrupted publication, and mount recovery. Inspect
 skipped tests; live Plex qualification needs a separate controlled installation.
+
+A warm four-byte payload read must allocate at most 4,096 bytes and 32 objects
+per operation, with no new source resolution or HTTP request. One hundred
+repeated header opens with a cold runtime binding must load the local index
+once and make no source requests, including when uncached reads are deferred.
+These count and memory budgets run with the controlled media tests. They do not
+set a host throughput or latency target.
+
+Recovery tests must retain the canonical video ID across concurrent binding
+eviction. Rejected fresh locators must share the one-second failure delay;
+repeated and late readers must not erase or extend it. After the delay expires,
+the same retained handle must recover without changing durable media identity.
 
 These checks establish the tested code contracts. They do not establish browser
 rendering, provider availability, conversion capacity, or household acceptance.
@@ -112,6 +126,10 @@ Use a dedicated test library and preserve existing user state. Verify:
   continue. Verify actual Plex session file matching, free server request slots,
   retry recovery, and source process cancellation. Stop discovery during metadata
   resolution and listing, then resume without failure state or partial removals.
+  Include a second Plex viewer with cold media bytes and no runtime binding.
+  The local test admits it after the file appears in a supplied session
+  observation; live qualification must also prove Plex can reach that observation
+  without requiring a blocked payload read first.
 - Offline layout maintenance: preview, service-lock refusal, conversion with no
   network requests, interrupted-run recovery, and repeated apply. Retain old
   revision files, exact source bytes, recording slots, Plex keys, and progress

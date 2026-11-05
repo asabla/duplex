@@ -37,13 +37,14 @@ The repository configuration and scripts determine actual enforcement:
 | Production Go function size | `funlen`, at most 40 statements; physical-line checks disabled (`lines: -1`). |
 | Production control-flow paths | `cyclop`, with `max-complexity: 15`. |
 | Production nesting and control flow | `gocognit`, with `min-complexity: 20`. This is the tool's reporting threshold; retain its exact boundary. |
-| Errors and resource use | Checks include `errcheck`, `bodyclose`, `rowserrcheck`, `sqlclosecheck`, and context checks. |
+| Errors and resource use | Checks include `errcheck`, `nilnesserr`, `makezero`, `unparam`, `bodyclose`, `rowserrcheck`, `sqlclosecheck`, and context checks. |
+| Package dependencies | `depguard` enforces the production import boundaries defined in Architecture. Test fixtures can import across these boundaries. |
 | Static analysis and security | Checks include `govet`, `staticcheck`, `gosec`, secret scans, and vulnerability checks. |
 | Suppression syntax | `nolintlint` requires a named check and an explanation. |
 | Templates, CSS, and JavaScript | Prettier 3.9.10; Go templates use `prettier-plugin-go-template` 0.0.15 with strict whitespace handling. |
 | Rendered HTML | `html-validate` 11.17.0 checks `input-missing-label` and `prefer-native-element` on controlled pages and HTMX fragments. |
-| Shell and Python | shfmt 3.14.1 with POSIX syntax and two-space indentation; `sh -n`; Ruff 0.17.2 formatting. Script behavior has controlled tests. |
-| Behavior and coverage | The quality gate runs race and controlled media tests, Linux-specific tests, coverage checks, and both Linux architecture builds. |
+| Shell and Python | shfmt 3.14.1 with POSIX syntax and two-space indentation; `sh -n`; ShellCheck 0.11.0; Ruff 0.17.2 formatting and lint rules `E4,E7,E9,F,B`. Script behavior has controlled tests. |
+| Behavior and coverage | The quality gate runs race and controlled media tests, cached-read memory and source-work budgets, bounded layout and NFS fuzz testing, Linux-specific tests, coverage checks, and both Linux architecture builds. |
 
 The full enabled Go rule list is in [`.golangci.yml`](../.golangci.yml).
 [`scripts/check.sh`](../scripts/check.sh) defines the local gate; CI calls the
