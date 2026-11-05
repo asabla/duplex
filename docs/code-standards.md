@@ -37,9 +37,9 @@ The repository configuration and scripts determine actual enforcement:
 | Production Go function size | `funlen`, at most 40 statements; physical-line checks disabled (`lines: -1`). |
 | Production control-flow paths | `cyclop`, with `max-complexity: 15`. |
 | Production nesting and control flow | `gocognit`, with `min-complexity: 20`. This is the tool's reporting threshold; retain its exact boundary. |
-| Errors and resource use | Checks include `errcheck`, `nilnesserr`, `makezero`, `unparam`, `bodyclose`, `rowserrcheck`, `sqlclosecheck`, and context checks. |
+| Errors and resource use | Checks include `errcheck`, `nilerr`, `nilnesserr`, `makezero`, `asasalint`, `unparam`, `bodyclose`, `rowserrcheck`, `sqlclosecheck`, and context checks. |
 | Package dependencies | `depguard` enforces the production import boundaries defined in Architecture. Test fixtures can import across these boundaries. |
-| Static analysis and security | Checks include `govet`, `staticcheck`, `gosec`, secret scans, and vulnerability checks. |
+| Static analysis and security | Checks include `govet`, `staticcheck`, `gosec`, `gocheckcompilerdirectives`, `bidichk`, secret scans, and vulnerability checks. |
 | Suppression syntax | `nolintlint` requires a named check and an explanation. |
 | Templates, CSS, and JavaScript | Prettier 3.9.10; Go templates use `prettier-plugin-go-template` 0.0.15 with strict whitespace handling. ESLint 10.14.0 checks handwritten browser and development JavaScript with zero warnings. |
 | GitHub Actions | Actionlint 1.7.12 checks workflows and invokes ShellCheck for embedded shell commands. |
@@ -53,7 +53,9 @@ same gate, including [`scripts/check-readability.sh`](../scripts/check-readabili
 The JavaScript rules and browser/Node globals are defined in
 [`eslint.config.mjs`](../tools/readability/eslint.config.mjs). Rules cover undefined
 and unused names, unreachable code, unsafe control flow, promise executors, and
-strict equality. Third-party HTMX remains excluded.
+strict equality. They also reject duplicate arguments, keys, and branches,
+constant binary expressions, unexpected multiline expressions, and numeric
+precision loss. Third-party HTMX remains excluded.
 The `_test.go` exemption applies only to `cyclop`, `gocognit`, and `funlen`. Other
 enabled checks, including statement spacing, still apply to tests.
 

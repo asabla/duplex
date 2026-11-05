@@ -11,6 +11,12 @@ const rules = Object.fromEntries(
     'no-promise-executor-return',
     'valid-typeof',
     'constructor-super',
+    'no-dupe-args',
+    'no-dupe-keys',
+    'no-dupe-else-if',
+    'no-constant-binary-expression',
+    'no-unexpected-multiline',
+    'no-loss-of-precision',
     'eqeqeq',
   ].map((name) => [name, 'error']),
 );
