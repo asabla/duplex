@@ -666,7 +666,13 @@ Each page reads current catalogue state, rather than retaining a whole-directory
 transaction across client requests.
 
 The server accepts at most 64 TCP connections and executes at most 32 requests
-at once. Records are limited to 1 MiB, reads to 128 KiB, and a record to 64
+at once. At most 24 requests can open or read media payloads. Further READs
+return retryable JUKEBOX responses before provider access, leaving capacity for
+metadata requests on the same or another connection. Each admitted READ releases
+its capacity on success, error, or cancellation. Complete read-only RPC argument
+shapes are checked before provider or handle access. Mutations retain unconditional
+ROFS refusal, and unknown procedures retain PROC_UNAVAIL.
+Records are limited to 1 MiB, reads to 128 KiB, and a record to 64
 fragments. Idle connections have read deadlines; requests have cancellation and
 a two-minute limit. Responses on one connection are serialized, while reads can
 execute concurrently. Truncated source reads fail with IO rather than successful

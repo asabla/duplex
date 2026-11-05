@@ -418,47 +418,27 @@ func TestReadonlyFailuresAndTCP(t *testing.T) {
 }
 
 func FuzzRequest(f *testing.F) {
-	h, err := openHandles(f.Context(), f.TempDir()+"/nfs.sqlite")
-	if err != nil {
-		f.Fatal(err)
-	}
-
-	f.Cleanup(func() {
-		if err := h.db.Close(); err != nil {
-			f.Error(err)
-		}
-	})
-
-	s := &Server{handles: h, provider: &fixture{count: 1}}
+	s, provider, records := rpcFixture(f)
 
 	f.Add([]byte("invalid request"))
 
 	for _, procedure := range []uint32{0, 1, 3, 4, 6, 16, 17, 18, 19, 20, 21} {
-		var request encoder
-		for _, value := range []uint32{1, 0, 2, 100003, 3, procedure, 0, 0, 0, 0} {
-			request.u32(value)
+		for _, r := range records {
+			request := rpcRequest(1, 100003, procedure, nfsArguments(procedure, r.id))
+			f.Add([]byte(request))
+			f.Add(append(append([]byte(nil), request...), 0))
+			f.Add([]byte(request[:len(request)-1]))
 		}
-
-		root, err := s.describe(f.Context(), "")
-		if err != nil {
-			f.Fatal(err)
-		}
-
-		if err = h.save(f.Context(), []record{root}); err != nil {
-			f.Fatal(err)
-		}
-
-		request.opaque(root.id)
-		request.u64(0)
-		request.u64(0)
-		request.u32(32768)
-		request.u32(32768)
-		f.Add([]byte(request))
 	}
 
 	f.Fuzz(func(t *testing.T, input []byte) {
 		if len(input) <= maxRequest {
-			_ = s.rpc(t.Context(), input)
+			before := provider.calls.Load()
+
+			reply := s.rpc(t.Context(), input)
+			if binary.BigEndian.Uint32(reply[20:24]) == 4 && provider.calls.Load() != before {
+				t.Fatal("rejected malformed RPC reached the provider")
+			}
 		}
 	})
 }
